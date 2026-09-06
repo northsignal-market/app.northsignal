@@ -14,11 +14,13 @@ export // Auth Middleware
       return res.status(500).json({ error: 'APP_ACCESS_TOKEN no está configurado en el servidor' });
     }
 
-    // Header: APP_ACCESS_TOKEN o session token
+    // Header: APP_ACCESS_TOKEN, session token, o CRON_SECRET para /cron/*
     const headerToken = req.headers.authorization?.split(' ')[1];
     if (headerToken) {
       if (headerToken === process.env.APP_ACCESS_TOKEN) return next();
       if (verifySessionToken(headerToken)) return next();
+      // Vercel Cron y pg_net llaman con Bearer CRON_SECRET. Solo vale para rutas de cron.
+      if (req.path.startsWith('/cron/') && process.env.CRON_SECRET && headerToken === process.env.CRON_SECRET) return next();
     }
 
     if (verifySessionToken(req.cookies?.auth_token)) return next();

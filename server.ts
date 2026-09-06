@@ -1738,9 +1738,8 @@ Las descripciones no deben superar los 90 caracteres.`;
   // llamando este endpoint. En local se puede invocar a mano.
   app.all("/api/cron/anomalias", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const secret = process.env.CRON_SECRET;
-    const auth = req.headers.authorization;
-    if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    // Si llego hasta aca, paso el middleware: con CRON_SECRET (Vercel Cron, pg_net),
+    // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
     try {
       const r = await runAnomalyWorker();
       res.json({ ok: true, ran_at: new Date().toISOString(), ...r });
@@ -1757,8 +1756,8 @@ Las descripciones no deben superar los 90 caracteres.`;
   // calcula su impacto, actualiza los parametros estimados con los reales.
   app.all("/api/cron/aprendizaje", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    // Si llego hasta aca, paso el middleware: con CRON_SECRET (Vercel Cron, pg_net),
+    // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
     const resultado: any = { ran_at: new Date().toISOString() };
     try {
       // 1. Sincronizar accionables Hechos con Ejecutado el desde Notion
@@ -2052,8 +2051,8 @@ Las descripciones no deben superar los 90 caracteres.`;
   // borrador del reporte. Si el brief no tiene la sección, lo registra y sigue.
   app.all("/api/cron/reportes", async (req, res) => {
     if (!supabase || !notion || !NOTION_BASES.BRIEFS) return res.status(503).json({ error: 'Supabase o Notion no configurados' });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    // Si llego hasta aca, paso el middleware: con CRON_SECRET (Vercel Cron, pg_net),
+    // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
     const hoy = new Date(); const dow = hoy.getDay(); // 0 dom, 1 lun
     const lunesPrevio = new Date(hoy); lunesPrevio.setDate(hoy.getDate() - ((dow + 6) % 7) - 7);
     const desde = lunesPrevio.toISOString().slice(0, 10);
@@ -2125,8 +2124,8 @@ Las descripciones no deben superar los 90 caracteres.`;
   app.all("/api/cron/pulso-diario", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     if (!pulsoDisponible()) return res.status(503).json({ error: 'ANTHROPIC_API_KEY no configurada' });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    // Si llego hasta aca, paso el middleware: con CRON_SECRET (Vercel Cron, pg_net),
+    // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
 
     const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
     const fecha = (req.query.fecha as string) || ayer.toISOString().slice(0, 10);
@@ -2225,8 +2224,8 @@ Las descripciones no deben superar los 90 caracteres.`;
   // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
   app.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    // Si llego hasta aca, paso el middleware: con CRON_SECRET (Vercel Cron, pg_net),
+    // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
     try {
       const { data, error } = await supabase.rpc('mantenimiento_semanal');
       if (error) return res.status(500).json({ error: error.message });

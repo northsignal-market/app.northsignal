@@ -596,6 +596,7 @@ var authMiddleware = (req, res, next) => {
   if (headerToken) {
     if (headerToken === process.env.APP_ACCESS_TOKEN) return next();
     if (verifySessionToken(headerToken)) return next();
+    if (req.path.startsWith("/cron/") && process.env.CRON_SECRET && headerToken === process.env.CRON_SECRET) return next();
   }
   if (verifySessionToken(req.cookies?.auth_token)) return next();
   return res.status(401).json({ error: "Unauthorized" });
@@ -2140,9 +2141,6 @@ Las descripciones no deben superar los 90 caracteres.`;
   });
   app2.all("/api/cron/anomalias", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const secret = process.env.CRON_SECRET;
-    const auth = req.headers.authorization;
-    if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     try {
       const r = await runAnomalyWorker();
       res.json({ ok: true, ran_at: (/* @__PURE__ */ new Date()).toISOString(), ...r });
@@ -2152,8 +2150,6 @@ Las descripciones no deben superar los 90 caracteres.`;
   });
   app2.all("/api/cron/aprendizaje", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     const resultado = { ran_at: (/* @__PURE__ */ new Date()).toISOString() };
     try {
       if (notion && NOTION_BASES.ACCIONABLES) {
@@ -2426,8 +2422,6 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   });
   app2.all("/api/cron/reportes", async (req, res) => {
     if (!supabase || !notion || !NOTION_BASES.BRIEFS) return res.status(503).json({ error: "Supabase o Notion no configurados" });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     const hoy = /* @__PURE__ */ new Date();
     const dow = hoy.getDay();
     const lunesPrevio = new Date(hoy);
@@ -2508,8 +2502,6 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   app2.all("/api/cron/pulso-diario", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     if (!pulsoDisponible()) return res.status(503).json({ error: "ANTHROPIC_API_KEY no configurada" });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     const ayer = /* @__PURE__ */ new Date();
     ayer.setDate(ayer.getDate() - 1);
     const fecha2 = req.query.fecha || ayer.toISOString().slice(0, 10);
@@ -2606,8 +2598,6 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   });
   app2.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     try {
       const { data, error } = await supabase.rpc("mantenimiento_semanal");
       if (error) return res.status(500).json({ error: error.message });
