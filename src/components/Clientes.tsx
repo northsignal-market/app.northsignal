@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { decision, marginal } from '../lib/humano';
 import { 
   Building, DollarSign, Calendar, Clock, AlertCircle, 
   Lightbulb, HelpCircle, ArrowRight, ExternalLink, ShieldCheck, Target, TrendingUp, Layers, Save
@@ -267,6 +268,13 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         </div>
       )}
 
+      {/* ZONA 1: lo que leés vos. Objetivos, reportes para aprobar, accionables, decisiones. */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#FFFFFF]">Para vos</span>
+        <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+        <span className="text-[10px] text-[#F5F7FA] opacity-50">objetivos, reportes, pendientes, decisiones</span>
+      </div>
+
       {/* Ficha de Cuenta */}
       <div 
         className="p-5 rounded-2xl space-y-4"
@@ -363,7 +371,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
               </div>
             ))}
           </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin objetivos definidos para esta cuenta.</p>}
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.</p>}
 
         {target?.notas && <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{target.notas}</p>}
 
@@ -409,7 +417,179 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
               <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1">{escalera.recomendada.recomendacion}</p>
             )}
           </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin escalera definida para esta cuenta.</p>}
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
+      </div>
+
+      {/* Reportes al cliente */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Borrador desde el brief → revisás → aprobás. Un minuto por período.</p>
+          </div>
+          <button onClick={() => setGenerandoDesde(v => !v)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>{generandoDesde ? 'Cancelar' : 'Nuevo borrador'}</button>
+        </div>
+        {generandoDesde && (
+          <div className="flex flex-wrap items-end gap-2 p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70 flex-1 min-w-[220px]">ID del brief en Notion (con la sección de reporte)<br /><input value={formGenerar.brief_id} onChange={e => setFormGenerar(f => ({ ...f, brief_id: e.target.value }))} placeholder="3d03b1f6de28817e…" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" /></label>
+            <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Generando…' : 'Crear borrador'}</button>
+          </div>
+        )}
+        {reportes.length === 0 ? (
+          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin reportes para {activeClient}. El lunes, tras la tarea semanal, aparece el borrador de la semana.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {reportes.map(r => (
+              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)', border: reporteAbierto?.id === r.id ? '1px solid var(--primary)' : '1px solid transparent' }}
+                onClick={() => { setReporteAbierto(r); setEditandoReporte(false); setTextoReporte({ resumen_ejecutivo: r.resumen_ejecutivo, que_cambiamos: r.que_cambiamos || '', que_sigue: r.que_sigue || '' }); }}>
+                <span className={`text-[10px] uppercase tracking-wider font-bold w-20 shrink-0 ${r.estado === 'borrador' ? 'text-[#0062CC]' : r.estado === 'enviado' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{r.estado}</span>
+                <span className="text-xs text-[#FFFFFF] tabular">{r.periodo_desde} → {r.periodo_hasta}</span>
+                <span className="text-[11px] text-[#F5F7FA] opacity-60">{r.tipo} · {r.idioma.toUpperCase()}{r.editado ? ' · editado' : ''}</span>
+                <span className="ml-auto text-[11px] text-[#F5F7FA] opacity-50 tabular">
+                  {r.metricas?.cpa?.actual != null ? `CPA ${fmtMoney(r.metricas.cpa.actual)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {reporteAbierto && (
+          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{reporteAbierto.periodo_desde} → {reporteAbierto.periodo_hasta} · {reporteAbierto.estado}</span>
+              <div className="flex gap-2">
+                <button onClick={() => accionReporte(reporteAbierto.id, 'pdf')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Ver PDF</button>
+                {reporteAbierto.estado === 'borrador' && !editandoReporte && <button onClick={() => setEditandoReporte(true)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Editar texto</button>}
+                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'aprobar')} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>}
+                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'descartar')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-60">Descartar</button>}
+              </div>
+            </div>
+            {editandoReporte ? (
+              <div className="space-y-2">
+                {(['resumen_ejecutivo', 'que_cambiamos', 'que_sigue'] as const).map(k => (
+                  <label key={k} className="block text-[11px] text-[#F5F7FA] opacity-70">{k === 'resumen_ejecutivo' ? 'Resumen ejecutivo' : k === 'que_cambiamos' ? 'Qué cambiamos' : 'Qué sigue'}
+                    <textarea value={textoReporte[k]} onChange={e => setTextoReporte(t => ({ ...t, [k]: e.target.value }))} rows={k === 'resumen_ejecutivo' ? 9 : 4}
+                      className="w-full mt-1 text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-2 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC]" style={{ fontFamily: 'inherit' }} />
+                  </label>
+                ))}
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setEditandoReporte(false)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
+                  <button onClick={guardarTextoReporte} disabled={trabajandoReporte === 'guardar'} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Guardar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-[#F5F7FA] leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto custom-scrollbar">{reporteAbierto.resumen_ejecutivo}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Accionables Abiertos de esta cuenta */}
+      <div 
+        className="p-5 rounded-2xl space-y-3"
+        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+            Accionables Activos para {activeClient}
+          </h2>
+          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
+            {clientActionables.length} activos
+          </span>
+        </div>
+
+        {clientActionables.length === 0 ? (
+          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
+            Nada pendiente en esta cuenta. Los accionables nuevos aparecen el lunes después de la tarea semanal.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {clientActionables.slice(0, 6).map(act => (
+              <div
+                key={act.id}
+                onClick={() => onOpenActionable && onOpenActionable(act)}
+                className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
+                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-semibold text-[#FFFFFF] truncate">
+                    {act.title}
+                  </div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-60">
+                    Prioridad: {act.priority} · Estado: {act.status}
+                  </div>
+                </div>
+                <ArrowRight size={12} className="text-[#0062CC] shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+
+
+      {/* Decisiones estructurales */}
+      {estrategia.decisiones.length > 0 && (() => {
+        const d = estrategia.decisiones[0];
+        const zona = (t: string) => t?.startsWith('PROPONER') ? 'proponer' : t?.startsWith('REVISAR') ? 'revisar' : 'no';
+        const dec = (t: string) => decision(t);
+        const decs = [
+          ['Separar marca', d.separar_marca], ['Consolidar', d.consolidar], ['Crear campaña', d.crear_campana],
+          ['Pausar', d.pausar], ['Escalar', d.escalar], ['Test de incrementalidad', d.test_incrementalidad_marca]
+        ];
+        const activas = decs.filter(([, t]) => zona(t) !== 'no');
+        return (
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: activas.length ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+                {activas.length === 0 ? 'Estructura: sin decisiones que proponer' : `${activas.length} decisión${activas.length > 1 ? 'es' : ''} estructural${activas.length > 1 ? 'es' : ''} en evaluación`}
+              </h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60 tabular">
+                {d.conv_28d} conv en {d.dias_28d} días consolidados · {d.n_campanas} campaña{d.n_campanas > 1 ? 's' : ''} · {d.grupo_dominante} {d.pct_grupo_dominante}% · MDE a 4 semanas {d.mde_4_semanas_pct}%
+              </p>
+            </div>
+            <div className="space-y-2">
+              {decs.map(([nombre, texto]) => {
+                const z = zona(texto); const d = dec(texto);
+                return (
+                  <div key={nombre} className={`flex items-start gap-3 p-2.5 rounded-lg ${z === 'no' ? 'opacity-50' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className={`text-[10px] uppercase tracking-wider font-bold shrink-0 w-20 pt-0.5 ${z === 'proponer' ? 'text-[#FFFFFF]' : z === 'revisar' ? 'text-[#0062CC]' : 'text-[#F5F7FA]'}`}>{nombre}</span>
+                    <span className="text-xs text-[#F5F7FA]"><span className="font-medium text-[#FFFFFF]">{d.etiqueta}.</span> {d.detalle}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-[#F5F7FA] opacity-60">{String(d.testeabilidad || '').replace(/^NO TESTEABLE en (\d+) semanas: el efecto mínimo detectable supera 35%\. Registrar la pregunta, no correr el test\./, 'Con este volumen, un test A/B de $1 semanas no distinguiría nada: harían falta cambios de más de 35% para verlos.').replace(/^TESTEABLE SOLO PARA EFECTOS GRANDES: necesita 35%\+ de diferencia/, 'Un test de 4 semanas solo detectaría cambios grandes, de 35% o más.').replace(/^TESTEABLE: detecta cambios de 20% o más/, 'Hay volumen para testear: un test de 4 semanas detecta cambios de 20% o más.')}</p>
+            {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).length > 0 && (
+              <div className="pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                <p className="text-xs font-medium text-[#FFFFFF] mb-1">Dónde produce más el siguiente peso</p>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[#F5F7FA] opacity-60 text-left"><th className="py-1 px-2">Campaña</th><th className="py-1 px-2 text-right">Escalón/día</th><th className="py-1 px-2 text-right">CPA promedio</th><th className="py-1 px-2 text-right">CPA marginal</th><th className="py-1 px-2">Lectura</th></tr></thead>
+                  <tbody>
+                    {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).slice(0, 6).map((m: any, i: number) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td className="py-1 px-2 text-[#F5F7FA] max-w-[180px] truncate">{m.campaign}</td>
+                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA]">{fmtMoney(m.escalon)}</td>
+                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA] opacity-70">{fmtMoney(m.cpa_promedio_en_escalon)}</td>
+                        <td className={`py-1 px-2 tabular text-right ${m.ratio_marginal_sobre_promedio >= 2 ? 'text-[#0062CC] font-semibold' : 'text-[#FFFFFF]'}`}>{fmtMoney(m.cpa_marginal_desde_anterior)}{m.ratio_marginal_sobre_promedio ? ` (${m.ratio_marginal_sobre_promedio}×)` : ''}</td>
+                        <td className="py-1 px-2 text-[#F5F7FA] opacity-70 text-[11px]">{marginal(m.lectura)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+
+      {/* ZONA 2: lo que el sistema recuerda entre semanas. Lo escribe la tarea del lunes; vos lo corregís si está mal. */}
+      <div className="flex items-center gap-3 pt-4">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#F5F7FA] opacity-70">Lo que el sistema recuerda</span>
+        <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+        <span className="text-[10px] text-[#F5F7FA] opacity-50">lo escribe la tarea del lunes; corregilo si está mal</span>
       </div>
 
       {/* Hipótesis Abiertas */}
@@ -500,170 +680,6 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Accionables Abiertos de esta cuenta */}
-      <div 
-        className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
-      >
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF]">
-            Accionables Activos para {activeClient}
-          </h2>
-          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
-            {clientActionables.length} activos
-          </span>
-        </div>
-
-        {clientActionables.length === 0 ? (
-          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
-            Sin accionables pendientes para esta cuenta.
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {clientActionables.slice(0, 6).map(act => (
-              <div
-                key={act.id}
-                onClick={() => onOpenActionable && onOpenActionable(act)}
-                className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
-                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              >
-                <div className="min-w-0 pr-2">
-                  <div className="text-xs font-semibold text-[#FFFFFF] truncate">
-                    {act.title}
-                  </div>
-                  <div className="text-[11px] text-[#F5F7FA] opacity-60">
-                    Prioridad: {act.priority} · Estado: {act.status}
-                  </div>
-                </div>
-                <ArrowRight size={12} className="text-[#0062CC] shrink-0" />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-
-
-      {/* Decisiones estructurales */}
-      {estrategia.decisiones.length > 0 && (() => {
-        const d = estrategia.decisiones[0];
-        const zona = (t: string) => t?.startsWith('PROPONER') ? 'proponer' : t?.startsWith('REVISAR') ? 'revisar' : 'no';
-        const decs = [
-          ['Separar marca', d.separar_marca], ['Consolidar', d.consolidar], ['Crear campaña', d.crear_campana],
-          ['Pausar', d.pausar], ['Escalar', d.escalar], ['Test de incrementalidad', d.test_incrementalidad_marca]
-        ];
-        const activas = decs.filter(([, t]) => zona(t) !== 'no');
-        return (
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: activas.length ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
-            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">
-                {activas.length === 0 ? 'Estructura: sin decisiones que proponer' : `${activas.length} decisión${activas.length > 1 ? 'es' : ''} estructural${activas.length > 1 ? 'es' : ''} en evaluación`}
-              </h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60 tabular">
-                {d.conv_28d} conv en {d.dias_28d} días consolidados · {d.n_campanas} campaña{d.n_campanas > 1 ? 's' : ''} · {d.grupo_dominante} {d.pct_grupo_dominante}% · MDE a 4 semanas {d.mde_4_semanas_pct}%
-              </p>
-            </div>
-            <div className="space-y-2">
-              {decs.map(([nombre, texto]) => {
-                const z = zona(texto);
-                return (
-                  <div key={nombre} className={`flex items-start gap-3 p-2.5 rounded-lg ${z === 'no' ? 'opacity-50' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className={`text-[10px] uppercase tracking-wider font-bold shrink-0 w-20 pt-0.5 ${z === 'proponer' ? 'text-[#FFFFFF]' : z === 'revisar' ? 'text-[#0062CC]' : 'text-[#F5F7FA]'}`}>{nombre}</span>
-                    <span className="text-xs text-[#F5F7FA]">{texto}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-[#F5F7FA] opacity-60">{d.testeabilidad}</p>
-            {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).length > 0 && (
-              <div className="pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                <p className="text-xs font-medium text-[#FFFFFF] mb-1">Dónde produce más el siguiente peso</p>
-                <table className="w-full text-xs">
-                  <thead><tr className="text-[#F5F7FA] opacity-60 text-left"><th className="py-1 px-2">Campaña</th><th className="py-1 px-2 text-right">Escalón/día</th><th className="py-1 px-2 text-right">CPA promedio</th><th className="py-1 px-2 text-right">CPA marginal</th><th className="py-1 px-2">Lectura</th></tr></thead>
-                  <tbody>
-                    {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).slice(0, 6).map((m: any, i: number) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td className="py-1 px-2 text-[#F5F7FA] max-w-[180px] truncate">{m.campaign}</td>
-                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA]">{fmtMoney(m.escalon)}</td>
-                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA] opacity-70">{fmtMoney(m.cpa_promedio_en_escalon)}</td>
-                        <td className={`py-1 px-2 tabular text-right ${m.ratio_marginal_sobre_promedio >= 2 ? 'text-[#0062CC] font-semibold' : 'text-[#FFFFFF]'}`}>{fmtMoney(m.cpa_marginal_desde_anterior)}{m.ratio_marginal_sobre_promedio ? ` (${m.ratio_marginal_sobre_promedio}×)` : ''}</td>
-                        <td className="py-1 px-2 text-[#F5F7FA] opacity-70 text-[11px]">{String(m.lectura).split(':')[0]}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-
-      {/* Reportes al cliente */}
-      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Borrador desde el brief → revisás → aprobás. Un minuto por período.</p>
-          </div>
-          <button onClick={() => setGenerandoDesde(v => !v)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>{generandoDesde ? 'Cancelar' : 'Nuevo borrador'}</button>
-        </div>
-        {generandoDesde && (
-          <div className="flex flex-wrap items-end gap-2 p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70 flex-1 min-w-[220px]">ID del brief en Notion (con la sección de reporte)<br /><input value={formGenerar.brief_id} onChange={e => setFormGenerar(f => ({ ...f, brief_id: e.target.value }))} placeholder="3d03b1f6de28817e…" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" /></label>
-            <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Generando…' : 'Crear borrador'}</button>
-          </div>
-        )}
-        {reportes.length === 0 ? (
-          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin reportes para {activeClient}. El lunes, tras la tarea semanal, aparece el borrador de la semana.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {reportes.map(r => (
-              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)', border: reporteAbierto?.id === r.id ? '1px solid var(--primary)' : '1px solid transparent' }}
-                onClick={() => { setReporteAbierto(r); setEditandoReporte(false); setTextoReporte({ resumen_ejecutivo: r.resumen_ejecutivo, que_cambiamos: r.que_cambiamos || '', que_sigue: r.que_sigue || '' }); }}>
-                <span className={`text-[10px] uppercase tracking-wider font-bold w-20 shrink-0 ${r.estado === 'borrador' ? 'text-[#0062CC]' : r.estado === 'enviado' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{r.estado}</span>
-                <span className="text-xs text-[#FFFFFF] tabular">{r.periodo_desde} → {r.periodo_hasta}</span>
-                <span className="text-[11px] text-[#F5F7FA] opacity-60">{r.tipo} · {r.idioma.toUpperCase()}{r.editado ? ' · editado' : ''}</span>
-                <span className="ml-auto text-[11px] text-[#F5F7FA] opacity-50 tabular">
-                  {r.metricas?.cpa?.actual != null ? `CPA ${fmtMoney(r.metricas.cpa.actual)}` : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {reporteAbierto && (
-          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{reporteAbierto.periodo_desde} → {reporteAbierto.periodo_hasta} · {reporteAbierto.estado}</span>
-              <div className="flex gap-2">
-                <button onClick={() => accionReporte(reporteAbierto.id, 'pdf')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Ver PDF</button>
-                {reporteAbierto.estado === 'borrador' && !editandoReporte && <button onClick={() => setEditandoReporte(true)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Editar texto</button>}
-                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'aprobar')} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>}
-                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'descartar')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-60">Descartar</button>}
-              </div>
-            </div>
-            {editandoReporte ? (
-              <div className="space-y-2">
-                {(['resumen_ejecutivo', 'que_cambiamos', 'que_sigue'] as const).map(k => (
-                  <label key={k} className="block text-[11px] text-[#F5F7FA] opacity-70">{k === 'resumen_ejecutivo' ? 'Resumen ejecutivo' : k === 'que_cambiamos' ? 'Qué cambiamos' : 'Qué sigue'}
-                    <textarea value={textoReporte[k]} onChange={e => setTextoReporte(t => ({ ...t, [k]: e.target.value }))} rows={k === 'resumen_ejecutivo' ? 9 : 4}
-                      className="w-full mt-1 text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-2 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC]" style={{ fontFamily: 'inherit' }} />
-                  </label>
-                ))}
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setEditandoReporte(false)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
-                  <button onClick={guardarTextoReporte} disabled={trabajandoReporte === 'guardar'} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Guardar</button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-xs text-[#F5F7FA] leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto custom-scrollbar">{reporteAbierto.resumen_ejecutivo}</div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Doc maestro ensamblado */}

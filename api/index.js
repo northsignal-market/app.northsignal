@@ -406,7 +406,7 @@ webhooksRouter.post("/gohighlevel", async (req, res) => {
 // src/server/domain/notionSchema.ts
 var NOTION_BASES = {
   CLIENTES: "e5f736fe-b4e5-4e3c-b827-fabc5db8a0c8",
-  BRIEFS: process.env.NOTION_BRIEFS_DB_ID || "24cb7596-2bdf-460d-8d74-a8d042f55512",
+  BRIEFS: process.env.NOTION_BRIEFS_DB_ID || "1aedbb2d-d6e8-42a8-aca7-630cf97c4965",
   ACCIONABLES: process.env.NOTION_ACCIONABLES_DB_ID || "373cde2b-d8c2-47e3-bc89-56c7d7c7e568",
   PIPELINE: "6dcfb06b-c2fc-444c-b10d-f3cc8f485059"
 };
@@ -509,7 +509,10 @@ var PulsoSchema = z2.object({
     confianza: z2.number().min(0).max(1),
     entidad: z2.string().describe("Campa\xF1a, grupo, keyword o t\xE9rmino con nombre exacto"),
     evidencia_texto: z2.string().describe("Los n\xFAmeros que lo sostienen, con fechas"),
-    naturaleza: z2.enum(["observacion", "inferencia", "hipotesis"])
+    naturaleza: z2.enum(["observacion", "inferencia", "hipotesis"]),
+    como_hacerlo: z2.string().describe("Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campa\xF1as > la campa\xF1a > el grupo > Palabras clave; pesta\xF1a Palabras clave negativas; Objetivos > Conversiones; Configuraci\xF3n > Puja. Uno por l\xEDnea. Escrito para una persona con Google Ads abierto, no para el sistema."),
+    donde: z2.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
+    causa_raiz: z2.string().describe('El problema de fondo en una frase que otro hallazgo podr\xEDa compartir. Nunca "detectado por el pulso".')
   })).describe("Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.")
 });
 function pulsoDisponible() {
@@ -559,6 +562,148 @@ ${JSON.stringify(input)}`;
   } catch (e) {
     return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
   }
+}
+
+// src/server/lib/asistente.ts
+import Anthropic2 from "@anthropic-ai/sdk";
+
+// src/lib/glosario.ts
+var GLOSARIO = {
+  // Métricas base
+  "CPA": "Costo por conversi\xF3n: gasto dividido por conversiones. Se recalcula sobre sumas, nunca se promedia.",
+  "CPC": "Costo por clic promedio: gasto dividido por clics.",
+  "CTR": "Tasa de clics: clics dividido por impresiones. Mide relevancia del anuncio.",
+  "Conv. rate": "Tasa de conversi\xF3n: conversiones dividido por clics. Mide la landing y la calidad del tr\xE1fico.",
+  "Impresiones": "Veces que el anuncio se mostr\xF3. Con cuota constante, refleja la demanda real.",
+  "Gasto": "Costo total en la moneda de la cuenta.",
+  // Cuotas
+  "Impression share": "Cuota de impresiones: qu\xE9 porcentaje de las subastas elegibles gan\xF3 el anuncio.",
+  "IS": "Cuota de impresiones: porcentaje de subastas elegibles donde el anuncio apareci\xF3.",
+  "Lost IS budget": "Cuota perdida por presupuesto: demanda que existi\xF3 y no se captur\xF3 por falta de dinero.",
+  "Lost IS rank": "Cuota perdida por ranking: demanda que no se captur\xF3 por Quality Score o puja baja. Presupuesto no lo arregla.",
+  "Limitada por": "Qu\xE9 frena a la campa\xF1a: presupuesto (falta dinero) o ranking (falta calidad o puja).",
+  // Calidad
+  "Quality Score": "Puntaje 1-10 de Google por relevancia, CTR esperado y landing. Baja el CPC cuando sube.",
+  "QS": "Quality Score: puntaje 1-10 de relevancia. Cuanto m\xE1s alto, menos cuesta cada clic.",
+  // Escalamiento
+  "CPA marginal": "Cu\xE1nto cuesta cada conversi\xF3n ADICIONAL al subir presupuesto. Si duplica al promedio, la campa\xF1a est\xE1 saturada.",
+  "Headroom": "Margen para escalar: el siguiente escal\xF3n de presupuesto rinde parecido al actual.",
+  "Saturada": "El siguiente peso compra conversiones al doble o m\xE1s. Subir presupuesto no rinde.",
+  "Techo": "Cuota de impresiones sobre 90%: no queda demanda por capturar.",
+  // Datos
+  "Madurez": "Cu\xE1n asentado est\xE1 el dato: provisional (\xFAltimos 2 d\xEDas), madurando (3-7) o consolidado (7+).",
+  "Provisional": "Dato de los \xFAltimos 2 d\xEDas. Las conversiones pueden llegar tarde; no sostiene conclusiones.",
+  "Consolidado": "Dato con 7+ d\xEDas: las conversiones ya llegaron. Es el que se usa para decidir.",
+  "D\xEDas con datos": "Cu\xE1ntos d\xEDas del rango tienen extracci\xF3n. Si es menor al rango, el total es parcial.",
+  // Anomalías
+  "z-score": "Desv\xEDo contra la media m\xF3vil de 7 d\xEDas, en desviaciones est\xE1ndar. 2 = raro, 3 = muy raro.",
+  "Anomal\xEDa": "D\xEDa con desv\xEDo estad\xEDstico de gasto o CPA contra su media m\xF3vil. Los provisionales se ignoran.",
+  "Baseline": "Media m\xF3vil de los 7 d\xEDas previos. La referencia contra la que se mide el desv\xEDo.",
+  // Estructura
+  "Branded": "Grupo de keywords de marca. Captura demanda existente; no es crecimiento.",
+  "Concordancia": "C\xF3mo Google empareja la b\xFAsqueda con la keyword: exacta, frase o amplia.",
+  "T\xE9rmino nuevo": "B\xFAsqueda que apareci\xF3 por primera vez en los \xFAltimos 14 d\xEDas. Si gasta sin convertir, candidato a negativa.",
+  "Keyword disparadora": "La keyword que hizo que el anuncio apareciera para ese t\xE9rmino de b\xFAsqueda.",
+  "Negativa": "Palabra que impide que el anuncio aparezca. Se propone; nunca se aplica sola.",
+  // Conversiones
+  "Primaria": "Conversi\xF3n que Smart Bidding usa para optimizar. Debe ser la etapa m\xE1s profunda con 15+ eventos/mes.",
+  "Secundaria": "Conversi\xF3n que se registra pero no gu\xEDa la puja.",
+  "Smart Bidding": "Puja autom\xE1tica de Google. Necesita 15+ conversiones al mes para aprender.",
+  "tCPA": "CPA objetivo: le dice a Smart Bidding cu\xE1nto pagar por conversi\xF3n.",
+  "Escalera de valor": "Etapas del embudo con valor estimado cada una. La primaria deber\xEDa ser la m\xE1s profunda con volumen.",
+  "GCLID": "Identificador del clic de Google. Permite subir conversiones offline.",
+  "GBRAID": "Identificador del clic en iOS con privacidad. Equivale al GCLID; Make lo descartaba.",
+  "Ventana de 90 d\xEDas": "Google solo acepta conversiones offline de clics de hasta 90 d\xEDas. Un ciclo m\xE1s largo no se puede atribuir.",
+  // Sistema
+  "Pulso diario": "Interpretaci\xF3n de Sonnet 5 de cada d\xEDa contra el plan de la semana. Evidencia, no conclusi\xF3n.",
+  "Plan semanal": "Lo que Opus 5 escribi\xF3 el lunes: qu\xE9 vigilar, con qu\xE9 umbral, qu\xE9 hip\xF3tesis probar.",
+  "Leading indicator": "M\xE9trica que se mueve antes que el resultado. Con lo leading se dirige; con lo lagging se califica.",
+  "Reflexi\xF3n": "Lo que una corrida escribi\xF3 sobre qu\xE9 har\xEDa distinto. La siguiente la lee.",
+  "Naturaleza": "Observaci\xF3n (dato), Inferencia (deducci\xF3n) o Hip\xF3tesis (conjetura). Solo las observaciones nacen Propuestas.",
+  "Handoff": "Memoria de trabajo del brief: hip\xF3tesis abiertas, cambios cuyo efecto no se ve, datos provisionales.",
+  "Veredicto": "Conclusi\xF3n calculada, no opini\xF3n: HEADROOM, TECHO, LIMITADA POR RANKING, NO ESCALAR, INESTABLE.",
+  "Tasa de acierto": "De los accionables ejecutados, cu\xE1ntos movieron la m\xE9trica en la direcci\xF3n esperada.",
+  "MDE": "Efecto m\xEDnimo detectable: cu\xE1nto tendr\xEDa que moverse una m\xE9trica para que un test lo vea. Sobre 35%, no testeable."
+};
+
+// src/server/lib/asistente.ts
+var anthropic2 = process.env.ANTHROPIC_API_KEY ? new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+var MAPA_APP = `
+SECCIONES DE LA APP (men\xFA izquierdo, tres grupos):
+- Operar: Inicio (resumen de las tres cuentas al entrar), Hoy (lo que pas\xF3 ayer, plan de la semana, accionables que esperan tu criterio, pulso intrad\xEDa), Accionables (todos, con filtros; al abrir uno ves Por qu\xE9, C\xF3mo hacerlo con pasos en Google Ads, y pod\xE9s marcarlo Hecho), Semana (gr\xE1fico de 14 d\xEDas con lentes gasto/CPA, conversiones/clics, CTR/CPC; rango 7, 14 o fechas a elecci\xF3n; conversiones por grupo; mapa de calor hora\xD7d\xEDa; qu\xE9 encontr\xF3 el an\xE1lisis diario cada d\xEDa; b\xFAsquedas nuevas que gastan sin convertir o que convierten; cambios en la cuenta colapsados).
+- Entender: Briefs (el an\xE1lisis semanal completo que escribe la tarea del lunes, con handoff y lecciones), Datos (tablas por campa\xF1a, grupo, keyword, t\xE9rmino con cualquier rango de fechas; exportar PDF), Clientes (memoria de cada cuenta: ficha, objetivos, escalera de valor, decisiones estructurales, reportes al cliente para aprobar, doc maestro editable).
+- Mantener: Herramientas (RSA Factory para escribir anuncios desde t\xE9rminos que convierten; playbook), Sistema (salud de datos, calidad de cada an\xE1lisis, aprendizaje, alertas, tickets, bit\xE1cora de cambios que hiciste a mano).
+- Arriba: selector de cuenta (Karedo, BHI, 360). Casi todo responde a la cuenta seleccionada. Cmd+K abre la paleta para saltar a cualquier lado.
+
+C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:00, semanal lunes 7:00). Cada ma\xF1ana 6:45 Sonnet 5 lee el d\xEDa anterior contra el plan de la semana y escribe el pulso. Cada lunes Opus 5 en Cowork analiza la semana, escribe el brief, accionables, reporte al cliente y el plan siguiente. Andr\xE9s ejecuta los accionables en Google Ads y aprueba los reportes. Nada cambia en Google Ads sin que \xE9l lo haga.
+
+REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducci\xF3n, espera confirmaci\xF3n de Andr\xE9s. Hecho = ejecutado, con fecha. Descartado = decidi\xF3 no hacerlo. Naturaleza: Observaci\xF3n (dato visto), Inferencia (deducido), Hip\xF3tesis (explicaci\xF3n posible).
+`;
+var TOOLS = [
+  { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] } }, required: ["cuenta"] } },
+  { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] } }, required: ["cuenta"] } },
+  { name: "salud_datos", description: "Estado de los datos: \xFAltima extracci\xF3n, semana disponible, integridad, crons. Usar cuando pregunten si los datos est\xE1n al d\xEDa o por qu\xE9 falta algo.", input_schema: { type: "object", properties: {} } },
+  { name: "doc_maestro", description: "Devuelve una secci\xF3n del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] }, seccion: { type: "string", enum: ["identidad", "objetivos", "restricciones", "descartado", "reporte", "riesgos", "vacios"] } }, required: ["cuenta", "seccion"] } }
+];
+async function responderAsistente(supabase2, mensajes, contexto) {
+  if (!anthropic2) return { texto: "El asistente necesita ANTHROPIC_API_KEY en Vercel.", costo_usd: 0 };
+  const glosarioTxt = Object.entries(GLOSARIO).map(([k, v]) => `${k}: ${v}`).join("\n");
+  const primerTurno = `CONTEXTO DE LA APP NORTHSIGNAL (leelo antes de responder)
+${MAPA_APP}
+GLOSARIO:
+${glosarioTxt}
+
+AHORA MISMO: el usuario est\xE1 en la secci\xF3n "${contexto.pagina || "desconocida"}" con la cuenta ${contexto.cuenta || "sin seleccionar"}.
+
+C\xD3MO RESPOND\xC9S: en espa\xF1ol rioplatense, corto, directo, sin guion largo, sin listas de tres forzadas. Si la pregunta es sobre datos de una cuenta, us\xE1 las herramientas; nunca inventes un n\xFAmero. Si es sobre d\xF3nde est\xE1 algo en la app, dec\xED la secci\xF3n y qu\xE9 hacer. Si es sobre un t\xE9rmino, us\xE1 el glosario. Si no sab\xE9s, decilo y suger\xED crear un ticket desde Sistema.
+
+PREGUNTA: ${mensajes[mensajes.length - 1]?.content || ""}`;
+  const historial = mensajes.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+  const msgs = [...historial, { role: "user", content: primerTurno }];
+  let costo = 0;
+  let vueltas = 0;
+  while (vueltas++ < 4) {
+    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 1500, system: "Sos el asistente de NorthSignal, la app de operaci\xF3n de cuentas de Google Ads de Andr\xE9s. Ayud\xE1s a navegar la app y a entender los datos. No ejecut\xE1s cambios.", messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
+    costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
+    const toolUses = res.content.filter((b) => b.type === "tool_use");
+    if (!toolUses.length || res.stop_reason !== "tool_use") {
+      const texto = res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+      return { texto, costo_usd: costo };
+    }
+    msgs.push({ role: "assistant", content: res.content });
+    const results = [];
+    for (const tu of toolUses) {
+      let out;
+      try {
+        const inp = tu.input;
+        if (tu.name === "estado_cuenta") {
+          const [h, s7, plan, pulso] = await Promise.all([
+            supabase2.from("v_headroom").select("*").eq("account", inp.cuenta).maybeSingle(),
+            supabase2.from("v_serie_diaria").select("date,gasto,conversiones,cpa,madurez").eq("account", inp.cuenta).order("date", { ascending: false }).limit(14),
+            supabase2.from("plan_semanal").select("semana,contexto,indicadores,hipotesis").eq("account", inp.cuenta).order("semana", { ascending: false }).limit(1).maybeSingle(),
+            supabase2.from("pulso_diario").select("fecha,nivel,hallazgo_principal,resumen").eq("account", inp.cuenta).order("fecha", { ascending: false }).limit(1).maybeSingle()
+          ]);
+          const d = s7.data || [];
+          const sum = (arr, k) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
+          const c7 = d.slice(0, 7), c14 = d;
+          out = { headroom: h.data, ultimos_7d: { gasto: sum(c7, "gasto"), conversiones: sum(c7, "conversiones"), cpa: sum(c7, "conversiones") ? sum(c7, "gasto") / sum(c7, "conversiones") : null }, ultimos_14d: { gasto: sum(c14, "gasto"), conversiones: sum(c14, "conversiones"), cpa: sum(c14, "conversiones") ? sum(c14, "gasto") / sum(c14, "conversiones") : null }, plan: plan.data, ultimo_pulso: pulso.data };
+        } else if (tu.name === "accionables_abiertos") {
+          out = { nota: "Los accionables viven en Notion; la app los muestra en Accionables. Filtr\xE1 por cuenta ah\xED.", cuenta: inp.cuenta };
+        } else if (tu.name === "salud_datos") {
+          const [dh, integ, snaps] = await Promise.all([supabase2.from("v_data_health").select("*"), supabase2.from("v_integridad_conversiones").select("*").limit(5), supabase2.from("v_snapshots_disponibles").select("*")]);
+          out = { data_health: dh.data, descuadres: integ.data, snapshots: snaps.data };
+        } else if (tu.name === "doc_maestro") {
+          const r = await supabase2.from("doc_maestro_humano").select("contenido").eq("account", inp.cuenta).eq("seccion", inp.seccion).eq("vigente", true).maybeSingle();
+          out = r.data?.contenido || "Secci\xF3n vac\xEDa.";
+        } else out = { error: "herramienta desconocida" };
+      } catch (e) {
+        out = { error: e.message };
+      }
+      results.push({ type: "tool_result", tool_use_id: tu.id, content: typeof out === "string" ? out : JSON.stringify(out).slice(0, 6e3) });
+    }
+    msgs.push({ role: "user", content: results });
+  }
+  return { texto: "No pude cerrar la respuesta en cuatro pasos. Prob\xE1 una pregunta m\xE1s acotada.", costo_usd: costo };
 }
 
 // src/server/auth/session.ts
@@ -1351,6 +1496,7 @@ function createApp() {
           detectado: props["Detectado"]?.date?.start || page.created_time,
           naturaleza: props.Naturaleza?.select?.name || "Observacion",
           que_lo_confirmaria: props["Que lo confirmaria"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
+          como_hacerlo: props["Como hacerlo"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           causa_raiz: props["Causa raiz"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           relacionado_con: props["Relacionado con"]?.relation?.map((rel) => rel.id) || [],
           semanas_pendiente: props["Semanas pendiente"]?.number ?? (props["Semanas pendiente"]?.formula?.number ?? 0),
@@ -2472,6 +2618,47 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     }
     res.json({ ok: true, semana: desde, resultados: out });
   });
+  app2.post("/api/asistente", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const { mensajes, pagina, cuenta } = req.body || {};
+      if (!Array.isArray(mensajes) || !mensajes.length) return res.status(400).json({ error: "mensajes requerido" });
+      const r = await responderAsistente(supabase, mensajes.slice(-8), { pagina, cuenta });
+      res.json(r);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.post("/api/tickets", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { tipo = "bug", titulo, descripcion, pagina, cuenta, contexto } = req.body || {};
+    if (!titulo) return res.status(400).json({ error: "titulo requerido" });
+    const { data, error } = await supabase.from("tickets").insert({ tipo, titulo, descripcion, pagina, cuenta, contexto }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  app2.get("/api/tickets", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.from("tickets").select("*").order("creado", { ascending: false }).limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app2.get("/api/alertas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.from("v_alertas_abiertas").select("*").limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app2.post("/api/alertas/:id/:accion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { accion } = req.params;
+    const { dias, por_que } = req.body || {};
+    const upd = accion === "vista" ? { estado: "vista", vista_el: (/* @__PURE__ */ new Date()).toISOString() } : accion === "resolver" ? { estado: "resuelta", resuelta_el: (/* @__PURE__ */ new Date()).toISOString() } : accion === "silenciar" ? { estado: "silenciada", silenciada_hasta: new Date(Date.now() + (Number(dias) || 7) * 864e5).toISOString().slice(0, 10), silenciada_por_que: por_que || null } : null;
+    if (!upd) return res.status(400).json({ error: "accion invalida" });
+    const { error } = await supabase.from("alertas").update(upd).eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { account } = req.params;
@@ -2514,7 +2701,9 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
       const { data: input, error } = await supabase.rpc("get_pulso_input", { p_account: cuenta, p_fecha: fecha2 });
       if (error) throw new Error(`get_pulso_input: ${error.message}`);
-      const r = await correrPulso(cuenta, fecha2, input, getClientContext(cuenta) || "");
+      const { data: cta } = await supabase.from("cuentas").select("reglas_dominio").eq("account", cuenta).maybeSingle();
+      const reglas = cta?.reglas_dominio || getClientContext(cuenta) || "";
+      const r = await correrPulso(cuenta, fecha2, input, reglas);
       if (r.error || !r.parsed) throw new Error(r.error || "sin salida");
       const p = r.parsed;
       const planId = input?.plan?.id || null;
@@ -2552,9 +2741,10 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
           Estado: { select: { name: nat === "Observacion" ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
           Prioridad: { select: { name: h.severidad === "critica" ? "Urgente" : h.severidad === "alta" ? "Alta" : "Media" } },
           Naturaleza: { select: { name: nat } },
-          "Por que": { rich_text: [{ text: { content: `[Pulso diario ${fecha2}] ${h.evidencia_texto}`.slice(0, 1900) } }] },
-          "Causa raiz": { rich_text: [{ text: { content: p.conecta_con || "Detectado por el pulso diario" } }] },
-          Donde: { rich_text: [{ text: { content: `${h.entidad} \xB7 pulso_diario ${fecha2}` } }] },
+          "Por que": { rich_text: [{ text: { content: String(h.evidencia_texto || "").slice(0, 1900) } }] },
+          "Como hacerlo": { rich_text: [{ text: { content: String(h.como_hacerlo || "").slice(0, 1900) } }] },
+          "Causa raiz": { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || "").slice(0, 500) } }] },
+          Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || "").slice(0, 300) } }] },
           Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
           "Semanas pendiente": { number: 0 }
         };
@@ -2670,8 +2860,8 @@ async function runAnomalyWorker() {
         Prioridad: { select: { name: a.severidad === "critica" ? "Urgente" : "Alta" } },
         Naturaleza: { select: { name: naturaleza } },
         "Por que": { rich_text: [{ text: { content: why.slice(0, 1900) } }] },
-        "Causa raiz": { rich_text: [{ text: { content: explicado ? "Cambio registrado ese d\xEDa" : "Desv\xEDo sin cambio registrado: verificar operador, reloj y configuraci\xF3n" } }] },
-        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada \xB7 ${cuenta} \xB7 ${fecha2}` } }] },
+        "Causa raiz": { rich_text: [{ text: { content: explicado ? "Un cambio del mismo d\xEDa explica el desv\xEDo" : "Desv\xEDo sin cambio registrado ese d\xEDa" } }] },
+        Donde: { rich_text: [{ text: { content: a.campana_principal ? `Campa\xF1a ${a.campana_principal}` : `Cuenta ${cuenta}, el ${fecha2}` } }] },
         Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
         "Semanas pendiente": { number: 0 }
       };
@@ -2682,6 +2872,19 @@ async function runAnomalyWorker() {
     } catch (e) {
       console.error(`[anomalias] ${title}: ${e.message}`);
     }
+  }
+  try {
+    const { data: dh } = await supabase.from("v_data_health").select("account, estado, mensaje");
+    for (const d of dh || []) if (d.estado && d.estado !== "OK") await supabase.rpc("alerta_registrar", { p_account: d.account, p_nivel: "hoy", p_tipo: "datos_rotos", p_titulo: `Datos de ${d.account} con problema`, p_detalle: d.mensaje, p_accion: "Revisar Sistema > Datos por cuenta. Si la extraccion fallo, correr el script en Google Ads a mano.", p_origen: "watchdog" });
+    const { data: integ } = await supabase.from("v_integridad_conversiones").select("account, date, diferencia").limit(3);
+    for (const i of integ || []) await supabase.rpc("alerta_registrar", { p_account: i.account, p_nivel: "semana", p_tipo: "datos_rotos", p_titulo: `Conversiones descuadradas el ${i.date}`, p_detalle: `Diferencia de ${i.diferencia} entre acciones y campa\xF1a.`, p_accion: "Revisar si el script diario corrio dos veces con claves distintas.", p_origen: "integridad", p_entidad: null, p_fecha_dato: i.date });
+    const { data: autos } = await supabase.from("google_live_events").select("account, entity_name, client_type, event_date").eq("event_type", "AUTO_CHANGE").gte("event_date", new Date(Date.now() - 864e5).toISOString());
+    for (const a of autos || []) await supabase.rpc("alerta_registrar", { p_account: a.account, p_nivel: "hoy", p_tipo: "cambio_automatico", p_titulo: `Google aplico un cambio solo en ${a.account}`, p_detalle: `${a.entity_name} (${a.client_type})`, p_accion: "Entrar a Google Ads > Historial de cambios, revisar y revertir si no lo pediste. Despues desactivar Recomendaciones > Aplicar automaticamente.", p_origen: "centinela", p_entidad: a.entity_name, p_fecha_dato: String(a.event_date).slice(0, 10) });
+    const { data: pulsos } = await supabase.from("pulso_diario").select("account, fecha, evidencia").gte("fecha", new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10));
+    for (const p of pulsos || []) for (const e of p.evidencia || []) if (e.cumple && Number(e.dias_seguidos_cumpliendo) >= 3)
+      await supabase.rpc("alerta_registrar", { p_account: p.account, p_nivel: "semana", p_tipo: "plan_condicion", p_titulo: `${p.account}: ${e.nombre}${e.grupo ? " en " + e.grupo : ""} lleva ${e.dias_seguidos_cumpliendo} dias cumpliendo`, p_detalle: e.nota || null, p_accion: "Mirar el plan en Hoy: esta condicion habilita una decision el lunes.", p_origen: "pulso", p_entidad: e.grupo || e.nombre, p_fecha_dato: p.fecha });
+  } catch (e) {
+    console.error("[alertas] " + e.message);
   }
   console.log(`[anomalias] ${(anomalias || []).length} detectadas, ${creados} accionables nuevos`);
   return { detectadas: (anomalias || []).length, creados, comentados };

@@ -34,6 +34,7 @@ export interface Actionable {
   // Campos auditados de Notion
   naturaleza?: 'Observacion' | 'Inferencia' | 'Hipotesis' | 'Dato';
   que_lo_confirmaria?: string;
+  como_hacerlo?: string;
   causa_raiz?: string;
   relacionado_con?: string[];
   relacionados_details?: { id: string; title: string; status: string; client?: string }[];

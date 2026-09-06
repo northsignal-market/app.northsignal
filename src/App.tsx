@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TerminoProvider } from './components/Termino';
+import { Ayuda } from './components/Ayuda';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { Inicio } from './components/Inicio';
@@ -32,6 +33,7 @@ function getInitialPage() {
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>(getInitialPage);
+  const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string }>({});
   const [urlBriefId, setUrlBriefId] = useState<string | undefined>(undefined);
   
   const { 
@@ -233,12 +235,7 @@ function App() {
           )}
 
           {activeTab === 'datos' && (
-            <Datos 
-              onOpenActionable={(id) => {
-                const found = actionables.find(a => a.id === id);
-                if (found) setSelectedAction(found);
-              }}
-            />
+            <Datos initialSearch={datosInicial.search} initialView={datosInicial.view} />
           )}
 
           {activeTab === 'clientes' && (
@@ -260,6 +257,9 @@ function App() {
           )}
         </main>
       </div>
+
+      {/* Ayuda flotante: preguntar y reportar */}
+      <Ayuda pagina={activeTab} />
 
       {/* Global Command Palette */}
       <CommandPalette 
@@ -290,6 +290,7 @@ function App() {
             }}
             onNavigateToKeyword={(kw) => {
               setSelectedAction(null);
+              setDatosInicial({ search: kw, view: 'v_keywords_analisis' });
               setActiveTab('datos');
             }}
           />

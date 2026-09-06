@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, ReferenceArea
-} from 'recharts';
+  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend } from 'recharts';
 import { 
   Calendar, Clock, Plus, Check, RefreshCw, FileText, 
   AlertCircle, History, ArrowRight, ExternalLink 
@@ -28,7 +27,15 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const activeClient = selectedClient || '360';
 
   // La capa diaria cubre 14 días (ventana móvil del script). Dos rangos: 7 y 14.
-  const [range, setRange] = useState<'7d' | '14d'>('14d');
+  const [range, setRange] = useState<'7d' | '14d' | 'custom'>('14d');
+  const [customDesde, setCustomDesde] = useState('');
+  const [customHasta, setCustomHasta] = useState('');
+  // Hallazgos reales de la semana: pulsos diarios + titular del brief
+  const [hallazgosSemana, setHallazgosSemana] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`/api/pulso?client=${activeClient}&days=14`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setHallazgosSemana(d.pulsos || [])).catch(() => {});
+  }, [activeClient]);
 
   // Chart lens: 'gasto_cpa' | 'conv_clics' | 'ctr_cpc'
   const [lens, setLens] = useState<'gasto_cpa' | 'conv_clics' | 'ctr_cpc'>('gasto_cpa');
@@ -134,8 +141,18 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // Filter chart series based on range
   const displayedDaily = useMemo(() => {
     if (!dailyData.length) return [];
-    const limit = range === '7d' ? 7 : 14;
-    const base = dailyData.slice(-limit);
+    let base: any[];
+    if (range === 'custom' && customDesde && customHasta) {
+      base = dailyData.filter((d: any) => d.date >= customDesde && d.date <= customHasta);
+      // Días del rango sin datos: fila vacía marcada, para que se vea el hueco
+      const porFecha: Record<string, any> = {}; base.forEach((d: any) => { porFecha[d.date] = d; });
+      const out: any[] = []; const ini = new Date(customDesde + 'T12:00:00'); const fin = new Date(customHasta + 'T12:00:00');
+      for (let t = ini.getTime(); t <= fin.getTime(); t += 864e5) { const f = new Date(t).toISOString().slice(0, 10); out.push(porFecha[f] || { date: f, sin_datos: true, gasto: null, cpa: null, conversiones: null, clics: null, ctr: null, cpc: null }); }
+      base = out;
+    } else {
+      const limit = range === '7d' ? 7 : 14;
+      base = dailyData.slice(-limit);
+    }
     // Cruzar con la capa de anomalías por fecha
     const byDate: Record<string, any> = {};
     (anomalias.serie || []).forEach((a: any) => { byDate[a.date] = a; });
@@ -154,7 +171,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         explicacion: (anomalias.anomalias || []).find((x: any) => x.date === d.date)?.explicacion
       };
     });
-  }, [dailyData, range, anomalias]);
+  }, [dailyData, range, customDesde, customHasta, anomalias]);
 
   // Fondo por severidad: la intensidad es la severidad, sin color adicional
   const severidadOpacity: Record<string, number> = { media: 0.08, alta: 0.14, critica: 0.20 };
@@ -214,28 +231,24 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
         <div className="flex items-center gap-2">
           {/* Range pills */}
-          <div className="flex items-center rounded-lg p-0.5" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            {(['7d', '14d'] as const).map(r => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                  range === r ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
-                }`}
-              >
-                {r === '7d' ? '7 días' : '14 días'}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              {(['7d', '14d', 'custom'] as const).map(r => (
+                <button key={r} onClick={() => setRange(r)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${range === r ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>
+                  {r === '7d' ? '7 días' : r === '14d' ? '14 días' : 'Elegir fechas'}
+                </button>
+              ))}
+            </div>
+            {range === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={customDesde} max={customHasta || undefined} onChange={e => setCustomDesde(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+                <span className="text-xs text-[#F5F7FA] opacity-50">a</span>
+                <input type="date" value={customHasta} min={customDesde || undefined} onChange={e => setCustomHasta(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+                <span className="text-[10px] text-[#F5F7FA] opacity-40">La capa diaria guarda 14 días; antes de eso, usá Datos con rango.</span>
+              </div>
+            )}
           </div>
-
-          <button
-            onClick={() => { fetchDailyOverview(); fetchChanges(); fetchNewTerms(); }}
-            title="Actualizar datos"
-            className="p-1.5 rounded hover:bg-white/10 text-[#F5F7FA] opacity-70 hover:opacity-100 transition-opacity"
-            style={{ border: '1px solid var(--border)' }}
-          >
-            <RefreshCw size={14} className={loadingDaily ? 'animate-spin text-[#0062CC]' : ''} />
-          </button>
         </div>
       </div>
 
@@ -309,7 +322,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                     stroke="rgba(245, 247, 250, 0.5)" 
                     fontSize={11} 
                     tickLine={false}
-                    tickFormatter={(v) => activeClient === 'KAREDO' ? `${v}€` : `$${Math.round(v/1000)}k`}
+                    tickFormatter={(v) => activeClient === 'KAREDO' ? `${Math.round(v)}€` : `$${Math.round(v/1000)}k`}
+                    label={{ value: 'Gasto', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }}
                   />
                   <YAxis 
                     yAxisId="right" 
@@ -317,7 +331,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                     stroke="rgba(245, 247, 250, 0.5)" 
                     fontSize={11} 
                     tickLine={false}
-                    tickFormatter={(v) => activeClient === 'KAREDO' ? `${v}€` : `$${Math.round(v/1000)}k`}
+                    tickFormatter={(v) => activeClient === 'KAREDO' ? `${Math.round(v)}€` : `$${Math.round(v/1000)}k`}
+                    label={{ value: 'CPA', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }}
                   />
                   <RechartsTooltip 
                     contentStyle={{ 
@@ -358,26 +373,29 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   />
                   <Line yAxisId="right" type="monotone" dataKey="cpa_provisional" name="CPA (provisional)"
                     stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="2 4" dot={{ r: 2, fill: '#F5F7FA', fillOpacity: 0.4 }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'rgba(245,247,250,0.7)' }} iconType="plainline" />
                 </LineChart>
               ) : lens === 'conv_clics' ? (
                 <BarChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
                   <CartesianGrid stroke="rgba(245, 247, 250, 0.08)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="date" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} tickFormatter={(str) => str ? str.slice(5) : ''} />
-                  <YAxis yAxisId="left" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} />
-                  <YAxis yAxisId="right" orientation="right" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} />
+                  <YAxis yAxisId="left" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} label={{ value: 'Conversiones', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} label={{ value: 'Clics', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }} />
                   <RechartsTooltip contentStyle={{ backgroundColor: 'var(--surface-2)', borderColor: 'var(--border-strong)', borderRadius: '8px', fontSize: '12px', color: '#FFFFFF' }} />
                   <Bar yAxisId="left" dataKey="conversiones" name="Conversiones" fill="#0062CC" radius={[4, 4, 0, 0]} />
                   <Bar yAxisId="right" dataKey="clics" name="Clics" fill="rgba(245, 247, 250, 0.4)" radius={[4, 4, 0, 0]} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'rgba(245,247,250,0.7)' }} />
                 </BarChart>
               ) : (
                 <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
                   <CartesianGrid stroke="rgba(245, 247, 250, 0.08)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="date" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} tickFormatter={(str) => str ? str.slice(5) : ''} />
-                  <YAxis yAxisId="left" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} tickFormatter={(v) => `${(v * 100).toFixed(1)}%`} />
-                  <YAxis yAxisId="right" orientation="right" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} />
+                  <YAxis yAxisId="left" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} tickFormatter={(v) => `${Number(v).toFixed(1)}%`} label={{ value: 'CTR', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} label={{ value: 'CPC', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.5)', fontSize: 10 }} />
                   <RechartsTooltip contentStyle={{ backgroundColor: 'var(--surface-2)', borderColor: 'var(--border-strong)', borderRadius: '8px', fontSize: '12px', color: '#FFFFFF' }} />
                   <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR" stroke="#0062CC" strokeWidth={2} dot={false} />
                   <Line yAxisId="right" type="monotone" dataKey="cpc" name="CPC" stroke="#FFFFFF" strokeWidth={1.5} dot={false} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'rgba(245,247,250,0.7)' }} iconType="plainline" />
                 </LineChart>
               )}
             </ResponsiveContainer>
@@ -472,111 +490,114 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           );
         })() : <p className="text-xs text-[#F5F7FA] opacity-50 py-4 text-center">Sin datos de hora y día para esta cuenta.</p>}
       </div>
+      </div>
 
+      {/* Qué pasó: hallazgos reales del análisis diario, con fecha */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF]">
-            Qué pasó esta semana
-          </h2>
-          <p className="text-xs text-[#F5F7FA] opacity-60">
-            Resumen de eventos clave, variaciones observadas y relaciones causa/efecto
-          </p>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué encontró el análisis diario, día por día</h2>
+          <p className="text-xs text-[#F5F7FA] opacity-60">Cada mañana a las 6:45 el sistema lee el día anterior contra el plan de la semana. Esto es lo que escribió. El análisis de fondo llega el lunes en el brief.</p>
         </div>
-
-        <div className="space-y-2 text-xs">
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="font-semibold text-[#FFFFFF] mb-1">
-              • Estabilidad de Volumen en {activeClient}
-            </div>
-            <p className="text-[#F5F7FA] opacity-80 leading-relaxed">
-              El ritmo de gasto y conversiones se mantiene dentro del rango objetivo. Se observó una correlación directa entre el cambio de presupuesto en campañas Search y la tasa de impresión del fin de semana.
-            </p>
+        {hallazgosSemana.length === 0 ? (
+          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía no hay análisis diarios para {activeClient}. El primero aparece mañana a las 6:45.</p>
+        ) : (
+          <div className="space-y-2">
+            {hallazgosSemana.slice(0, range === '7d' ? 7 : 14).map((p: any) => (
+              <div key={p.fecha} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-[#FFFFFF] tabular">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                  <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#0062CC] font-bold' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel === 'critico' ? 'Requiere acción' : p.nivel === 'atencion' ? 'Para mirar el lunes' : 'Día normal'}</span>
+                </div>
+                {p.hallazgo_principal && <p className="text-xs text-[#FFFFFF] font-medium mb-1">{p.hallazgo_principal}</p>}
+                <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed">{p.resumen}</p>
+              </div>
+            ))}
           </div>
-
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="font-semibold text-[#FFFFFF] mb-1">
-              • Calidad de Conversión y Maduración
-            </div>
-            <p className="text-[#F5F7FA] opacity-80 leading-relaxed">
-              Los últimos 3 días muestran el retraso habitual de atribución en conversiones primarias. No se recomienda recortar ofertas en términos clave hasta cumplir la ventana de consolidación de 7 días.
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Términos Nuevos con Gasto (v_terminos_nuevos) */}
-      <div 
-        className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
-      >
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+      {/* Términos nuevos: solo los que importan, con la decisión al lado */}
+      {(() => {
+        const conGasto = newTerms.filter((t: any) => Number(t.gasto_acumulado || 0) > 0);
+        const sinConv = conGasto.filter((t: any) => Number(t.conversiones_acumuladas || 0) === 0).sort((x: any, y: any) => Number(y.gasto_acumulado) - Number(x.gasto_acumulado));
+        const conConv = conGasto.filter((t: any) => Number(t.conversiones_acumuladas || 0) > 0).sort((x: any, y: any) => Number(y.conversiones_acumuladas) - Number(x.conversiones_acumuladas));
+        const gastoSinConv = sinConv.reduce((acc: number, t: any) => acc + Number(t.gasto_acumulado || 0), 0);
+        return (
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Búsquedas nuevas de los últimos 14 días</h2>
+                <p className="text-xs text-[#F5F7FA] opacity-60">
+                  Lo que la gente escribió por primera vez y disparó un anuncio. Las que gastan sin convertir son candidatas a negativa; las que convierten, a keyword propia.
+                </p>
+              </div>
+              <span className="text-xs text-[#F5F7FA] opacity-60 tabular">{conGasto.length} con gasto</span>
+            </div>
+            {loadingTerms ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
+            ) : conGasto.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna búsqueda nueva con gasto en los últimos 14 días. Es buena señal: las negativas están cubriendo.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-semibold text-[#FFFFFF]">Gastan y no convierten</span>
+                    <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{sinConv.length} · {formatCurrency(gastoSinConv, activeClient)}</span>
+                  </div>
+                  {sinConv.length === 0 ? <p className="text-[11px] text-[#F5F7FA] opacity-50 italic">Ninguna.</p> : sinConv.slice(0, 8).map((t: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-[#FFFFFF] truncate">{t.search_term || t.termino}</div>
+                        <div className="text-[10px] text-[#F5F7FA] opacity-50 truncate">la disparó <span className="opacity-100">{t.keyword_disparadora || '—'}</span>{t.ad_group ? ` en ${t.ad_group}` : ''}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs tabular text-[#FFFFFF]">{formatCurrency(Number(t.gasto_acumulado || 0), activeClient)}</div>
+                        <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{t.clics_acumulados ?? 0} clics</div>
+                      </div>
+                    </div>
+                  ))}
+                  {sinConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Antes de agregar una negativa, buscá el término en Datos › Términos con 30 días: si alguna variante convirtió, la bloquearía también.</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs font-semibold text-[#FFFFFF]">Convierten</span>
+                    <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{conConv.length}</span>
+                  </div>
+                  {conConv.length === 0 ? <p className="text-[11px] text-[#F5F7FA] opacity-50 italic">Ninguna todavía.</p> : conConv.slice(0, 8).map((t: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: '2px solid var(--primary)' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-[#FFFFFF] truncate">{t.search_term || t.termino}</div>
+                        <div className="text-[10px] text-[#F5F7FA] opacity-50 truncate">la disparó <span className="opacity-100">{t.keyword_disparadora || '—'}</span>{t.match_type ? ` (${String(t.match_type).toLowerCase()})` : ''}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs tabular text-[#FFFFFF]">{Number(t.conversiones_acumuladas)} conv</div>
+                        <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{t.cpa ? formatCurrency(Number(t.cpa), activeClient) : formatCurrency(Number(t.gasto_acumulado || 0), activeClient)}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {conConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Si una convierte varias veces, vale como keyword exacta propia: así dejás de depender de la amplia.</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Cambios de la semana: lo lee el análisis; para vos, colapsado con el resumen a la vista */}
+      <details className="group/cambios">
+        <summary className="cursor-pointer list-none p-4 rounded-2xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">
-              Términos de Búsqueda Nuevos con Gasto
-            </h2>
+            <span className="text-[15px] font-medium text-[#FFFFFF]">Cambios en la cuenta esta semana</span>
             <p className="text-xs text-[#F5F7FA] opacity-60">
-              Términos detectados por primera vez en el período reciente
+              {(() => { const c = Array.isArray(changesList) ? changesList : []; const auto = c.filter((x: any) => /RECOMMENDATION|AUTO/i.test(String(x.client_type || x.origen || ''))).length; const propios = c.length - auto;
+                return c.length === 0 ? 'Ninguno registrado. El análisis lo usa para explicar movimientos; vos solo necesitás mirarlo si hay uno automático de Google.'
+                  : `${propios} tuyo${propios !== 1 ? 's' : ''}${auto ? ` y ${auto} automático${auto !== 1 ? 's' : ''} de Google` : ', ninguno automático de Google'}. Abrí solo si querés el detalle.`; })()}
             </p>
           </div>
-          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
-            {newTerms.length} términos
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-                <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Término</th>
-                <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Keyword Disparadora</th>
-                <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Clics</th>
-                <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Gasto</th>
-                <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Conv</th>
-              </tr>
-            </thead>
-            <tbody>
-              {newTerms.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-[#F5F7FA] opacity-50 italic">
-                    {loadingTerms ? 'Cargando términos nuevos...' : 'No se detectaron términos nuevos sin histórico reciente.'}
-                  </td>
-                </tr>
-              ) : (
-                newTerms.slice(0, 10).map((term, i) => (
-                  <tr 
-                    key={i} 
-                    style={{ borderBottom: '1px solid var(--border)' }}
-                    className="hover:bg-white/5"
-                  >
-                    <td className="py-2 px-3 font-medium text-[#FFFFFF]">
-                      {term.search_term || term.termino}
-                    </td>
-                    <td className="py-2 px-3 text-[#F5F7FA] opacity-70">
-                      <div>{term.keyword_disparadora || '—'}</div>
-                      <div className="text-[10px] opacity-60">{term.ad_group || ''}{term.match_type ? ` · ${term.match_type}` : ''}</div>
-                    </td>
-                    <td className="py-2 px-3 text-right tabular text-[#F5F7FA] opacity-80">
-                      {term.clics_acumulados ?? 0}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular text-[#FFFFFF] font-medium">
-                      {formatCurrency(Number(term.gasto_acumulado || 0), activeClient)}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular text-[#F5F7FA] opacity-80">
-                      {Number(term.conversiones_acumuladas || 0)}
-                      {Number(term.gasto_acumulado || 0) > 0 && Number(term.conversiones_acumuladas || 0) === 0 && (
-                        <span className="ml-1 text-[10px] text-[#0062CC]">· negativa?</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Cambios de la Semana (v_todos_los_cambios) */}
+          <span className="text-[#F5F7FA] opacity-50 group-open/cambios:rotate-180 transition-transform">▾</span>
+        </summary>
       <div 
-        className="p-5 rounded-2xl space-y-3"
+        className="p-5 rounded-2xl space-y-3 mt-2"
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -637,6 +658,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           )}
         </div>
       </div>
+      </details>
 
       {/* Day Inspection Drawer */}
       <Drawer

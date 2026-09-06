@@ -4,6 +4,7 @@ import {
   ExternalLink, AlertCircle, ShieldAlert,
   ArrowRight, Plus, History, Sparkles, HelpCircle
 } from 'lucide-react';
+import { receta } from '../lib/recetas';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 import { useAppStore } from '../store/useAppStore';
@@ -403,17 +404,45 @@ export function ActionableDrawerContent({
 
         {action.why && (
           <div className="text-xs text-[#F5F7FA] opacity-80 leading-relaxed pl-1">
-            {action.why}
+            {action.why.replace(/^\[[^\]]*\]\s*/, '')}
           </div>
         )}
 
-        {action.where && (
+        {action.where && !/v_[a-z_]+|pulso_diario|\bcron\b/i.test(action.where) && (
           <div className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center gap-1.5 pt-1">
-            <span className="font-semibold uppercase tracking-wider">Ámbito:</span>
+            <span className="font-semibold uppercase tracking-wider">Dónde:</span>
             <span>{action.where}</span>
           </div>
         )}
+        {action.where && /pulso_diario/i.test(action.where) && (
+          <div className="text-[11px] text-[#F5F7FA] opacity-60 pt-1">Lo detectó el análisis diario{(action.where.match(/\d{4}-\d{2}-\d{2}/) || [])[0] ? ` del ${(action.where.match(/\d{4}-\d{2}-\d{2}/) || [])[0]}` : ''}.</div>
+        )}
       </div>
+
+
+      {/* Cómo hacerlo: los pasos en Google Ads */}
+      {(() => {
+        const propio = (action.como_hacerlo || '').trim();
+        const pasosPropios = propio ? propio.split(/\n+/).map(l => l.replace(/^\s*(\d+[.)]|[-•])\s*/, '').trim()).filter(Boolean) : [];
+        const rec = pasosPropios.length ? null : receta(action.title, action.client);
+        const pasos = pasosPropios.length ? pasosPropios : rec?.pasos || [];
+        if (!pasos.length) return null;
+        return (
+          <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)', borderLeft: '2px solid var(--primary)' }}>
+            <span className="font-semibold text-[#FFFFFF] text-xs block">Cómo hacerlo{rec ? ` · ${rec.titulo}` : ''}</span>
+            <ol className="space-y-1.5 pl-1">
+              {pasos.map((p, i) => (
+                <li key={i} className="flex gap-2.5 text-xs text-[#F5F7FA] leading-relaxed">
+                  <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold tabular" style={{ backgroundColor: 'var(--surface-2)', color: '#FFFFFF' }}>{i + 1}</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ol>
+            {rec?.nota && <p className="text-[11px] text-[#F5F7FA] opacity-60 pt-1 leading-relaxed">{rec.nota}</p>}
+            {!propio && rec && <p className="text-[10px] text-[#F5F7FA] opacity-40">Pasos genéricos para este tipo de acción. Los accionables nuevos traen los suyos.</p>}
+          </div>
+        );
+      })()}
 
       {/* Criterio / Disputa / Hipótesis alert */}
       {action.punto_disputa && (
@@ -423,7 +452,7 @@ export function ActionableDrawerContent({
         >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
             <ShieldAlert size={14} className="text-[#0062CC]" />
-            <span>Punto de Disputa (2da Opinión Gemini)</span>
+            <span>La segunda opinión no coincide</span>
           </div>
           <p className="text-xs text-[#F5F7FA] opacity-85 leading-relaxed">
             {action.punto_disputa}
@@ -440,10 +469,10 @@ export function ActionableDrawerContent({
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
               <Clock size={13} className="text-[#F5F7FA] opacity-70" />
-              <span>Inferencia/Hipótesis pendiente</span>
+              <span>Esperando tu confirmación</span>
             </div>
             <p className="text-[11px] text-[#F5F7FA] opacity-70">
-              {action.que_lo_confirmaria || 'Requiere validación de Andrés para activarse'}
+              {action.que_lo_confirmaria || 'Es una deducción, no un dato visto. Confirmá si tiene sentido antes de ejecutarla.'}
             </p>
           </div>
           <button
@@ -462,7 +491,7 @@ export function ActionableDrawerContent({
       >
         <div className="flex items-center justify-between">
           <span className="font-semibold text-[#FFFFFF] text-xs uppercase tracking-wider">
-            Trazabilidad Operativa
+            Registrá lo que hiciste
           </span>
           {savedSuccess && (
             <span className="text-[11px] font-medium text-[#FFFFFF] flex items-center gap-1">
@@ -695,7 +724,7 @@ export function ActionableDrawerContent({
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <span className="font-semibold text-[#FFFFFF] text-xs uppercase tracking-wider block">
-          Enlaces y Navegación
+          Ver más
         </span>
         <div className="flex flex-wrap gap-2 pt-1">
           {action.brief_id && onNavigateToBrief && (
@@ -705,7 +734,7 @@ export function ActionableDrawerContent({
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
               <ExternalLink size={12} />
-              <span>Ver Brief de Origen</span>
+              <span>Ver el brief donde apareció</span>
             </button>
           )}
 
@@ -716,7 +745,7 @@ export function ActionableDrawerContent({
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
               <ArrowRight size={12} />
-              <span>Ver Keyword en Datos ({possibleKeyword})</span>
+              <span>Ver la keyword en Datos</span>
             </button>
           )}
         </div>
@@ -725,7 +754,7 @@ export function ActionableDrawerContent({
         {relatedActions.length > 0 && onNavigateToActionable && (
           <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
             <span className="text-[11px] text-[#F5F7FA] opacity-60 block mb-1.5">
-              Accionables relacionados de {action.client}:
+              Otros accionables de {action.client} relacionados:
             </span>
             <div className="space-y-1">
               {relatedActions.map(ra => (

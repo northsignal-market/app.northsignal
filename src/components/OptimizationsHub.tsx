@@ -1,287 +1,77 @@
+/**
+ * Guía de operación. Reemplaza al Playbook de la fase de construcción, que
+ * era código para copiar y ya está todo desplegado. Esto es el manual del
+ * operador: qué pasa cada día, qué hacés cada lunes, cómo ejecutás un
+ * accionable, cómo aprobás un reporte, qué hacer cuando algo no cuadra.
+ */
 import React, { useState } from 'react';
-import { Cpu, Database, Code, CheckCircle2, ShieldAlert, Sliders, Copy, Check } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
+import { Termino } from './Termino';
+
+const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
+  { id: 'ciclo', titulo: 'Cómo funciona el ciclo', cuerpo: (
+    <div className="space-y-3 text-xs text-[#F5F7FA] leading-relaxed">
+      <p><span className="text-[#FFFFFF] font-medium">Todos los días a las 6:00</span> un script en Google Ads extrae el día anterior a Supabase: campañas, grupos, keywords, términos de búsqueda, conversiones por acción. A las <span className="text-[#FFFFFF] font-medium">6:45</span>, Sonnet 5 lee ese día contra el <Termino t="Plan semanal">plan de la semana</Termino> y escribe el <Termino t="Pulso diario">pulso</Termino>: qué indicador se movió, si cumple el umbral, cuántos días seguidos. Lo ves en Hoy y en Semana.</p>
+      <p><span className="text-[#FFFFFF] font-medium">Cada 4 horas</span> el centinela mira gasto intradía, cambios automáticos de Google y la conversión primaria. Si algo cruza un umbral, manda un mail y crea una alerta que ves en Hoy.</p>
+      <p><span className="text-[#FFFFFF] font-medium">Cada lunes a las 7:00</span> el script semanal trae la semana cerrada con simulaciones de presupuesto y historial de cambios. Entre 7:45 y 8:45, Opus 5 en Cowork analiza cada cuenta: escribe el brief, propone accionables con sus pasos, redacta el reporte al cliente y deja el plan de la semana que empieza. A las 9:15 el sistema arma el borrador del reporte en PDF.</p>
+      <p><span className="text-[#FFFFFF] font-medium">Vos entrás a las 9:30.</span> Leés Hoy, ejecutás los accionables Propuestos en Google Ads, confirmás o descartás los Bloqueados, aprobás el reporte al cliente. Media hora por cuenta, menos si la semana fue tranquila.</p>
+      <p className="opacity-70">Nada cambia en Google Ads sin que lo hagas vos. El sistema propone, registra y aprende; no ejecuta.</p>
+    </div>
+  ) },
+  { id: 'lunes', titulo: 'Qué hacés cada lunes', cuerpo: (
+    <ol className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed list-decimal pl-4">
+      <li><span className="text-[#FFFFFF]">Hoy.</span> Si hay alertas que piden acción, empezá por ahí. Después el plan de la semana: qué indicador lleva días cumpliendo. Después lo que espera tu criterio.</li>
+      <li><span className="text-[#FFFFFF]">Briefs.</span> Leé el titular y el handoff de cada cuenta. El brief completo solo si el titular te sorprende.</li>
+      <li><span className="text-[#FFFFFF">Accionables.</span> Filtrá por Propuesto. Abrí cada uno, seguí "Cómo hacerlo" con Google Ads en la otra pestaña, y marcalo Hecho con la fecha. Los Bloqueados son deducciones: si tienen sentido, Confirmar; si no, Descartar con una línea en Decisión final.</li>
+      <li><span className="text-[#FFFFFF]">Clientes › Reportes.</span> Leé el borrador. Si está bien, Aprobar. Si querés cambiar una frase, Editar texto, Guardar, Aprobar. Ver PDF lo genera y lo abre.</li>
+      <li><span className="text-[#FFFFFF]">Si cambiaste algo que el sistema no propuso</span>, anotalo en Sistema › Bitácora. Es la única forma de que el análisis del lunes siguiente sepa por qué se movió un número.</li>
+    </ol>
+  ) },
+  { id: 'accionable', titulo: 'Ejecutar un accionable', cuerpo: (
+    <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
+      <p>Cada accionable tiene cuatro cosas: <span className="text-[#FFFFFF]">qué</span> (el título), <span className="text-[#FFFFFF]">por qué</span> (los números), <span className="text-[#FFFFFF]">cómo hacerlo</span> (los pasos en Google Ads) y <span className="text-[#FFFFFF]">dónde</span> (la campaña, el grupo, la keyword).</p>
+      <p>Los pasos están escritos contra la interfaz de Google Ads de 2026: menú izquierdo <span className="text-[#FFFFFF]">Campañas</span>, después la campaña, el grupo, y el submenú <span className="text-[#FFFFFF]">Palabras clave</span> con sus pestañas. Las negativas tienen su propia pestaña ahí. Las conversiones viven en <span className="text-[#FFFFFF]">Objetivos › Conversiones</span>. La estrategia de puja en <span className="text-[#FFFFFF]">Configuración › Puja</span>.</p>
+      <p>Cuando termines, <span className="text-[#FFFFFF]">Marcar Hecho</span> y poné la fecha en "Ejecutado el". Catorce días después, Sistema te muestra qué pasó con la métrica: eso es lo que convierte un cambio en aprendizaje.</p>
+      <p className="opacity-70">Si el accionable dice "Preguntar a X", no hay nada que tocar en Google Ads. Mandá la pregunta, y cuando responda anotá la respuesta en Decisión final.</p>
+    </div>
+  ) },
+  { id: 'reporte', titulo: 'Aprobar un reporte al cliente', cuerpo: (
+    <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
+      <p>El lunes a las 9:15 aparece el borrador en <span className="text-[#FFFFFF]">Clientes › Reportes al cliente</span>, en el idioma de esa cuenta. Tiene las secciones que vos usás: contexto, observaciones, cambios aplicados, puntos de atención, próximos pasos. Los números del período y las tablas de campañas y grupos con gasto los pone el sistema desde Supabase.</p>
+      <p><span className="text-[#FFFFFF]">Ver PDF</span> lo genera con el branding de NorthSignal y lo abre. <span className="text-[#FFFFFF]">Editar texto</span> si querés cambiar algo. <span className="text-[#FFFFFF]">Aprobar</span> cuando esté listo. El envío por el canal de cada cuenta (Slack para Karedo, mail para BHI) viene en la siguiente versión; mientras tanto, descargá el PDF y mandalo.</p>
+    </div>
+  ) },
+  { id: 'nocuadra', titulo: 'Cuando algo no cuadra', cuerpo: (
+    <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
+      <p><span className="text-[#FFFFFF]">Un número que no coincide con Google Ads.</span> Primero mirá la madurez: los últimos dos días son provisionales y Google sigue asentando conversiones hasta siete días. Si es un día consolidado y no cuadra, Sistema › Datos por cuenta te dice cuándo fue la última extracción.</p>
+      <p><span className="text-[#FFFFFF]">Un accionable que no tiene sentido.</span> Descartalo con una línea en Decisión final diciendo por qué. La tarea del lunes lee eso y aprende.</p>
+      <p><span className="text-[#FFFFFF]">Algo de la app que falla o confunde.</span> El botón de abajo a la derecha: Reportar. Decí en qué pantalla, qué esperabas ver y qué viste. Va con la página y la cuenta ya cargadas. Claude lo lee al empezar la siguiente sesión.</p>
+      <p><span className="text-[#FFFFFF]">Una pregunta.</span> El mismo botón: Preguntar. Sabe dónde está cada cosa en la app, qué significa cada término, y consulta los datos reales de las cuentas.</p>
+    </div>
+  ) },
+];
 
 export function OptimizationsHub() {
-  const [activeTab, setActiveTab] = useState<'sql' | 'alerts' | 'mutations' | 'prompt'>('sql');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
+  const [activa, setActiva] = useState('ciclo');
+  const sec = SECCIONES.find(s => s.id === activa) || SECCIONES[0];
   return (
-    <div className="h-full flex flex-col bg-[#1A1F36] text-[#F5F7FA]">
-      <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 bg-[#1A1F36] shrink-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Sliders size={20} className="text-[#0062CC]" />
-          <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Playbook de Optimización & Automatizaciones</h1>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('sql')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'sql' ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm border border-[#0062CC]' : 'bg-[#0062CC]/10 text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/20'}`}
-          >
-            1. Vistas SQL (Fuzzy & N-Grams)
-          </button>
-          <button
-            onClick={() => setActiveTab('alerts')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'alerts' ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm border border-[#0062CC]' : 'bg-[#0062CC]/10 text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/20'}`}
-          >
-            2. Alerta Diaria G. Ads
-          </button>
-          <button
-            onClick={() => setActiveTab('mutations')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'mutations' ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm border border-[#0062CC]' : 'bg-[#0062CC]/10 text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/20'}`}
-          >
-            3. Mutaciones Auto (HITL)
-          </button>
-          <button
-            onClick={() => setActiveTab('prompt')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'prompt' ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm border border-[#0062CC]' : 'bg-[#0062CC]/10 text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/20'}`}
-          >
-            4. Claude Prompt v6
-          </button>
-        </div>
+    <div className="h-full flex flex-col text-[#F5F7FA]">
+      <header className="h-14 flex items-center gap-3 px-8 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+        <BookOpen size={18} className="text-[#0062CC]" />
+        <h1 className="text-base font-medium text-[#FFFFFF]">Guía de operación</h1>
+        <span className="text-xs text-[#F5F7FA] opacity-50">cómo funciona el ciclo y qué hacés vos en cada parte</span>
       </header>
-
-      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-        <div className="max-w-5xl mx-auto space-y-6">
-          
-          {activeTab === 'sql' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl p-6 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#0062CC]/20 rounded-lg text-[#0062CC] border border-[#0062CC]/30">
-                      <Database size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-[#FFFFFF]">1. Vistas SQL en Supabase (Fuzzy Match & N-Grams)</h3>
-                      <p className="text-xs text-[#F5F7FA]/60">Validado con estándares PostgreSQL de Levenshtein y análisis de palabras sueltas sin conversión.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(sqlContent, 'sql')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#0062CC]/10 hover:bg-[#0062CC]/20 rounded-lg text-xs font-medium text-[#FFFFFF] transition-colors border border-[#0062CC]/30 shadow-sm"
-                  >
-                    {copiedId === 'sql' ? <Check size={14} className="text-[#0062CC]" /> : <Copy size={14} />}
-                    {copiedId === 'sql' ? 'Copiado' : 'Copiar SQL'}
-                  </button>
-                </div>
-                
-                <pre className="bg-[#1A1F36] border border-[#0062CC]/20 p-4 rounded-xl text-xs text-[#F5F7FA]/90 overflow-x-auto tabular">
-                  {sqlContent}
-                </pre>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'alerts' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl p-6 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#0062CC]/20 rounded-lg text-[#0062CC] border border-[#0062CC]/30">
-                      <ShieldAlert size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-[#FFFFFF]">2. Alerta Diaria de Emergencia (Google Ads Script)</h3>
-                      <p className="text-xs text-[#F5F7FA]/60">Ejecutar diariamente a las 08:00 AM para detectar picos de gasto y días en cero antes del reporte semanal.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(alertContent, 'alerts')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#0062CC]/10 hover:bg-[#0062CC]/20 rounded-lg text-xs font-medium text-[#FFFFFF] transition-colors border border-[#0062CC]/30 shadow-sm"
-                  >
-                    {copiedId === 'alerts' ? <Check size={14} className="text-[#0062CC]" /> : <Copy size={14} />}
-                    {copiedId === 'alerts' ? 'Copiado' : 'Copiar Script'}
-                  </button>
-                </div>
-                
-                <pre className="bg-[#1A1F36] border border-[#0062CC]/20 p-4 rounded-xl text-xs text-[#F5F7FA]/90 overflow-x-auto tabular">
-                  {alertContent}
-                </pre>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'mutations' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl p-6 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#0062CC]/20 rounded-lg text-[#0062CC] border border-[#0062CC]/30">
-                      <Cpu size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-[#FFFFFF]">3. Auto-Ejecución de Accionables (Human-in-the-Loop)</h3>
-                      <p className="text-xs text-[#F5F7FA]/60">Script de Google Ads que procesa mutaciones aprobadas en Supabase y reporta el estado.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(mutationsContent, 'mutations')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#0062CC]/10 hover:bg-[#0062CC]/20 rounded-lg text-xs font-medium text-[#FFFFFF] transition-colors border border-[#0062CC]/30 shadow-sm"
-                  >
-                    {copiedId === 'mutations' ? <Check size={14} className="text-[#0062CC]" /> : <Copy size={14} />}
-                    {copiedId === 'mutations' ? 'Copiado' : 'Copiar Script'}
-                  </button>
-                </div>
-                
-                <pre className="bg-[#1A1F36] border border-[#0062CC]/20 p-4 rounded-xl text-xs text-[#F5F7FA]/90 overflow-x-auto tabular">
-                  {mutationsContent}
-                </pre>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'prompt' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl p-6 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#0062CC]/20 rounded-lg text-[#0062CC] border border-[#0062CC]/30">
-                      <Code size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-[#FFFFFF]">4. Claude Prompt v6 & Reglas Críticas Karedo</h3>
-                      <p className="text-xs text-[#F5F7FA]/60">Directrices estrictas para evitar alucinaciones, prohibir ROAS/valores ficticios y detallar entidades exactas.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(promptContent, 'prompt')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-[#0062CC]/10 hover:bg-[#0062CC]/20 rounded-lg text-xs font-medium text-[#FFFFFF] transition-colors border border-[#0062CC]/30 shadow-sm"
-                  >
-                    {copiedId === 'prompt' ? <Check size={14} className="text-[#0062CC]" /> : <Copy size={14} />}
-                    {copiedId === 'prompt' ? 'Copiado' : 'Copiar Prompt'}
-                  </button>
-                </div>
-                
-                <pre className="bg-[#1A1F36] border border-[#0062CC]/20 p-4 rounded-xl text-xs text-[#F5F7FA]/90 overflow-x-auto tabular whitespace-pre-wrap">
-                  {promptContent}
-                </pre>
-              </div>
-            </div>
-          )}
-
+      <div className="flex-1 flex min-h-0">
+        <nav className="w-56 shrink-0 p-4 space-y-1" style={{ borderRight: '1px solid var(--border)' }}>
+          {SECCIONES.map(s => (
+            <button key={s.id} onClick={() => setActiva(s.id)} className={`w-full text-left px-3 py-2 rounded-lg text-xs ${activa === s.id ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100 hover:bg-white/5'}`}>{s.titulo}</button>
+          ))}
+        </nav>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 max-w-3xl">
+          <h2 className="text-[15px] font-medium text-[#FFFFFF] mb-4">{sec.titulo}</h2>
+          {sec.cuerpo}
         </div>
       </div>
     </div>
   );
 }
-
-const sqlContent = `-- 1. Habilitar extensión para comparar similitud de textos (Distancia de Levenshtein)
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
-
--- 2. Vista de Fuzzy Match (Caza-errores ortográficos)
-CREATE OR REPLACE VIEW v_alertas_fuzzy_negatives AS
-SELECT
-    st.account,
-    st.week_start,
-    st.search_term AS termino_con_gasto,
-    n.negative_keyword AS negativa_similar,
-    st.cost AS gasto_perdido,
-    st.clicks,
-    levenshtein(st.search_term, n.negative_keyword) AS letras_de_diferencia
-FROM search_terms st
-JOIN negatives n ON st.account = n.account
-WHERE st.conversions = 0
-  AND st.cost > 0
-  AND levenshtein(lower(st.search_term), lower(n.negative_keyword)) BETWEEN 1 AND 2;
-
--- 3. Vista de N-Grams (Palabras sueltas invisibles)
-CREATE OR REPLACE VIEW v_search_term_1grams AS
-SELECT
-    account,
-    week_start,
-    palabra,
-    COUNT(DISTINCT search_term) AS cantidad_terminos_distintos,
-    SUM(cost) AS costo_total,
-    SUM(clicks) AS clics_totales,
-    SUM(conversions) AS conversiones_totales
-FROM (
-    SELECT
-        account,
-        week_start,
-        search_term,
-        cost,
-        clicks,
-        conversions,
-        regexp_split_to_table(lower(search_term), '\\s+') AS palabra
-    FROM search_terms
-    WHERE cost > 0
-) sub
-GROUP BY account, week_start, palabra
-HAVING SUM(conversions) = 0 AND SUM(cost) > 15
-ORDER BY costo_total DESC;`;
-
-const alertContent = `var NOTIFY_EMAIL = 'biggsandres@gmail.com';
-var DAILY_BUDGET = 135;
-
-function main() {
-  var account = AdsApp.currentAccount();
-  var accountName = account.getName();
-  
-  var stats = account.getStatsFor('YESTERDAY');
-  var cost = stats.getCost();
-  var conversions = stats.getConversions();
-  
-  var alerts = [];
-  
-  if (cost > (DAILY_BUDGET * 1.5)) {
-    alerts.push("[ALERTA] Pico de gasto detectado: " + cost.toFixed(2) + " EUR (Límite esperado: " + DAILY_BUDGET + ")");
-  }
-  
-  if (cost > 30 && conversions === 0) {
-    alerts.push("[ALERTA] Dia sin conversiones. Se gastaron " + cost.toFixed(2) + " EUR sin resultados.");
-  }
-  
-  if (alerts.length > 0) {
-    var subject = "URGENTE: Anomalía en Google Ads - " + accountName;
-    var body = "Revisión de ayer en " + accountName + ":\\n\\n" +
-               alerts.join('\\n') + "\\n\\n" +
-               "Gasto total de ayer: " + cost.toFixed(2) + " EUR\\n" +
-               "Conversiones totales: " + conversions + "\\n\\n" +
-               "Revisa la cuenta lo antes posible.";
-               
-    MailApp.sendEmail(NOTIFY_EMAIL, subject, body);
-  }
-}`;
-
-const mutationsContent = `function main() {
-  var props = PropertiesService.getScriptProperties();
-  var SUPABASE_URL = props.getProperty('SUPABASE_URL');
-  var SUPABASE_KEY = props.getProperty('SUPABASE_KEY');
-
-  if (!SUPABASE_URL || !SUPABASE_KEY) return;
-
-  var pendingMutations = fetchApprovedMutations(SUPABASE_URL, SUPABASE_KEY);
-  
-  for (var i = 0; i < pendingMutations.length; i++) {
-    var task = pendingMutations[i];
-    if (task.status !== 'APPROVED') continue;
-
-    try {
-      if (task.action_type === 'PAUSE_KEYWORD') {
-        pauseKeyword(task.campaign_name, task.adgroup_name, task.keyword_text);
-      } else if (task.action_type === 'ADD_NEGATIVE') {
-        addNegativeKeyword(task.campaign_name, task.keyword_text, task.match_type);
-      }
-      markTaskAsStatus(SUPABASE_URL, SUPABASE_KEY, task.id, 'APPLIED');
-    } catch (e) {
-      markTaskAsStatus(SUPABASE_URL, SUPABASE_KEY, task.id, 'FAILED', e.message);
-    }
-  }
-}`;
-
-const promptContent = `<reglas_criticas>
-No se negocian.
-
-1. Las conversiones de esta cuenta son direccionales, no exactas. Enhanced Conversions tiene entre 0 y 15% de coincidencia y la conversión dispara al hacer clic en "Registrieren". Nunca afirmes que los números están subestimados ni sobrestimados.
-2. Nunca reportes ROAS ni valores de conversión. El valor está fijado en 20 EUR por registro de forma arbitraria.
-3. No propongas cambios de puja salvo que se apoyen en la tabla simulations o en un problema estructural evidente.
-4. Si sin conexión (subida) sigue como conversión primaria sin datos, es alerta ALTA todas las semanas.
-5. Nunca escribas "y 33 más" ni "varias keywords". Cada entidad va con su nombre exacto y su ubicación.
-6. No inventes datos. Si falta algo, decilo.
-</reglas_criticas>`;

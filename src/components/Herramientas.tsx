@@ -16,7 +16,7 @@ export function Herramientas() {
             Herramientas & Automatizaciones
           </h1>
           <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
-            Generador de anuncios adaptables (RSA) y playbook de optimizaciones avanzadas
+            Escribir anuncios desde lo que la gente busca, y la guía de cómo operar el sistema
           </p>
         </div>
 
@@ -37,7 +37,7 @@ export function Herramientas() {
             }`}
           >
             <Sliders size={13} />
-            <span>Playbook de Optimización</span>
+            <span>Guía de operación</span>
           </button>
         </div>
       </div>

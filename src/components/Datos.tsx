@@ -30,17 +30,17 @@ const getEndOfWeek = (dateStr: string) => {
 };
 
 const VIEW_CONFIGS = {
-  'v_campaign_analisis': { label: 'Campañas · semanal', searchCol: 'campaign' },
-  'v_adgroup_analisis': { label: 'Grupos', searchCol: 'ad_group' },
-  'v_keywords_analisis': { label: 'Keywords · semanal', searchCol: 'keyword' },
-  'v_search_terms_analisis': { label: 'Términos', searchCol: 'search_term' },
-  'v_conversiones_por_accion': { label: 'Conversiones', searchCol: 'conversion_action' },
-  'v_ngrams_sin_conversion': { label: 'N-grams', searchCol: 'palabra' },
-  'v_fuzzy_negatives': { label: 'Fuzzy Negatives', searchCol: 'termino_con_gasto' },
-  'v_tendencia_semanal': { label: 'Tendencia', searchCol: 'account' },
-  'v_keywords_daily': { label: 'Keywords · diario', searchCol: 'keyword' },
-  'v_search_terms_daily': { label: 'Términos · diario', searchCol: 'search_term' },
-  'v_keyword_tendencia': { label: 'Tendencia por keyword', searchCol: 'keyword' },
+  'v_campaign_analisis': { grupo: 'Por semana', label: 'Campañas', searchCol: 'campaign' },
+  'v_adgroup_analisis': { grupo: 'Por semana', label: 'Grupos', searchCol: 'ad_group' },
+  'v_keywords_analisis': { grupo: 'Por semana', label: 'Keywords', searchCol: 'keyword' },
+  'v_search_terms_analisis': { grupo: 'Por semana', label: 'Términos de búsqueda', searchCol: 'search_term' },
+  'v_conversiones_por_accion': { grupo: 'Por semana', label: 'Conversiones por acción', searchCol: 'conversion_action' },
+  'v_tendencia_semanal': { grupo: 'Por semana', label: 'Tendencia', searchCol: 'account' },
+  'v_keywords_daily': { grupo: 'Por día', label: 'Keywords', searchCol: 'keyword' },
+  'v_search_terms_daily': { grupo: 'Por día', label: 'Términos de búsqueda', searchCol: 'search_term' },
+  'v_keyword_tendencia': { grupo: 'Por día', label: 'Tendencia por keyword', searchCol: 'keyword' },
+  'v_ngrams_sin_conversion': { grupo: 'Diagnóstico', label: 'Palabras que gastan sin convertir', searchCol: 'palabra' },
+  'v_fuzzy_negatives': { grupo: 'Diagnóstico', label: 'Negativas que bloquean de más', searchCol: 'termino_con_gasto' },
 };
 
 const DEFAULT_COLS: Record<string, string[]> = {
@@ -169,7 +169,7 @@ function formatValue(col: string, val: any, currency: string) {
   return val;
 }
 
-export function Datos() {
+export function Datos({ initialSearch, initialView }: { initialSearch?: string; initialView?: string } = {}) {
   const { selectedClient, setIsAuthenticated } = useAppStore();
   const currency = selectedClient === 'KAREDO' ? 'EUR' : 'CLP';
   
@@ -303,7 +303,8 @@ export function Datos() {
   
   const [orderBy, setOrderBy] = useState<string>('');
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch || '');
+  useEffect(() => { if (initialSearch) setSearch(initialSearch); }, [initialSearch]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   
   const [showColSelector, setShowColSelector] = useState(false);
@@ -782,20 +783,22 @@ export function Datos() {
 
 <div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
           <div className="flex gap-2 bg-[#1A1F36]/80 p-1 rounded-xl border border-[#0062CC]/20 overflow-x-auto custom-scrollbar shadow-sm">
-            {Object.entries(VIEW_CONFIGS).map(([val, config]) => (
-              <button
-                key={val}
-                onClick={() => setActiveView(val)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  activeView === val 
-                    ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm border border-[#0062CC]' 
-                    : 'text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/15 border border-transparent'
-                }`}
-              >
-                <Layers size={14} className={activeView === val ? 'text-[#FFFFFF]' : 'text-[#0062CC]'} />
-                {config.label}
-              </button>
-            ))}
+            {(['Por semana', 'Por día', 'Diagnóstico'] as const).map(grupo => {
+              const items = Object.entries(VIEW_CONFIGS).filter(([, cfg]: any) => (cfg.grupo || 'Por semana') === grupo);
+              if (!items.length) return null;
+              return (
+                <div key={grupo} className="flex items-center gap-1">
+                  <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-40 px-1.5 whitespace-nowrap">{grupo}</span>
+                  {items.map(([val, config]: any) => (
+                    <button key={val} onClick={() => setActiveView(val)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/15'}`}>
+                      {config.label}
+                    </button>
+                  ))}
+                  <span className="w-px h-4 mx-1" style={{ backgroundColor: 'var(--border)' }} />
+                </div>
+              );
+            })}
           </div>
 
           {/* Moved Column Selector Next to Trends/Views */}
@@ -906,7 +909,7 @@ export function Datos() {
             ) : data.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-[#F5F7FA]/50 z-20">
                  <Search size={48} className="mb-4 opacity-30 text-[#0062CC]" />
-                 <p className="text-lg font-medium text-[#FFFFFF]">No hay datos disponibles</p>
+                 <p className="text-lg font-medium text-[#FFFFFF]">No hay filas para este rango. Probá otro rango o quitá el filtro de texto.</p>
                  <p className="text-sm mt-1 text-[#F5F7FA]/70">Ajusta los filtros o cambia de vista.</p>
               </div>
             ) : null}
@@ -1290,7 +1293,7 @@ export function Datos() {
             </div>
           ) : (
             <div className="p-4 rounded-xl text-xs text-[#F5F7FA] opacity-70" style={{ backgroundColor: 'var(--surface-2)' }}>
-              Sin registros en la tendencia agregada para este término.
+              Este término no tiene historial en los 14 días de la capa diaria.
             </div>
           )}
         </div>

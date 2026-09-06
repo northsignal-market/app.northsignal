@@ -18,7 +18,14 @@ export function Sistema() {
   const [loading, setLoading] = useState(false);
 
   // Tab: 'salud' | 'integridad' | 'scorecard' | 'cambios' | 'bitacora' | 'ajustes'
-  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes'>('salud');
+  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets'>('salud');
+  const [alertas, setAlertas] = useState<any[]>([]);
+  const [tickets, setTickets] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [activeTab]);
+  const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
 
   // Operator log form state
   const [logAccount, setLogAccount] = useState('360');
@@ -133,14 +140,16 @@ export function Sistema() {
       {/* Subnavigation Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
         {[
-          { id: 'salud', label: 'Salud de Datos (v_data_health)' },
-          { id: 'integridad', label: 'Integridad (v_integridad_datos)' },
-          { id: 'scorecard', label: 'Scorecard de Calidad (v_run_scorecard)' },
-          { id: 'aprendizaje', label: 'Aprendizaje (impacto y reflexiones)' },
-          { id: 'tamano', label: 'Tamaño y crecimiento (v_salud_sistema)' },
-          { id: 'cambios', label: 'Cambios Detectados (v_cambios_detectados)' },
-          { id: 'bitacora', label: 'Bitácora Operador (operator_log)' },
-          { id: 'ajustes', label: 'Ajustes de Sincronización' },
+          { id: 'alertas', label: `Alertas${alertas.length ? ` (${alertas.length})` : ''}` },
+          { id: 'tickets', label: `Tickets${tickets.filter((t: any) => t.estado === 'abierto').length ? ` (${tickets.filter((t: any) => t.estado === 'abierto').length})` : ''}` },
+          { id: 'salud', label: 'Datos por cuenta' },
+          { id: 'integridad', label: 'Integridad' },
+          { id: 'scorecard', label: 'Calidad del análisis' },
+          { id: 'aprendizaje', label: 'Qué aprendió el sistema' },
+          { id: 'tamano', label: 'Tamaño y crecimiento' },
+          { id: 'cambios', label: 'Cambios de configuración' },
+          { id: 'bitacora', label: 'Bitácora: lo que cambiaste vos' },
+          { id: 'ajustes', label: 'Ajustes' },
         ].map(t => (
           <button
             key={t.id}
@@ -155,12 +164,71 @@ export function Sistema() {
         ))}
       </div>
 
+
+      {/* TAB: ALERTAS */}
+      {activeTab === 'alertas' && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Alertas</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
+          </div>
+          {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
+            <div className="space-y-1.5">
+              {alertas.map((a: any) => (
+                <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : a.nivel === 'semana' ? '2px solid var(--border-strong)' : '2px solid transparent' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
+                        <span className="text-[10px] text-[#F5F7FA] opacity-40">{a.account || 'Sistema'} · {a.origen}</span>
+                      </div>
+                      <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{a.titulo}</div>
+                      {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
+                      {a.accion && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
+                    </div>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#FFFFFF]">Resuelta</button>
+                      <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) accionAlerta(a.id, 'silenciar', { dias: 7, por_que: pq }); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: TICKETS */}
+      {activeTab === 'tickets' && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Tickets para Claude</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.</p>
+          </div>
+          {tickets.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ningún ticket todavía.</p> : (
+            <div className="space-y-1.5">
+              {tickets.map((t: any) => (
+                <div key={t.id} className={`p-3 rounded-lg ${t.estado === 'resuelto' ? 'opacity-60' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50">
+                    <span className="tabular">#{t.id}</span><span>{String(t.creado).slice(0, 16).replace('T', ' ')}</span><span>{t.pagina}{t.cuenta ? ` · ${t.cuenta}` : ''}</span>
+                    <span className={`ml-auto uppercase tracking-wider ${t.estado === 'abierto' ? 'text-[#0062CC]' : ''}`}>{t.estado.replace('_', ' ')}</span>
+                  </div>
+                  <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{t.titulo}</div>
+                  {t.descripcion && <div className="text-[11px] text-[#F5F7FA] opacity-70 whitespace-pre-wrap">{t.descripcion}</div>}
+                  {t.respuesta && <div className="text-[11px] text-[#F5F7FA] mt-1.5 pl-2" style={{ borderLeft: '2px solid var(--primary)' }}><span className="opacity-60">Claude:</span> {t.respuesta}{t.resuelto_en_version ? <span className="opacity-50"> · {t.resuelto_en_version}</span> : ''}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TAB 1: SALUD DE DATOS */}
       {activeTab === 'salud' && (
         <div className="space-y-4">
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              Salud de Sincronización por Cuenta
+              Datos por cuenta
             </h2>
 
             <div className="overflow-x-auto">
@@ -169,9 +237,9 @@ export function Sistema() {
                   <tr style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                     <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Cuenta</th>
                     <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Estado</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Último Día Datos</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Última Sincronización</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Detalle / Latencia</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Último día con datos</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Última extracción</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -233,7 +301,7 @@ export function Sistema() {
       {activeTab === 'integridad' && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            Integridad de Datos (v_integridad_datos)
+            Integridad de datos
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
@@ -271,7 +339,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">
-              Scorecard de Calidad de Corridas (v_run_scorecard)
+              Calidad de cada análisis semanal
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">
               Puntuación sobre 15 puntos, fallos detectados y campo editable de revisión humana
@@ -338,7 +406,7 @@ export function Sistema() {
       {activeTab === 'cambios' && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            Cambios Detectados en Configuración (v_cambios_detectados)
+            Cambios de configuración detectados
           </h2>
 
           <div className="space-y-2 text-xs">
@@ -493,7 +561,7 @@ export function Sistema() {
           {/* Tasa de acierto: la métrica del sistema entero */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              Tasa de acierto (v_tasa_acierto)
+              Tasa de acierto
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.</p>
             {aprendizaje.tasa_acierto.length === 0 ? (
@@ -521,10 +589,10 @@ export function Sistema() {
           {/* Impacto por accionable */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              Impacto de accionables ejecutados (v_impacto_accionables)
+              Qué pasó después de cada accionable
             </h2>
             {aprendizaje.impacto.length === 0 ? (
-              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin accionables Hechos con fecha de ejecución.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía no hay accionables marcados Hecho con fecha. Cuando los haya, acá se ve qué pasó 14 días después de cada uno.</p>
             ) : (
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-xs">
@@ -555,11 +623,11 @@ export function Sistema() {
             )}
           </div>
 
-          {/* Propuestas de cambio al prompt */}
+          {/* Lo que el sistema propone cambiar en sus instrucciones */}
           {aprendizaje.propuestas.length > 0 && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
               <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                Propuestas de cambio al prompt (v_reflexiones_recurrentes)
+                Lo que el sistema propone cambiar en sus instrucciones
               </h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.</p>
               {aprendizaje.propuestas.map((p: any, i: number) => (
@@ -605,7 +673,7 @@ export function Sistema() {
       {activeTab === 'tamano' && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            Tamaño y crecimiento (v_salud_sistema)
+            Tamaño y crecimiento
           </h2>
           <p className="text-xs text-[#F5F7FA] opacity-60">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
           {tamano.length === 0 ? (
@@ -642,7 +710,7 @@ export function Sistema() {
           <div className="space-y-3 text-xs">
             <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <div>
-                <div className="font-semibold text-[#FFFFFF]">Supabase Database & Views</div>
+                <div className="font-semibold text-[#FFFFFF]">Base de datos</div>
                 <div className="text-[11px] text-[#F5F7FA] opacity-60">Conexión activa a vistas consolidadas</div>
               </div>
               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">
@@ -652,7 +720,7 @@ export function Sistema() {
 
             <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <div>
-                <div className="font-semibold text-[#FFFFFF]">Notion Workspace API</div>
+                <div className="font-semibold text-[#FFFFFF]">Notion</div>
                 <div className="text-[11px] text-[#F5F7FA] opacity-60">Sincronización de accionables, briefs y bitácora</div>
               </div>
               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">
@@ -662,7 +730,7 @@ export function Sistema() {
 
             <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <div>
-                <div className="font-semibold text-[#FFFFFF]">Google GenAI (Gemini)</div>
+                <div className="font-semibold text-[#FFFFFF]">Gemini (segunda opinión)</div>
                 <div className="text-[11px] text-[#F5F7FA] opacity-60">Auditoría de segunda opinión y detección de controversias</div>
               </div>
               <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">

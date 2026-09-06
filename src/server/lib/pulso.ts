@@ -50,7 +50,10 @@ export const PulsoSchema = z.object({
     confianza: z.number().min(0).max(1),
     entidad: z.string().describe('Campaña, grupo, keyword o término con nombre exacto'),
     evidencia_texto: z.string().describe('Los números que lo sostienen, con fechas'),
-    naturaleza: z.enum(['observacion', 'inferencia', 'hipotesis'])
+    naturaleza: z.enum(['observacion', 'inferencia', 'hipotesis']),
+    como_hacerlo: z.string().describe('Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campañas > la campaña > el grupo > Palabras clave; pestaña Palabras clave negativas; Objetivos > Conversiones; Configuración > Puja. Uno por línea. Escrito para una persona con Google Ads abierto, no para el sistema.'),
+    donde: z.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
+    causa_raiz: z.string().describe('El problema de fondo en una frase que otro hallazgo podría compartir. Nunca "detectado por el pulso".')
   })).describe('Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.')
 });
 export type PulsoOut = z.infer<typeof PulsoSchema>;

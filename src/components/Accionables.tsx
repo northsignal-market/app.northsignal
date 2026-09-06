@@ -209,7 +209,7 @@ export function Accionables({
           <option value="all" className="bg-[#1A1F36]">Todas las Revisiones IA</option>
           <option value="En disputa" className="bg-[#1A1F36]">En Disputa</option>
           <option value="Consenso" className="bg-[#1A1F36]">Consenso</option>
-          <option value="Sin revisar" className="bg-[#1A1F36]">Sin Revisar</option>
+          <option value="Sin revisar" className="bg-[#1A1F36]">Sin segunda opinión</option>
         </select>
       </div>
 

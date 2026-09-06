@@ -9,6 +9,8 @@ export function RSAFactory() {
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [orderBy, setOrderBy] = useState<'conversions' | 'clicks' | 'cost' | 'ctr'>('conversions');
   const [filtro, setFiltro] = useState('');
+  const [verTodos, setVerTodos] = useState(false);
+  const [soloConConv, setSoloConConv] = useState(true);
   const [topAssets, setTopAssets] = useState<any[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generatedRSA, setGeneratedRSA] = useState<{headlines: string[], descriptions: string[]} | null>(null);
@@ -97,13 +99,17 @@ export function RSAFactory() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
         <div className="flex flex-col bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl p-5 shadow-sm overflow-hidden">
           <h3 className="text-sm font-semibold text-[#FFFFFF] mb-4 flex items-center gap-2">
-            <Search size={16} className="text-[#0062CC]" /> Términos de Búsqueda Exitosos
+            <Search size={16} className="text-[#0062CC]" /> Elegí los términos que quieras en el anuncio
           </h3>
+          <p className="text-[11px] text-[#F5F7FA] opacity-60 -mt-3 mb-3">Los que convirtieron en los últimos 30 días, ordenados por lo que elijas. Seleccioná entre 3 y 8 y generá: el anuncio usa las palabras que la gente ya escribe.</p>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
             <div className="flex gap-2 mb-2">
               <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar términos…"
                 className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
+              <label className="flex items-center gap-1.5 text-[11px] text-[#F5F7FA] opacity-80 whitespace-nowrap cursor-pointer">
+                <input type="checkbox" checked={soloConConv} onChange={e => setSoloConConv(e.target.checked)} className="accent-[#0062CC]" /> solo con conversiones
+              </label>
               <select value={orderBy} onChange={e => setOrderBy(e.target.value as any)}
                 className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1.5 text-xs text-[#FFFFFF] focus:outline-none">
                 <option value="conversions">Por conversiones</option>
@@ -117,11 +123,15 @@ export function RSAFactory() {
                 <Loader2 className="animate-spin text-[#0062CC]" size={24} />
               </div>
             ) : searchTerms.length === 0 ? (
-              <p className="text-[#F5F7FA]/50 text-sm text-center py-8">No hay términos disponibles o el endpoint aún no retorna datos.</p>
+              <p className="text-[#F5F7FA]/50 text-sm text-center py-8">Sin términos para esta cuenta en el período. Los trae la extracción semanal.</p>
             ) : (
-              searchTerms
-                .filter(t => !filtro || String(t.search_term || '').toLowerCase().includes(filtro.toLowerCase()))
-                .slice(0, 100).map((t, idx) => {
+              (() => {
+                const activos = searchTerms.filter(t => Number(t.clicks || 0) > 0 && (!soloConConv || Number(t.conversions || 0) > 0));
+                const filtrados = activos.filter(t => !filtro || String(t.search_term || '').toLowerCase().includes(filtro.toLowerCase()));
+                const lista = verTodos ? filtrados : filtrados.slice(0, 20);
+                return (<>
+                {filtrados.length === 0 && <p className="text-[#F5F7FA]/50 text-xs text-center py-6">{soloConConv ? 'Ningún término convirtió en el período. Destildá "solo con conversiones" para ver los que tuvieron clics.' : 'Ningún término con clics en el período.'}</p>}
+                {lista.map((t, idx) => {
                 const sel = selectedTerms.includes(t.search_term);
                 const cpa = Number(t.conversions) > 0 ? Number(t.cost) / Number(t.conversions) : null;
                 return (
@@ -140,7 +150,12 @@ export function RSAFactory() {
                   </div>
                 </div>
                 );
-              })
+              })}
+                {!verTodos && filtrados.length > 20 && (
+                  <button onClick={() => setVerTodos(true)} className="w-full py-2 text-xs text-[#F5F7FA] opacity-60 hover:opacity-100">Ver los {filtrados.length - 20} restantes</button>
+                )}
+                </>);
+              })()
             )}
           </div>
           
@@ -150,12 +165,12 @@ export function RSAFactory() {
             className="w-full mt-4 bg-[#0062CC] text-[#FFFFFF] font-semibold py-3 rounded-xl hover:bg-[var(--primary-hover)] transition-all disabled:opacity-50 flex justify-center items-center gap-2 shadow-sm"
           >
             {generating ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />}
-            {generating ? 'Generando Anuncios...' : `Generar RSA (${selectedTerms.length} términos)`}
+            {generating ? 'Escribiendo el anuncio…' : selectedTerms.length === 0 ? 'Seleccioná al menos un término' : `Generar anuncio con ${selectedTerms.length} término${selectedTerms.length > 1 ? 's' : ''}`}
           </button>
         </div>
 
         <div className="flex flex-col bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl p-5 shadow-sm overflow-hidden">
-          <h3 className="text-sm font-semibold text-[#FFFFFF] mb-4">Anuncio Generado</h3>
+          <h3 className="text-sm font-semibold text-[#FFFFFF] mb-4">Anuncio propuesto</h3>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
             {!generatedRSA ? (

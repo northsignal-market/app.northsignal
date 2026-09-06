@@ -9,6 +9,7 @@ import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/vi
 import { notion } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
+import { responderAsistente } from './src/server/lib/asistente';
 import type { ReporteInput } from './src/server/lib/reporte-pdf';
 // react-pdf se carga solo cuando se genera un PDF: su dependencia pdfkit hace
 // requires dinamicos que tumban el arranque si el bundle no los incluye.
@@ -847,6 +848,7 @@ export function createApp() {
           detectado: props['Detectado']?.date?.start || page.created_time,
           naturaleza: props.Naturaleza?.select?.name || 'Observacion',
           que_lo_confirmaria: props['Que lo confirmaria']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
+          como_hacerlo: props['Como hacerlo']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           causa_raiz: props['Causa raiz']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           relacionado_con: props['Relacionado con']?.relation?.map((rel: any) => rel.id) || [],
           semanas_pendiente: props['Semanas pendiente']?.number ?? (props['Semanas pendiente']?.formula?.number ?? 0),
@@ -2081,6 +2083,56 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json({ ok: true, semana: desde, resultados: out });
   });
 
+
+  // ================================================================
+  // ASISTENTE, TICKETS Y ALERTAS
+  // ================================================================
+  app.post("/api/asistente", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const { mensajes, pagina, cuenta } = req.body || {};
+      if (!Array.isArray(mensajes) || !mensajes.length) return res.status(400).json({ error: 'mensajes requerido' });
+      const r = await responderAsistente(supabase, mensajes.slice(-8), { pagina, cuenta });
+      res.json(r);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Tickets: Andres los crea desde cualquier pagina; Claude los lee en Supabase
+  app.post("/api/tickets", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { tipo = 'bug', titulo, descripcion, pagina, cuenta, contexto } = req.body || {};
+    if (!titulo) return res.status(400).json({ error: 'titulo requerido' });
+    const { data, error } = await supabase.from('tickets').insert({ tipo, titulo, descripcion, pagina, cuenta, contexto }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  app.get("/api/tickets", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.from('tickets').select('*').order('creado', { ascending: false }).limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  // Alertas: listar, marcar vista/resuelta, silenciar con motivo
+  app.get("/api/alertas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.from('v_alertas_abiertas').select('*').limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app.post("/api/alertas/:id/:accion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { accion } = req.params; const { dias, por_que } = req.body || {};
+    const upd: any = accion === 'vista' ? { estado: 'vista', vista_el: new Date().toISOString() }
+      : accion === 'resolver' ? { estado: 'resuelta', resuelta_el: new Date().toISOString() }
+      : accion === 'silenciar' ? { estado: 'silenciada', silenciada_hasta: new Date(Date.now() + (Number(dias) || 7) * 864e5).toISOString().slice(0, 10), silenciada_por_que: por_que || null }
+      : null;
+    if (!upd) return res.status(400).json({ error: 'accion invalida' });
+    const { error } = await supabase.from('alertas').update(upd).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+
   // ---- Doc maestro ensamblado ----
   app.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -2144,7 +2196,9 @@ Las descripciones no deben superar los 90 caracteres.`;
     const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
       const { data: input, error } = await supabase!.rpc('get_pulso_input', { p_account: cuenta, p_fecha: fecha });
       if (error) throw new Error(`get_pulso_input: ${error.message}`);
-      const r = await correrPulso(cuenta, fecha, input, getClientContext(cuenta) || '');
+      const { data: cta } = await supabase!.from('cuentas').select('reglas_dominio').eq('account', cuenta).maybeSingle();
+      const reglas = cta?.reglas_dominio || getClientContext(cuenta) || '';
+      const r = await correrPulso(cuenta, fecha, input, reglas);
       if (r.error || !r.parsed) throw new Error(r.error || 'sin salida');
       const p = r.parsed;
       const planId = input?.plan?.id || null;
@@ -2171,9 +2225,10 @@ Las descripciones no deben superar los 90 caracteres.`;
           Estado: { select: { name: nat === 'Observacion' ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
           Prioridad: { select: { name: h.severidad === 'critica' ? 'Urgente' : h.severidad === 'alta' ? 'Alta' : 'Media' } },
           Naturaleza: { select: { name: nat } },
-          'Por que': { rich_text: [{ text: { content: `[Pulso diario ${fecha}] ${h.evidencia_texto}`.slice(0, 1900) } }] },
-          'Causa raiz': { rich_text: [{ text: { content: p.conecta_con || 'Detectado por el pulso diario' } }] },
-          Donde: { rich_text: [{ text: { content: `${h.entidad} · pulso_diario ${fecha}` } }] },
+          'Por que': { rich_text: [{ text: { content: String(h.evidencia_texto || '').slice(0, 1900) } }] },
+          'Como hacerlo': { rich_text: [{ text: { content: String(h.como_hacerlo || '').slice(0, 1900) } }] },
+          'Causa raiz': { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || '').slice(0, 500) } }] },
+          Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || '').slice(0, 300) } }] },
           Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
           'Semanas pendiente': { number: 0 }
         };
@@ -2316,8 +2371,8 @@ async function runAnomalyWorker() {
         Prioridad: { select: { name: a.severidad === 'critica' ? 'Urgente' : 'Alta' } },
         Naturaleza: { select: { name: naturaleza } },
         'Por que': { rich_text: [{ text: { content: why.slice(0, 1900) } }] },
-        'Causa raiz': { rich_text: [{ text: { content: explicado ? 'Cambio registrado ese día' : 'Desvío sin cambio registrado: verificar operador, reloj y configuración' } }] },
-        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada · ${cuenta} · ${fecha}` } }] },
+        'Causa raiz': { rich_text: [{ text: { content: explicado ? 'Un cambio del mismo día explica el desvío' : 'Desvío sin cambio registrado ese día' } }] },
+        Donde: { rich_text: [{ text: { content: a.campana_principal ? `Campaña ${a.campana_principal}` : `Cuenta ${cuenta}, el ${fecha}` } }] },
         Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
         'Semanas pendiente': { number: 0 }
       };
@@ -2328,6 +2383,21 @@ async function runAnomalyWorker() {
       creados++;
     } catch (e: any) { console.error(`[anomalias] ${title}: ${e.message}`); }
   }
+  // ---- Alertas unificadas ----
+  try {
+    // Datos rotos: data_health con error o integridad con descuadres
+    const { data: dh } = await supabase.from('v_data_health').select('account, estado, mensaje');
+    for (const d of dh || []) if (d.estado && d.estado !== 'OK') await supabase.rpc('alerta_registrar', { p_account: d.account, p_nivel: 'hoy', p_tipo: 'datos_rotos', p_titulo: `Datos de ${d.account} con problema`, p_detalle: d.mensaje, p_accion: 'Revisar Sistema > Datos por cuenta. Si la extraccion fallo, correr el script en Google Ads a mano.', p_origen: 'watchdog' });
+    const { data: integ } = await supabase.from('v_integridad_conversiones').select('account, date, diferencia').limit(3);
+    for (const i of integ || []) await supabase.rpc('alerta_registrar', { p_account: i.account, p_nivel: 'semana', p_tipo: 'datos_rotos', p_titulo: `Conversiones descuadradas el ${i.date}`, p_detalle: `Diferencia de ${i.diferencia} entre acciones y campaña.`, p_accion: 'Revisar si el script diario corrio dos veces con claves distintas.', p_origen: 'integridad', p_entidad: null, p_fecha_dato: i.date });
+    // Cambios automaticos de Google en las ultimas 24h
+    const { data: autos } = await supabase.from('google_live_events').select('account, entity_name, client_type, event_date').eq('event_type', 'AUTO_CHANGE').gte('event_date', new Date(Date.now() - 864e5).toISOString());
+    for (const a of autos || []) await supabase.rpc('alerta_registrar', { p_account: a.account, p_nivel: 'hoy', p_tipo: 'cambio_automatico', p_titulo: `Google aplico un cambio solo en ${a.account}`, p_detalle: `${a.entity_name} (${a.client_type})`, p_accion: 'Entrar a Google Ads > Historial de cambios, revisar y revertir si no lo pediste. Despues desactivar Recomendaciones > Aplicar automaticamente.', p_origen: 'centinela', p_entidad: a.entity_name, p_fecha_dato: String(a.event_date).slice(0, 10) });
+    // Condiciones del plan cumplidas 3+ dias seguidos
+    const { data: pulsos } = await supabase.from('pulso_diario').select('account, fecha, evidencia').gte('fecha', new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10));
+    for (const p of pulsos || []) for (const e of (p.evidencia || []) as any[]) if (e.cumple && Number(e.dias_seguidos_cumpliendo) >= 3)
+      await supabase.rpc('alerta_registrar', { p_account: p.account, p_nivel: 'semana', p_tipo: 'plan_condicion', p_titulo: `${p.account}: ${e.nombre}${e.grupo ? ' en ' + e.grupo : ''} lleva ${e.dias_seguidos_cumpliendo} dias cumpliendo`, p_detalle: e.nota || null, p_accion: 'Mirar el plan en Hoy: esta condicion habilita una decision el lunes.', p_origen: 'pulso', p_entidad: e.grupo || e.nombre, p_fecha_dato: p.fecha });
+  } catch (e: any) { console.error('[alertas] ' + e.message); }
   console.log(`[anomalias] ${(anomalias || []).length} detectadas, ${creados} accionables nuevos`);
   return { detectadas: (anomalias || []).length, creados, comentados };
 }

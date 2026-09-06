@@ -4,6 +4,7 @@ import {
   HelpCircle, ExternalLink, RefreshCw 
 } from 'lucide-react';
 import { Termino } from './Termino';
+import { nivelPulso, headroom } from '../lib/humano';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable, PulseData } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
@@ -30,6 +31,10 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   const [headroomAll, setHeadroomAll] = useState<any[]>([]);
   const [pulsoDiario, setPulsoDiario] = useState<any[]>([]);
   const [plan, setPlan] = useState<any>(null);
+  const [alertas, setAlertas] = useState<any[]>([]);
+  const cargarAlertas = () => fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
+  useEffect(() => { cargarAlertas(); }, []);
+  const accionAlerta = async (id: number, accion: string) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargarAlertas(); };
   useEffect(() => {
     if (!selectedClient) return;
     fetch(`/api/plan?client=${selectedClient}`, { credentials: 'include' })
@@ -38,7 +43,7 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   useEffect(() => {
     fetch('/api/pulso?days=1', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(d => d && setPulsoDiario(d.pulsos || [])).catch(() => {});
-  }, []);
+  }, [selectedClient]);
 
   // Veredictos de escalamiento de las tres cuentas: si alguna tiene HEADROOM
   // o TECHO, es una decisión del lunes
@@ -264,35 +269,74 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
       )}
 
 
-      {/* BLOQUE 1C: PULSO DIARIO DE GEMINI, lo que pasó ayer en cada cuenta */}
-      {pulsoDiario.length > 0 && (() => {
+
+      {/* BLOQUE 0: ALERTAS QUE PIDEN ACCIÓN (hoy) O MIRADA (esta semana) */}
+      {alertas.filter(a => a.nivel !== 'digest').length > 0 && (
+        <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: alertas.some(a => a.nivel === 'hoy') ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[13px] font-medium text-[#FFFFFF]">{alertas.some(a => a.nivel === 'hoy') ? 'Pide acción hoy' : 'Para mirar esta semana'}</h2>
+            <span className="text-[10px] text-[#F5F7FA] opacity-50">{alertas.filter(a => a.nivel !== 'digest').length} abierta{alertas.filter(a => a.nivel !== 'digest').length !== 1 ? 's' : ''}</span>
+          </div>
+          {alertas.filter(a => a.nivel !== 'digest').slice(0, 6).map(a => (
+            <div key={a.id} className="p-2.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : '2px solid transparent' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs text-[#FFFFFF] font-medium">{a.titulo}</div>
+                  {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
+                  {a.accion && <div className="text-[11px] text-[#F5F7FA] opacity-90 mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] text-[#FFFFFF] bg-[#0062CC]">Resuelta</button>
+                  <button onClick={() => accionAlerta(a.id, 'silenciar')} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" title="Silenciar 7 días">Silenciar</button>
+                </div>
+              </div>
+              <div className="text-[10px] text-[#F5F7FA] opacity-40 mt-1">{a.account || 'Sistema'} · {a.origen} · {a.fecha_dato || String(a.creada).slice(0, 10)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* BLOQUE 1C: LO QUE PASÓ AYER EN LA CUENTA SELECCIONADA (y las otras, chico) */}
+      {(() => {
         const ultimoPorCuenta: Record<string, any> = {};
         pulsoDiario.forEach(p => { if (!ultimoPorCuenta[p.account] || p.fecha > ultimoPorCuenta[p.account].fecha) ultimoPorCuenta[p.account] = p; });
-        const lista = ['KAREDO', 'BHI', '360'].map(a => ultimoPorCuenta[a]).filter(Boolean);
-        const hayCritico = lista.some(p => p.nivel === 'critico');
+        const cuenta = selectedClient || 'KAREDO';
+        const principal = ultimoPorCuenta[cuenta];
+        const otras = ['KAREDO', 'BHI', '360'].filter(a => a !== cuenta);
+        const ayer = new Date(); ayer.setDate(ayer.getDate() - 1); const ayerStr = ayer.toISOString().slice(0, 10);
         return (
-          <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: hayCritico ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: principal?.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[13px] font-medium text-[#FFFFFF]">Ayer, según el pulso diario</h2>
-              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{lista[0]?.fecha} · Gemini</span>
+              <h2 className="text-[13px] font-medium text-[#FFFFFF]">Lo que pasó ayer en {cuenta}</h2>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{principal ? `análisis del ${principal.fecha}` : ''}</span>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-              {lista.map(p => (
-                <div key={p.account} className="p-2.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid transparent' }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-bold text-[#FFFFFF] uppercase tracking-wider">{p.account}</span>
-                    <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#0062CC] font-bold' : p.nivel === 'atencion' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel}</span>
-                  </div>
-                  {p.hallazgo_principal && <p className="text-xs text-[#FFFFFF] font-medium mb-1">{p.hallazgo_principal}</p>}
-                  <p className="text-[11px] text-[#F5F7FA] opacity-80 leading-relaxed">{p.resumen}</p>
-                  {p.conecta_con && <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">↳ {p.conecta_con}</p>}
+            {principal ? (
+              <div className="p-2.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-[#FFFFFF] font-medium">{principal.hallazgo_principal || 'Sin hallazgo destacado'}</span>
+                  <span className={`text-[10px] uppercase tracking-wide shrink-0 ml-2 ${principal.nivel === 'critico' ? 'text-[#0062CC] font-bold' : principal.nivel === 'atencion' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-50'}`}>{nivelPulso(principal.nivel).etiqueta}</span>
                 </div>
-              ))}
+                <p className="text-[11px] text-[#F5F7FA] opacity-80 leading-relaxed">{principal.resumen}</p>
+                {principal.conecta_con && <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">Se parece a: {principal.conecta_con}</p>}
+                {principal.fecha < ayerStr && <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-1">Este análisis es del {principal.fecha}; el de ayer todavía no corrió.</p>}
+              </div>
+            ) : (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-2">{cuenta} todavía no tiene análisis diario. El primero llega mañana a las 6:45, o podés dispararlo desde Sistema.</p>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {otras.map(a => { const p = ultimoPorCuenta[a]; return (
+                <button key={a} onClick={() => setSelectedClient(a)} className="flex-1 min-w-[140px] text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid transparent' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-[#F5F7FA] opacity-70 uppercase tracking-wider">{a}</span>
+                    <span className="text-[9px] text-[#F5F7FA] opacity-40 tabular">{p ? p.fecha.slice(5) : ''}</span>
+                  </div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-70 truncate">{p ? (p.hallazgo_principal || nivelPulso(p.nivel).etiqueta) : 'Sin análisis todavía'}</div>
+                </button>
+              ); })}
             </div>
           </div>
         );
       })()}
-
 
       {/* BLOQUE 1D: EL PLAN DE LA SEMANA Y LA EVIDENCIA ACUMULADA */}
       {plan?.plan && (() => {
