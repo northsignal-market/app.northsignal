@@ -49,6 +49,9 @@ export const GLOSARIO: Record<string, string> = {
   'GBRAID': 'Identificador del clic en iOS con privacidad. Equivale al GCLID; Make lo descartaba.',
   'Ventana de 90 días': 'Google solo acepta conversiones offline de clics de hasta 90 días. Un ciclo más largo no se puede atribuir.',
   // Sistema
+  'Bandeja': 'La cola de lo que espera tu criterio: acción hoy, listos, por confirmar, reportes. Vacía es la meta.',
+  'Calibración': 'Si el sistema acierta lo que promete: con 80% de confianza declarada, debería acertar 8 de 10.',
+  'Predicción': 'Rango de conversiones o CPA para la semana que empieza, con la probabilidad de caer adentro. Se compara el lunes siguiente.',
   'Pulso diario': 'Interpretación de Sonnet 5 de cada día contra el plan de la semana. Evidencia, no conclusión.',
   'Plan semanal': 'Lo que Opus 5 escribió el lunes: qué vigilar, con qué umbral, qué hipótesis probar.',
   'Leading indicator': 'Métrica que se mueve antes que el resultado. Con lo leading se dirige; con lo lagging se califica.',

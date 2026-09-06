@@ -146,6 +146,29 @@ export function ActionableDrawerContent({
   const [showLogForm, setShowLogForm] = useState(false);
   const [logQueCambio, setLogQueCambio] = useState('');
   const [logDonde, setLogDonde] = useState(action.where || '');
+  const [ejecutando, setEjecutando] = useState(false);
+  const [ejecutado, setEjecutado] = useState<string | null>(null);
+  // Que tipo de accion automatica es, si alguna. Solo negativas y pausas.
+  const tipoAuto = (() => {
+    const t = action.title.toLowerCase();
+    if (/negativ/.test(t)) return /campa/.test(t) ? 'negativa_campana' : 'negativa_grupo';
+    if (/pausar/.test(t) && /keyword|palabra/.test(t)) return 'pausar_keyword';
+    if (/pausar/.test(t) && /anuncio/.test(t)) return 'pausar_anuncio';
+    return null;
+  })();
+  const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
+  const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
+    if (!tipoAuto) return;
+    const kw = (action.title.match(/["“'‘]([^"”'’]+)["”'’]/) || [])[1] || entidadPartes[2] || '';
+    if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término en el título. Ejecutalo a mano con "Cómo hacerlo".'); return; }
+    setEjecutando(true);
+    try {
+      const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: /exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE', modo }) });
+      const j = await r.json();
+      if (!r.ok) alert(j.error || 'Error'); else setEjecutado(modo);
+    } finally { setEjecutando(false); }
+  };
   const [logValorAnterior, setLogValorAnterior] = useState('');
   const [logValorNuevo, setLogValorNuevo] = useState('');
   const [logPorQue, setLogPorQue] = useState('');
@@ -425,6 +448,24 @@ export function ActionableDrawerContent({
         )}
       </div>
 
+
+
+      {/* Aprobar y ejecutar: solo negativas y pausas, que son reversibles */}
+      {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && (
+        <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          {ejecutado ? (
+            <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
+          ) : (
+            <>
+              <p className="text-xs text-[#F5F7FA] opacity-80">Esto es una {tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos. Un script la ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
+              <div className="flex gap-2">
+                <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
+                <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Cómo hacerlo: los pasos en Google Ads */}
       {(() => {

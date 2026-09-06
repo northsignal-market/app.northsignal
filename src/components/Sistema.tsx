@@ -18,7 +18,17 @@ export function Sistema() {
   const [loading, setLoading] = useState(false);
 
   // Tab: 'salud' | 'integridad' | 'scorecard' | 'cambios' | 'bitacora' | 'ajustes'
-  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia'>('salud');
+  // Cuatro grupos en vez de doce pestañas. Cada grupo apila los bloques que antes eran pestañas.
+  const GRUPOS: { id: string; label: string; tabs: string[]; ayuda: string }[] = [
+    { id: 'salud', label: 'Salud', tabs: ['salud', 'integridad', 'tamano'], ayuda: 'Si los datos están al día y cuadran' },
+    { id: 'aprendizaje', label: 'Aprendizaje', tabs: ['scorecard', 'aprendizaje', 'coherencia'], ayuda: 'Qué tan bien analiza el sistema y cómo se corrige' },
+    { id: 'automatizacion', label: 'Automatización', tabs: ['alertas', 'ejecuciones', 'cambios'], ayuda: 'Alertas, ejecuciones aprobadas, cambios de configuración' },
+    { id: 'soporte', label: 'Soporte', tabs: ['tickets', 'bitacora', 'ajustes'], ayuda: 'Tickets para Claude, tu bitácora, ajustes' },
+  ];
+  const [grupo, setGrupo] = useState<string>('salud');
+  const enGrupo = (tab: string) => (GRUPOS.find(g => g.id === grupo)?.tabs || []).includes(tab);
+  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia' | 'ejecuciones'>('salud');
+  const [ejecuciones, setEjecuciones] = useState<any[]>([]);
   const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
@@ -26,7 +36,8 @@ export function Sistema() {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/coherencia', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCoherencia(d)).catch(() => {});
-  }, [activeTab]);
+    fetch('/api/acciones-aprobadas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setEjecuciones(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [grupo]);
   const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
 
   // Operator log form state
@@ -139,38 +150,42 @@ export function Sistema() {
         </button>
       </div>
 
-      {/* Subnavigation Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
-        {[
-          { id: 'alertas', label: `Alertas${alertas.length ? ` (${alertas.length})` : ''}` },
-          { id: 'tickets', label: `Tickets${tickets.filter((t: any) => t.estado === 'abierto').length ? ` (${tickets.filter((t: any) => t.estado === 'abierto').length})` : ''}` },
-          { id: 'coherencia', label: 'Quién escribe qué' },
-          { id: 'salud', label: 'Datos por cuenta' },
-          { id: 'integridad', label: 'Integridad' },
-          { id: 'scorecard', label: 'Calidad del análisis' },
-          { id: 'aprendizaje', label: 'Qué aprendió el sistema' },
-          { id: 'tamano', label: 'Tamaño y crecimiento' },
-          { id: 'cambios', label: 'Cambios de configuración' },
-          { id: 'bitacora', label: 'Bitácora: lo que cambiaste vos' },
-          { id: 'ajustes', label: 'Ajustes' },
-        ].map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id as any)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-              activeTab === t.id ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-75 hover:opacity-100 hover:bg-white/5'
-            }`}
-            style={{ border: activeTab === t.id ? 'none' : '1px solid var(--border)', backgroundColor: activeTab === t.id ? '#0062CC' : 'var(--surface-1)' }}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Cuatro grupos */}
+      <div className="flex gap-1 flex-wrap pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+        {GRUPOS.map(g => {
+          const n = g.id === 'automatizacion' ? alertas.length + ejecuciones.filter((e: any) => e.estado === 'pendiente').length : g.id === 'soporte' ? tickets.filter((t: any) => t.estado === 'abierto').length : 0;
+          return (
+            <button key={g.id} onClick={() => setGrupo(g.id)} title={g.ayuda} className={`px-3.5 py-1.5 rounded-lg text-xs transition-colors ${grupo === g.id ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>
+              {g.label}{n > 0 ? <span className="ml-1.5 text-[10px] opacity-70">{n}</span> : null}
+            </button>
+          );
+        })}
       </div>
 
-
+      {/* TAB: EJECUCIONES */}
+      {enGrupo('ejecuciones') && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas y pausas, que se pueden deshacer. Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+          </div>
+          {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una negativa o una pausa desde el accionable.</p> : (
+            <div className="space-y-1">
+              {ejecuciones.map((e: any) => (
+                <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(e.aprobada_el).slice(5, 16).replace('T', ' ')}</span>
+                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-20 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}</span>
+                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace('_', ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
+                  {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB: COHERENCIA */}
-      {activeTab === 'coherencia' && (
+      {enGrupo('coherencia') && (
         <div className="space-y-4">
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -209,7 +224,7 @@ export function Sistema() {
       )}
 
       {/* TAB: ALERTAS */}
-      {activeTab === 'alertas' && (
+      {enGrupo('alertas') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Alertas</h2>
@@ -242,7 +257,7 @@ export function Sistema() {
       )}
 
       {/* TAB: TICKETS */}
-      {activeTab === 'tickets' && (
+      {enGrupo('tickets') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Tickets para Claude</h2>
@@ -267,7 +282,7 @@ export function Sistema() {
       )}
 
       {/* TAB 1: SALUD DE DATOS */}
-      {activeTab === 'salud' && (
+      {enGrupo('salud') && (
         <div className="space-y-4">
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -341,7 +356,7 @@ export function Sistema() {
       )}
 
       {/* TAB 2: INTEGRIDAD DE DATOS */}
-      {activeTab === 'integridad' && (
+      {enGrupo('integridad') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Integridad de datos
@@ -378,7 +393,7 @@ export function Sistema() {
       )}
 
       {/* TAB 3: RUN SCORECARD */}
-      {activeTab === 'scorecard' && (
+      {enGrupo('scorecard') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">
@@ -446,7 +461,7 @@ export function Sistema() {
       )}
 
       {/* TAB 4: CAMBIOS DETECTADOS */}
-      {activeTab === 'cambios' && (
+      {enGrupo('cambios') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Cambios de configuración detectados
@@ -476,7 +491,7 @@ export function Sistema() {
       )}
 
       {/* TAB 5: BITÁCORA DEL OPERADOR */}
-      {activeTab === 'bitacora' && (
+      {enGrupo('bitacora') && (
         <div className="p-5 rounded-2xl space-y-5" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">
@@ -599,7 +614,7 @@ export function Sistema() {
 
       {/* TAB 6: AJUSTES */}
 
-      {activeTab === 'aprendizaje' && (
+      {enGrupo('aprendizaje') && (
         <div className="space-y-4">
           {/* Tasa de acierto: la métrica del sistema entero */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
@@ -713,7 +728,7 @@ export function Sistema() {
         </div>
       )}
 
-      {activeTab === 'tamano' && (
+      {enGrupo('tamano') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Tamaño y crecimiento
@@ -745,7 +760,7 @@ export function Sistema() {
         </div>
       )}
 
-      {activeTab === 'ajustes' && (
+      {enGrupo('ajustes') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Ajustes & Conectores

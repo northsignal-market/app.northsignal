@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TerminoProvider } from './components/Termino';
 import { Ayuda } from './components/Ayuda';
+import { Bandeja } from './components/Bandeja';
+import { Cuenta, type SegmentoCuenta } from './components/Cuenta';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { Inicio } from './components/Inicio';
@@ -24,16 +26,47 @@ const CLIENT_CURRENCIES: Record<string, string> = {
   '360': 'CLP'
 };
 
+// Rutas viejas -> nuevas. Las viejas siguen funcionando (links guardados, mails).
+const RUTA_VIEJA: Record<string, { tab: string; seg?: string }> = {
+  inicio: { tab: 'bandeja' }, hoy: { tab: 'bandeja' }, accionables: { tab: 'cuenta', seg: 'accionables' }, semana: { tab: 'cuenta', seg: 'semana' },
+  briefs: { tab: 'cuenta', seg: 'brief' }, clientes: { tab: 'cuenta', seg: 'diagnostico' },
+};
 function getInitialPage() {
   const params = new URLSearchParams(window.location.search);
-  const p = params.get('page');
-  const valid = ['inicio', 'hoy', 'accionables', 'semana', 'briefs', 'datos', 'clientes', 'herramientas', 'sistema'];
-  return p && valid.includes(p) ? p : 'inicio';
+  const p = params.get('page') || '';
+  const valid = ['bandeja', 'cuenta', 'datos', 'herramientas', 'sistema'];
+  if (valid.includes(p)) return p;
+  if (RUTA_VIEJA[p]) return RUTA_VIEJA[p].tab;
+  return 'bandeja';
+}
+function getInitialSegmento(): any {
+  const params = new URLSearchParams(window.location.search);
+  const s = params.get('seg'); const p = params.get('page') || '';
+  if (s) return s;
+  if (RUTA_VIEJA[p]?.seg) return RUTA_VIEJA[p].seg;
+  return 'semana';
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>(getInitialPage);
+  const [segmento, setSegmento] = useState<SegmentoCuenta>(getInitialSegmento);
+  const irA = (tab: string, client?: string, seg?: string) => {
+    if (client) setSelectedClient(client);
+    const m = RUTA_VIEJA[tab];
+    if (m) { if (m.seg) setSegmento(m.seg as SegmentoCuenta); setActiveTab(m.tab); return; }
+    if (seg) setSegmento(seg as SegmentoCuenta);
+    setActiveTab(tab);
+  };
   const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string }>({});
+  const [salud, setSalud] = useState<{ ok: boolean; texto: string } | null>(null);
+  useEffect(() => {
+    const cargar = () => fetch('/api/briefing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((b: any) => {
+      if (!b) return;
+      const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
+      setSalud({ ok: b.datos_al_dia !== false, texto: b.datos_al_dia === false ? 'Datos con problema' : pend === 0 ? 'Datos al día · nada pendiente' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}` });
+    }).catch(() => {});
+    cargar(); const t = setInterval(cargar, 5 * 60 * 1000); return () => clearInterval(t);
+  }, []);
   const [urlBriefId, setUrlBriefId] = useState<string | undefined>(undefined);
   
   const { 
@@ -81,7 +114,7 @@ function App() {
   useEffect(() => {
     if (isAuthenticated && !wasAuth.current && authChecked) {
       const params = new URLSearchParams(window.location.search);
-      if (!params.get('page')) setActiveTab('inicio');
+      if (!params.get('page')) setActiveTab('bandeja');
     }
     wasAuth.current = isAuthenticated;
   }, [isAuthenticated, authChecked]);
@@ -91,11 +124,12 @@ function App() {
     if (!isAuthenticated) return;
     const url = new URL(window.location.href);
     url.searchParams.set('page', activeTab);
+    if (activeTab === 'cuenta') url.searchParams.set('seg', segmento); else url.searchParams.delete('seg');
     if (selectedClient) {
       url.searchParams.set('cliente', selectedClient);
     }
     window.history.replaceState({}, '', url.toString());
-  }, [activeTab, selectedClient, isAuthenticated]);
+  }, [activeTab, segmento, selectedClient, isAuthenticated]);
 
   if (!authChecked) {
     return (
@@ -112,7 +146,7 @@ function App() {
   return (
     <TerminoProvider>
     <div className="flex min-h-screen overflow-hidden select-none">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} />
       
       <div className="ml-16 flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300">
         
@@ -127,6 +161,7 @@ function App() {
               Cuenta:
             </span>
             <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              {salud && <span className="text-[10px] mr-3 tabular" style={{ color: salud.ok ? 'rgba(245,247,250,0.5)' : '#0062CC' }} title="Estado de los datos y lo que espera tu criterio">{salud.texto}</span>}
               {clients.map(client => {
                 const isSelected = (selectedClient || '360').toUpperCase() === client;
                 return (
@@ -189,63 +224,16 @@ function App() {
 
         {/* Main View Area */}
         <main className="flex-1 overflow-y-auto relative custom-scrollbar">
-          {activeTab === 'inicio' && (
-            <Inicio 
-              onNavigate={(page, client) => {
-                if (client) setSelectedClient(client);
-                setActiveTab(page);
-              }} 
-            />
+          {activeTab === 'bandeja' && (
+            <Bandeja onOpenActionable={(act) => setSelectedAction(act)} onGoTo={irA} />
           )}
 
-          {activeTab === 'hoy' && (
-            <Hoy 
-              onOpenActionable={(a) => setSelectedAction(a)}
-              onNavigate={(p, params) => {
-                if (params?.briefId) setUrlBriefId(params.briefId);
-                setActiveTab(p);
-              }}
-            />
-          )}
-
-          {activeTab === 'accionables' && (
-            <Accionables 
-              onOpenActionable={(a) => setSelectedAction(a)}
-              initialClient={selectedClient || 'all'}
-            />
-          )}
-
-          {activeTab === 'semana' && (
-            <Semana 
-              onOpenActionable={(id) => {
-                const found = actionables.find(a => a.id === id);
-                if (found) setSelectedAction(found);
-              }}
-            />
-          )}
-
-          {activeTab === 'briefs' && (
-            <Briefs 
-              onOpenActionable={(id) => {
-                const found = actionables.find(a => a.id === id);
-                if (found) setSelectedAction(found);
-              }}
-              initialBriefId={urlBriefId}
-            />
+          {activeTab === 'cuenta' && (
+            <Cuenta segmento={segmento} onSegmento={setSegmento} onOpenActionable={(act) => setSelectedAction(act)} briefId={urlBriefId} onNavigateToBrief={(id) => { setUrlBriefId(id); setSegmento('brief'); }} />
           )}
 
           {activeTab === 'datos' && (
             <Datos initialSearch={datosInicial.search} initialView={datosInicial.view} />
-          )}
-
-          {activeTab === 'clientes' && (
-            <Clientes 
-              onOpenActionable={(a) => setSelectedAction(a)}
-              onNavigateToBrief={(briefId) => {
-                setUrlBriefId(briefId);
-                setActiveTab('briefs');
-              }}
-            />
           )}
 
           {activeTab === 'herramientas' && (
@@ -264,7 +252,7 @@ function App() {
       {/* Global Command Palette */}
       <CommandPalette 
         activeTab={activeTab} 
-        onTabChange={setActiveTab}
+        onTabChange={(t) => irA(t)}
         onOpenActionable={(a) => setSelectedAction(a)}
       />
 
@@ -286,7 +274,8 @@ function App() {
             onNavigateToBrief={(briefId) => {
               setSelectedAction(null);
               setUrlBriefId(briefId);
-              setActiveTab('briefs');
+              setSegmento('brief');
+              setActiveTab('cuenta');
             }}
             onNavigateToKeyword={(kw) => {
               setSelectedAction(null);

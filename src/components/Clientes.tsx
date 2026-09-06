@@ -11,9 +11,11 @@ import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 interface ClientesProps {
   onOpenActionable?: (action: Actionable) => void;
   onNavigateToBrief?: (briefId: string) => void;
+  zona?: 'todo' | 'diagnostico' | 'memoria' | 'reportes';
 }
 
-export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps) {
+export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }: ClientesProps) {
+  const ver = (z: 'diagnostico' | 'memoria' | 'reportes') => zona === 'todo' || zona === z;
   const { selectedClient, setSelectedClient, actionables, notionBriefs } = useAppStore();
   const activeClient = selectedClient || '360';
   const [clientsInfo, setClientsInfo] = useState<NotionClientInfo[]>([]);
@@ -23,6 +25,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
   const [docMaestro, setDocMaestro] = useState<{ markdown: string; secciones: any[] } | null>(null);
   const [estrategia, setEstrategia] = useState<any>({ decisiones: [], cpa_marginal: [] });
   const [reportes, setReportes] = useState<any[]>([]);
+  const [limitada, setLimitada] = useState<any>(null);
+  useEffect(() => { fetch(`/api/limitada?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setLimitada(d)).catch(() => {}); }, [activeClient]);
   const [reporteAbierto, setReporteAbierto] = useState<any>(null);
   const [editandoReporte, setEditandoReporte] = useState(false);
   const [textoReporte, setTextoReporte] = useState({ resumen_ejecutivo: '', que_cambiamos: '', que_sigue: '' });
@@ -223,6 +227,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       
+      {zona === 'todo' && (<>
       {/* Account Selector & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
@@ -250,6 +255,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         </div>
       </div>
 
+      </>)}
       {/* Warning if weeks < 4 */}
       {isTentative && (
         <div 
@@ -269,12 +275,13 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
       )}
 
       {/* ZONA 1: lo que leés vos. Objetivos, reportes para aprobar, accionables, decisiones. */}
-      <div className="flex items-center gap-3 pt-2">
+      {zona === 'todo' && <div className="flex items-center gap-3 pt-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#FFFFFF]">Para vos</span>
         <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
         <span className="text-[10px] text-[#F5F7FA] opacity-50">objetivos, reportes, pendientes, decisiones</span>
-      </div>
+      </div>}
 
+      {ver('diagnostico') && (<>
       {/* Ficha de Cuenta */}
       <div 
         className="p-5 rounded-2xl space-y-4"
@@ -333,6 +340,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         </div>
       </div>
 
+      </>)}
+      {ver('diagnostico') && (<>
       {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
       <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -392,6 +401,45 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         )}
       </div>
 
+
+      </>)}
+      {ver('diagnostico') && (<>
+      {/* Por qué está limitada: los tres componentes del Quality Score, ponderados por gasto */}
+      {limitada?.por_que && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Por qué está donde está</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
+          </div>
+          <p className="text-sm text-[#FFFFFF] leading-relaxed">{limitada.por_que}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[['CTR esperado', limitada.pct_gasto_ctr_bajo, 'Titulares más directos o concordancia más cerrada'], ['Relevancia del anuncio', limitada.pct_gasto_rel_baja, 'Anuncios que repitan la keyword'], ['Landing', limitada.pct_gasto_lp_baja, 'Solo el cliente puede cambiarla']].map(([n, v, r]) => (
+              <div key={String(n)} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                <div className="text-[10px] text-[#F5F7FA] opacity-50">{n}</div>
+                <div className="text-lg tabular text-[#FFFFFF]">{v ?? 0}%<span className="text-[10px] opacity-50 ml-1">del gasto bajo el promedio</span></div>
+                <div className="text-[10px] text-[#F5F7FA] opacity-50">{r}</div>
+              </div>
+            ))}
+          </div>
+          {Array.isArray(limitada.peores) && limitada.peores.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Las keywords que más pesan</div>
+              {limitada.peores.slice(0, 6).map((k: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[#FFFFFF] flex-1 truncate">{k.keyword}<span className="opacity-50"> · {k.grupo}</span></span>
+                  <span className="tabular text-[#F5F7FA] opacity-70">{fmtMoney(k.gasto)}</span>
+                  <span className="tabular text-[#F5F7FA] opacity-50">QS {k.qs}</span>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-50">{[k.ctr && 'CTR', k.rel && 'relevancia', k.lp && 'landing'].filter(Boolean).join(', ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-[#F5F7FA] opacity-40">QS ponderado por gasto: {limitada.qs_ponderado}. Datos de la última semana cerrada.</p>
+        </div>
+      )}
+
+      </>)}
+      {ver('diagnostico') && (<>
       {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
       <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -420,6 +468,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         ) : <p className="text-xs text-[#F5F7FA] opacity-60">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
       </div>
 
+      </>)}
+      {ver('reportes') && (<>
       {/* Reportes al cliente */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -485,6 +535,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         )}
       </div>
 
+      </>)}
+      {ver('diagnostico') && (<>
       {/* Accionables Abiertos de esta cuenta */}
       <div 
         className="p-5 rounded-2xl space-y-3"
@@ -529,6 +581,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
 
 
 
+      </>)}
+      {ver('diagnostico') && (<>
       {/* Decisiones estructurales */}
       {estrategia.decisiones.length > 0 && (() => {
         const d = estrategia.decisiones[0];
@@ -585,13 +639,15 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
       })()}
 
 
+      </>)}
       {/* ZONA 2: lo que el sistema recuerda entre semanas. Lo escribe la tarea del lunes; vos lo corregís si está mal. */}
-      <div className="flex items-center gap-3 pt-4">
+      {zona === 'todo' && <div className="flex items-center gap-3 pt-4">
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#F5F7FA] opacity-70">Lo que el sistema recuerda</span>
         <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
         <span className="text-[10px] text-[#F5F7FA] opacity-50">lo escribe la tarea del lunes; corregilo si está mal</span>
-      </div>
+      </div>}
 
+      {ver('memoria') && (<>
       {/* Hipótesis Abiertas */}
       <div 
         className="p-5 rounded-2xl space-y-3"
@@ -648,6 +704,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         )}
       </div>
 
+      </>)}
+      {ver('memoria') && (<>
       {/* Aprendizajes Consolidados (Fechados) */}
       <div 
         className="p-5 rounded-2xl space-y-3"
@@ -682,6 +740,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         </div>
       </div>
 
+      </>)}
+      {ver('memoria') && (<>
       {/* Doc maestro ensamblado */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -729,6 +789,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }

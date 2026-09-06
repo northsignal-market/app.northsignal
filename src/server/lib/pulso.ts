@@ -65,12 +65,14 @@ export interface PulsoResultado {
 
 export function pulsoDisponible(): boolean { return !!anthropic; }
 
-export async function correrPulso(cuenta: string, fecha: string, input: any, reglasCuenta: string): Promise<PulsoResultado> {
+export async function correrPulso(cuenta: string, fecha: string, input: any, reglasCuenta: string, parecidos: any[] = []): Promise<PulsoResultado> {
   if (!anthropic) return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: 'ANTHROPIC_API_KEY no configurada' };
 
   const plan = input?.plan;
   const sinPlan = !plan;
 
+  // Lo que se parece a lo de hoy, encontrado por embeddings (no por memoria del modelo)
+  const memoriaTxt = parecidos.length ? `\n\nEPISODIOS PARECIDOS (encontrados por búsqueda semántica en la memoria del sistema; usalos para conecta_con solo si de verdad se parecen):\n${parecidos.map((m: any) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join('\n')}` : '';
   const system = `Sos el analista diario de la cuenta de Google Ads ${cuenta}. Sos el ciclo rápido de un sistema de dos ciclos: el lunes, un analista semanal escribió un PLAN con indicadores a vigilar, umbrales, hipótesis y condiciones de escalamiento. Tu trabajo es reportar EVIDENCIA contra ese plan para el día ${fecha}, no reinterpretar la estrategia.
 
 REGLAS DE LA CUENTA (no negociables):
@@ -79,6 +81,7 @@ ${reglasCuenta}
 PRINCIPIOS:
 - Lo observado se escribe como hecho; lo inferido como hipótesis con qué lo confirmaría.
 - Una discrepancia no es hallazgo hasta descartar operador, reloj y configuración. Si operator_log o cambios_google explican el movimiento, decilo.
+- operator_log dice lo que Andrés YA HIZO, con fecha. Nunca propongas hacer lo que ya está hecho, ni deshacerlo, ni lo reportes como pendiente. Si operator_log dice "cambié X de A a B el día D", el estado actual es B desde D, y cualquier lectura anterior a D que diga A es histórica. El 6 de septiembre un pulso propuso revertir un cambio que Andrés había registrado ese mismo día; la tarea semanal lo descartó. No se repite.
 - Los días provisionales (madurez ≠ consolidado) no sostienen conclusiones sobre conversiones.
 - Ante un deterioro, mirá primero conv_por_grupo: ¿es un grupo o toda la cuenta?
 - Una caída de volumen (impresiones, clics) y una caída de tasa (conv_rate) son dos preguntas con dos causas posibles.
@@ -96,29 +99,32 @@ SOBRE HALLAZGOS: reportá todo lo que encontrás, incluidos los de confianza baj
 SOBRE NIVEL: critico si hay un hallazgo critica con confianza ≥ 0,8. atencion si alguna condición del plan lleva 2+ días cumpliéndose o hay un hallazgo alta con confianza ≥ 0,7. normal en cualquier otro caso.
 ${sinPlan ? '\nNO HAY PLAN para esta semana. Reportá evidencia sobre los cuatro indicadores base (clics, conv_rate, cpc, lost_is_budget) con umbrales de la mediana de los 7 días, y marcá en el resumen que falta el plan.' : ''}`;
 
-  const user = `DATOS DEL ${fecha}:\n${JSON.stringify(input)}`;
+  const user = `DATOS DEL ${fecha}:\n${JSON.stringify(input)}${memoriaTxt}`;
 
   try {
     const msg = await anthropic.messages.parse({
       model: 'claude-sonnet-5',
       max_tokens: 16000,
-      system,
+      // El system es estable dia a dia por cuenta: se cachea (1 hora) y el input cuesta un decimo en las corridas siguientes.
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } as any }],
       messages: [{ role: 'user', content: user }],
       output_config: { effort: 'medium', format: zodOutputFormat(PulsoSchema) }
     });
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error('Sin parsed_output: ' + (msg.stop_reason || 'desconocido'));
     if (msg.stop_reason === 'max_tokens') throw new Error('Se cortó por max_tokens');
-    const tin = msg.usage.input_tokens || 0;
-    const tout = msg.usage.output_tokens || 0;
-    return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
+    const u: any = msg.usage;
+    const tin = u.input_tokens || 0, tout = u.output_tokens || 0, tcache = u.cache_read_input_tokens || 0, tcw = u.cache_creation_input_tokens || 0;
+    // Cache read cuesta 10% del input; cache write 125% (1h: 200%)
+    const costo = tin * PRECIO_IN + tcache * PRECIO_IN * 0.1 + tcw * PRECIO_IN * 2 + tout * PRECIO_OUT;
+    return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin + tcache + tcw, tokens_out: tout, costo_usd: costo, parsed };
   } catch (e: any) {
     // Si se cortó el JSON, reintentar una vez pidiendo cobertura acotada
     if (/Unterminated|max_tokens|parse structured/i.test(String(e.message)) && !system.includes('REINTENTO')) {
       try {
         const msg2 = await anthropic.messages.parse({
           model: 'claude-sonnet-5', max_tokens: 16000,
-          system: system + '\n\nREINTENTO: la respuesta anterior se cortó por largo. Limitá hallazgos a los 4 más relevantes y cada evidencia_texto a dos oraciones.',
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } as any }, { type: 'text', text: 'REINTENTO: la respuesta anterior se cortó por largo. Limitá hallazgos a los 4 más relevantes y cada evidencia_texto a dos oraciones.' }],
           messages: [{ role: 'user', content: user }],
           output_config: { effort: 'medium', format: zodOutputFormat(PulsoSchema) }
         });

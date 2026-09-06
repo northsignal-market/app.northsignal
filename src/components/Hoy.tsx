@@ -32,6 +32,8 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   const [pulsoDiario, setPulsoDiario] = useState<any[]>([]);
   const [plan, setPlan] = useState<any>(null);
   const [alertas, setAlertas] = useState<any[]>([]);
+  const [ciclo, setCiclo] = useState<any>(null);
+  useEffect(() => { fetch(`/api/ciclo?client=${selectedClient || ''}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCiclo(d)).catch(() => {}); }, [selectedClient]);
   const cargarAlertas = () => fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
   useEffect(() => { cargarAlertas(); }, []);
   const accionAlerta = async (id: number, accion: string) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargarAlertas(); };
@@ -337,6 +339,41 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
           </div>
         );
       })()}
+
+
+      {/* BLOQUE: EL CICLO CERRADO. Lo que hiciste y qué pasó; lo que el sistema predijo y si acertó. */}
+      {ciclo && (ciclo.impactos?.length > 0 || ciclo.predicciones?.length > 0 || ciclo.global?.n > 0) && (
+        <div className="p-4 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[13px] font-medium text-[#FFFFFF]">Qué pasó después</h2>
+            {ciclo.global?.n > 0 && <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular">El sistema prometió {ciclo.global.prometido_pct}% de acierto y acertó {ciclo.global.real_pct}% en {ciclo.global.n} predicciones</span>}
+          </div>
+          {ciclo.impactos?.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Tus cambios, 14 días después</div>
+              {ciclo.impactos.slice(0, 4).map((i: any, k: number) => (
+                <div key={k} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{String(i.ejecutado_el).slice(5)}</span>
+                  <span className="text-xs text-[#F5F7FA] flex-1 truncate">{i.titulo}</span>
+                  <span className={`text-xs tabular shrink-0 font-medium ${String(i.veredicto || '').startsWith('MEJOR') ? 'text-[#FFFFFF]' : String(i.veredicto || '').startsWith('PEOR') ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${Number(i.variacion_pct).toFixed(0)}%` : (i.veredicto || '').split(':')[0]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {ciclo.predicciones?.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Lo que el sistema predijo</div>
+              {ciclo.predicciones.slice(0, 4).map((p: any) => (
+                <div key={p.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">sem {String(p.semana).slice(5)}</span>
+                  <span className="text-xs text-[#F5F7FA] flex-1">{p.account} · {p.metrica} entre {Number(p.valor_min).toLocaleString('es-CL')} y {Number(p.valor_max).toLocaleString('es-CL')} <span className="opacity-50">({Math.round(p.probabilidad * 100)}% seguro)</span></span>
+                  <span className={`text-xs shrink-0 ${p.acerto === true ? 'text-[#FFFFFF]' : p.acerto === false ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-40'}`}>{p.acerto === true ? `acertó: ${Number(p.valor_real).toLocaleString('es-CL')}` : p.acerto === false ? `falló: ${Number(p.valor_real).toLocaleString('es-CL')}` : 'en curso'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* BLOQUE 1D: EL PLAN DE LA SEMANA Y LA EVIDENCIA ACUMULADA */}
       {plan?.plan && (() => {

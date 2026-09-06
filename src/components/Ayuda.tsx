@@ -9,7 +9,7 @@ import { MessageCircle, Bug, X, Send, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
-const NOMBRES: Record<string, string> = { inicio: 'Inicio', hoy: 'Hoy', accionables: 'Accionables', semana: 'Semana', briefs: 'Briefs', datos: 'Datos', clientes: 'Clientes', herramientas: 'Herramientas', sistema: 'Sistema' };
+const NOMBRES: Record<string, string> = { bandeja: 'Bandeja', cuenta: 'Cuenta', datos: 'Datos', herramientas: 'Herramientas', sistema: 'Sistema' };
 
 export function Ayuda({ pagina }: { pagina: string }) {
   const { selectedClient } = useAppStore();
@@ -74,7 +74,7 @@ export function Ayuda({ pagina }: { pagina: string }) {
                   <div className="text-xs text-[#F5F7FA] opacity-60 leading-relaxed space-y-2">
                     <p>Preguntame dónde está algo, qué significa un término, o cómo va una cuenta. Consulto los datos reales; no invento números.</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {['¿Cómo va ' + (selectedClient || 'Karedo') + '?', '¿Qué es cuota perdida por ranking?', '¿Dónde apruebo el reporte al cliente?', '¿Qué dice el plan de esta semana?'].map(q => (
+                      {['¿Cómo va ' + (selectedClient || 'Karedo') + '?', '¿Qué es cuota perdida por ranking?', '¿Dónde apruebo el reporte al cliente?', '¿Qué hago con lo que espera confirmación?', '¿Qué dice el plan de esta semana?'].map(q => (
                         <button key={q} onClick={() => setTexto(q)} className="px-2 py-1 rounded-md text-[11px] text-[#F5F7FA]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>{q}</button>
                       ))}
                     </div>

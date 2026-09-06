@@ -54,15 +54,15 @@ export function CommandPalette({
 
   // 1. Views
   const views = [
-    { id: 'inicio', label: 'Inicio (Antesala)' },
-    { id: 'hoy', label: 'HOY (Requiere tu criterio & Pulso)' },
-    { id: 'accionables', label: 'Accionables (Lista de ejecución)' },
-    { id: 'semana', label: 'Semana (Diagnóstico & Términos nuevos)' },
-    { id: 'briefs', label: 'Briefs (Lectura de análisis)' },
-    { id: 'datos', label: 'Datos (Vistas analíticas)' },
-    { id: 'clientes', label: 'Clientes (Memoria de cuenta)' },
-    { id: 'herramientas', label: 'Herramientas (RSA & Optimizaciones)' },
-    { id: 'sistema', label: 'Sistema (Salud & Scorecard)' },
+    { id: 'bandeja', label: 'Bandeja: lo que espera tu criterio' },
+    { id: 'cuenta', label: 'Cuenta: semana, diagnóstico, brief, accionables, memoria, reportes' },
+    { id: 'semana', label: 'Cuenta › Semana: gráfico, plan, día por día' },
+    { id: 'clientes', label: 'Cuenta › Diagnóstico: por qué está donde está' },
+    { id: 'briefs', label: 'Cuenta › Brief del lunes' },
+    { id: 'accionables', label: 'Cuenta › Todos los accionables' },
+    { id: 'datos', label: 'Datos: tablas por campaña, grupo, keyword, término' },
+    { id: 'herramientas', label: 'Herramientas: escribir anuncios, guía de operación' },
+    { id: 'sistema', label: 'Sistema: salud, aprendizaje, automatización, soporte' },
   ];
   views.forEach(v => {
     if (v.label.toLowerCase().includes(q) || v.id.toLowerCase().includes(q)) {

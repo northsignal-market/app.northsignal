@@ -20,11 +20,11 @@ const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
   ) },
   { id: 'lunes', titulo: 'Qué hacés cada lunes', cuerpo: (
     <ol className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed list-decimal pl-4">
-      <li><span className="text-[#FFFFFF]">Hoy.</span> Si hay alertas que piden acción, empezá por ahí. Después el plan de la semana: qué indicador lleva días cumpliendo. Después lo que espera tu criterio.</li>
-      <li><span className="text-[#FFFFFF]">Briefs.</span> Leé el titular y el handoff de cada cuenta. El brief completo solo si el titular te sorprende.</li>
-      <li><span className="text-[#FFFFFF">Accionables.</span> Filtrá por Propuesto. Abrí cada uno, seguí "Cómo hacerlo" con Google Ads en la otra pestaña, y marcalo Hecho con la fecha. Los Bloqueados son deducciones: si tienen sentido, Confirmar; si no, Descartar con una línea en Decisión final.</li>
-      <li><span className="text-[#FFFFFF]">Clientes › Reportes.</span> Leé el borrador. Si está bien, Aprobar. Si querés cambiar una frase, Editar texto, Guardar, Aprobar. Ver PDF lo genera y lo abre.</li>
-      <li><span className="text-[#FFFFFF]">Si cambiaste algo que el sistema no propuso</span>, anotalo en Sistema › Bitácora. Es la única forma de que el análisis del lunes siguiente sepa por qué se movió un número.</li>
+      <li><span className="text-[#FFFFFF]">Bandeja.</span> Es una cola: pide acción hoy, listos para ejecutar, esperan confirmación, reportes para aprobar. Trabajala de arriba a abajo hasta que diga "Nada te espera".</li>
+      <li><span className="text-[#FFFFFF]">Cuenta › Brief.</span> Leé el titular y el handoff de cada cuenta. El brief completo solo si el titular te sorprende.</li>
+      <li><span className="text-[#FFFFFF]">Cada accionable.</span> Abrilo desde la Bandeja. Si es negativa o pausa, "Aprobar y que se haga" y el script lo ejecuta en la hora. Si no, seguí "Cómo hacerlo" con Google Ads en la otra pestaña y marcalo Hecho con la fecha. Los que esperan confirmación son deducciones: si tienen sentido, Confirmar; si no, Descartar con una línea en Decisión final.</li>
+      <li><span className="text-[#FFFFFF]">Cuenta › Reportes.</span> Leé el borrador. Si está bien, Aprobar. Si querés cambiar una frase, Editar texto, Guardar, Aprobar. Ver PDF lo genera y lo abre.</li>
+      <li><span className="text-[#FFFFFF]">Si cambiaste algo que el sistema no propuso</span>, anotalo en Sistema › Soporte › Bitácora. Es la única forma de que el análisis del lunes siguiente sepa por qué se movió un número.</li>
     </ol>
   ) },
   { id: 'accionable', titulo: 'Ejecutar un accionable', cuerpo: (
@@ -37,13 +37,13 @@ const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
   ) },
   { id: 'reporte', titulo: 'Aprobar un reporte al cliente', cuerpo: (
     <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
-      <p>El lunes a las 9:15 aparece el borrador en <span className="text-[#FFFFFF]">Clientes › Reportes al cliente</span>, en el idioma de esa cuenta. Tiene las secciones que vos usás: contexto, observaciones, cambios aplicados, puntos de atención, próximos pasos. Los números del período y las tablas de campañas y grupos con gasto los pone el sistema desde Supabase.</p>
+      <p>El lunes a las 9:15 aparece el borrador en <span className="text-[#FFFFFF]">Cuenta › Reportes</span>, y en la Bandeja como "reporte para aprobar", en el idioma de esa cuenta. Tiene las secciones que vos usás: contexto, observaciones, cambios aplicados, puntos de atención, próximos pasos. Los números del período y las tablas de campañas y grupos con gasto los pone el sistema desde Supabase.</p>
       <p><span className="text-[#FFFFFF]">Ver PDF</span> lo genera con el branding de NorthSignal y lo abre. <span className="text-[#FFFFFF]">Editar texto</span> si querés cambiar algo. <span className="text-[#FFFFFF]">Aprobar</span> cuando esté listo. El envío por el canal de cada cuenta (Slack para Karedo, mail para BHI) viene en la siguiente versión; mientras tanto, descargá el PDF y mandalo.</p>
     </div>
   ) },
   { id: 'nocuadra', titulo: 'Cuando algo no cuadra', cuerpo: (
     <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
-      <p><span className="text-[#FFFFFF]">Un número que no coincide con Google Ads.</span> Primero mirá la madurez: los últimos dos días son provisionales y Google sigue asentando conversiones hasta siete días. Si es un día consolidado y no cuadra, Sistema › Datos por cuenta te dice cuándo fue la última extracción.</p>
+      <p><span className="text-[#FFFFFF]">Un número que no coincide con Google Ads.</span> Primero mirá la madurez: los últimos dos días son provisionales y Google sigue asentando conversiones hasta siete días. Si es un día consolidado y no cuadra, Sistema › Salud te dice cuándo fue la última extracción.</p>
       <p><span className="text-[#FFFFFF]">Un accionable que no tiene sentido.</span> Descartalo con una línea en Decisión final diciendo por qué. La tarea del lunes lee eso y aprende.</p>
       <p><span className="text-[#FFFFFF]">Algo de la app que falla o confunde.</span> El botón de abajo a la derecha: Reportar. Decí en qué pantalla, qué esperabas ver y qué viste. Va con la página y la cuenta ya cargadas. Claude lo lee al empezar la siguiente sesión.</p>
       <p><span className="text-[#FFFFFF]">Una pregunta.</span> El mismo botón: Preguntar. Sabe dónde está cada cosa en la app, qué significa cada término, y consulta los datos reales de las cuentas.</p>

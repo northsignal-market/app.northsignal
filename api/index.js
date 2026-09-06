@@ -518,10 +518,14 @@ var PulsoSchema = z2.object({
 function pulsoDisponible() {
   return !!anthropic;
 }
-async function correrPulso(cuenta, fecha2, input, reglasCuenta) {
+async function correrPulso(cuenta, fecha2, input, reglasCuenta, parecidos = []) {
   if (!anthropic) return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: "ANTHROPIC_API_KEY no configurada" };
   const plan = input?.plan;
   const sinPlan = !plan;
+  const memoriaTxt = parecidos.length ? `
+
+EPISODIOS PARECIDOS (encontrados por b\xFAsqueda sem\xE1ntica en la memoria del sistema; usalos para conecta_con solo si de verdad se parecen):
+${parecidos.map((m) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join("\n")}` : "";
   const system = `Sos el analista diario de la cuenta de Google Ads ${cuenta}. Sos el ciclo r\xE1pido de un sistema de dos ciclos: el lunes, un analista semanal escribi\xF3 un PLAN con indicadores a vigilar, umbrales, hip\xF3tesis y condiciones de escalamiento. Tu trabajo es reportar EVIDENCIA contra ese plan para el d\xEDa ${fecha2}, no reinterpretar la estrategia.
 
 REGLAS DE LA CUENTA (no negociables):
@@ -530,6 +534,7 @@ ${reglasCuenta}
 PRINCIPIOS:
 - Lo observado se escribe como hecho; lo inferido como hip\xF3tesis con qu\xE9 lo confirmar\xEDa.
 - Una discrepancia no es hallazgo hasta descartar operador, reloj y configuraci\xF3n. Si operator_log o cambios_google explican el movimiento, decilo.
+- operator_log dice lo que Andr\xE9s YA HIZO, con fecha. Nunca propongas hacer lo que ya est\xE1 hecho, ni deshacerlo, ni lo reportes como pendiente. Si operator_log dice "cambi\xE9 X de A a B el d\xEDa D", el estado actual es B desde D, y cualquier lectura anterior a D que diga A es hist\xF3rica. El 6 de septiembre un pulso propuso revertir un cambio que Andr\xE9s hab\xEDa registrado ese mismo d\xEDa; la tarea semanal lo descart\xF3. No se repite.
 - Los d\xEDas provisionales (madurez \u2260 consolidado) no sostienen conclusiones sobre conversiones.
 - Ante un deterioro, mir\xE1 primero conv_por_grupo: \xBFes un grupo o toda la cuenta?
 - Una ca\xEDda de volumen (impresiones, clics) y una ca\xEDda de tasa (conv_rate) son dos preguntas con dos causas posibles.
@@ -547,28 +552,30 @@ SOBRE HALLAZGOS: report\xE1 todo lo que encontr\xE1s, incluidos los de confianza
 SOBRE NIVEL: critico si hay un hallazgo critica con confianza \u2265 0,8. atencion si alguna condici\xF3n del plan lleva 2+ d\xEDas cumpli\xE9ndose o hay un hallazgo alta con confianza \u2265 0,7. normal en cualquier otro caso.
 ${sinPlan ? "\nNO HAY PLAN para esta semana. Report\xE1 evidencia sobre los cuatro indicadores base (clics, conv_rate, cpc, lost_is_budget) con umbrales de la mediana de los 7 d\xEDas, y marc\xE1 en el resumen que falta el plan." : ""}`;
   const user = `DATOS DEL ${fecha2}:
-${JSON.stringify(input)}`;
+${JSON.stringify(input)}${memoriaTxt}`;
   try {
     const msg = await anthropic.messages.parse({
       model: "claude-sonnet-5",
       max_tokens: 16e3,
-      system,
+      // El system es estable dia a dia por cuenta: se cachea (1 hora) y el input cuesta un decimo en las corridas siguientes.
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
       messages: [{ role: "user", content: user }],
       output_config: { effort: "medium", format: zodOutputFormat(PulsoSchema) }
     });
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error("Sin parsed_output: " + (msg.stop_reason || "desconocido"));
     if (msg.stop_reason === "max_tokens") throw new Error("Se cort\xF3 por max_tokens");
-    const tin = msg.usage.input_tokens || 0;
-    const tout = msg.usage.output_tokens || 0;
-    return { cuenta, fecha: fecha2, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
+    const u = msg.usage;
+    const tin = u.input_tokens || 0, tout = u.output_tokens || 0, tcache = u.cache_read_input_tokens || 0, tcw = u.cache_creation_input_tokens || 0;
+    const costo = tin * PRECIO_IN + tcache * PRECIO_IN * 0.1 + tcw * PRECIO_IN * 2 + tout * PRECIO_OUT;
+    return { cuenta, fecha: fecha2, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin + tcache + tcw, tokens_out: tout, costo_usd: costo, parsed };
   } catch (e) {
     if (/Unterminated|max_tokens|parse structured/i.test(String(e.message)) && !system.includes("REINTENTO")) {
       try {
         const msg2 = await anthropic.messages.parse({
           model: "claude-sonnet-5",
           max_tokens: 16e3,
-          system: system + "\n\nREINTENTO: la respuesta anterior se cort\xF3 por largo. Limit\xE1 hallazgos a los 4 m\xE1s relevantes y cada evidencia_texto a dos oraciones.",
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }, { type: "text", text: "REINTENTO: la respuesta anterior se cort\xF3 por largo. Limit\xE1 hallazgos a los 4 m\xE1s relevantes y cada evidencia_texto a dos oraciones." }],
           messages: [{ role: "user", content: user }],
           output_config: { effort: "medium", format: zodOutputFormat(PulsoSchema) }
         });
@@ -636,6 +643,9 @@ var GLOSARIO = {
   "GBRAID": "Identificador del clic en iOS con privacidad. Equivale al GCLID; Make lo descartaba.",
   "Ventana de 90 d\xEDas": "Google solo acepta conversiones offline de clics de hasta 90 d\xEDas. Un ciclo m\xE1s largo no se puede atribuir.",
   // Sistema
+  "Bandeja": "La cola de lo que espera tu criterio: acci\xF3n hoy, listos, por confirmar, reportes. Vac\xEDa es la meta.",
+  "Calibraci\xF3n": "Si el sistema acierta lo que promete: con 80% de confianza declarada, deber\xEDa acertar 8 de 10.",
+  "Predicci\xF3n": "Rango de conversiones o CPA para la semana que empieza, con la probabilidad de caer adentro. Se compara el lunes siguiente.",
   "Pulso diario": "Interpretaci\xF3n de Sonnet 5 de cada d\xEDa contra el plan de la semana. Evidencia, no conclusi\xF3n.",
   "Plan semanal": "Lo que Opus 5 escribi\xF3 el lunes: qu\xE9 vigilar, con qu\xE9 umbral, qu\xE9 hip\xF3tesis probar.",
   "Leading indicator": "M\xE9trica que se mueve antes que el resultado. Con lo leading se dirige; con lo lagging se califica.",
@@ -650,15 +660,18 @@ var GLOSARIO = {
 // src/server/lib/asistente.ts
 var anthropic2 = process.env.ANTHROPIC_API_KEY ? new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 var MAPA_APP = `
-SECCIONES DE LA APP (men\xFA izquierdo, tres grupos):
-- Operar: Inicio (resumen de las tres cuentas al entrar), Hoy (lo que pas\xF3 ayer, plan de la semana, accionables que esperan tu criterio, pulso intrad\xEDa), Accionables (todos, con filtros; al abrir uno ves Por qu\xE9, C\xF3mo hacerlo con pasos en Google Ads, y pod\xE9s marcarlo Hecho), Semana (gr\xE1fico de 14 d\xEDas con lentes gasto/CPA, conversiones/clics, CTR/CPC; rango 7, 14 o fechas a elecci\xF3n; conversiones por grupo; mapa de calor hora\xD7d\xEDa; qu\xE9 encontr\xF3 el an\xE1lisis diario cada d\xEDa; b\xFAsquedas nuevas que gastan sin convertir o que convierten; cambios en la cuenta colapsados).
-- Entender: Briefs (el an\xE1lisis semanal completo que escribe la tarea del lunes, con handoff y lecciones), Datos (tablas por campa\xF1a, grupo, keyword, t\xE9rmino con cualquier rango de fechas; exportar PDF), Clientes (memoria de cada cuenta: ficha, objetivos, escalera de valor, decisiones estructurales, reportes al cliente para aprobar, doc maestro editable).
-- Mantener: Herramientas (RSA Factory para escribir anuncios desde t\xE9rminos que convierten; playbook), Sistema (salud de datos, calidad de cada an\xE1lisis, aprendizaje, alertas, tickets, bit\xE1cora de cambios que hiciste a mano).
-- Arriba: selector de cuenta (Karedo, BHI, 360). Casi todo responde a la cuenta seleccionada. Cmd+K abre la paleta para saltar a cualquier lado.
+SECCIONES DE LA APP (men\xFA izquierdo, cinco \xEDtems):
+- Bandeja: la pantalla de inicio. Una cola con lo que espera el criterio de Andr\xE9s, en orden: pide acci\xF3n hoy, listos para ejecutar, esperan confirmaci\xF3n, reportes para aprobar. Cada fila se abre ah\xED. Cuando est\xE1 vac\xEDa dice "Nada te espera". Debajo, colapsados: ayer en cada cuenta (una l\xEDnea por cuenta) y qu\xE9 pas\xF3 despu\xE9s (impacto de cambios a 14 d\xEDas, predicciones acertadas o falladas).
+- Cuenta: todo lo de una cuenta, con el selector arriba (Karedo, BHI, 360) y seis pesta\xF1as. Semana: gr\xE1fico de 14 d\xEDas con lentes gasto/CPA, conversiones/clics, CTR/CPC; rango 7, 14 o fechas a elecci\xF3n; el plan de la semana con sus indicadores y cu\xE1ntos d\xEDas llevan cumpli\xE9ndose; qu\xE9 encontr\xF3 el an\xE1lisis diario d\xEDa por d\xEDa; colapsados: conversiones por grupo, cu\xE1ndo convierte (hora y d\xEDa), b\xFAsquedas nuevas, cambios en la cuenta. Diagn\xF3stico: ficha, objetivos y headroom, por qu\xE9 est\xE1 donde est\xE1 (los tres componentes del Quality Score ponderados por gasto), escalera de valor, accionables abiertos, decisiones estructurales. Brief: el an\xE1lisis completo del lunes con handoff. Accionables: todos, con filtros, incluidos hechos y descartados. Memoria: hip\xF3tesis abiertas, aprendizajes, doc maestro editable. Reportes: borradores al cliente para aprobar, editar, ver PDF.
+- Datos: tablas por campa\xF1a, grupo, keyword, t\xE9rmino de b\xFAsqueda y conversiones, agrupadas en Por semana, Por d\xEDa y Diagn\xF3stico; cualquier rango de fechas; exportar PDF.
+- Herramientas: RSA Factory (escribir anuncios desde los t\xE9rminos que convierten) y Gu\xEDa de operaci\xF3n (c\xF3mo funciona el ciclo, qu\xE9 hacer cada lunes, ejecutar un accionable, aprobar un reporte, cuando algo no cuadra).
+- Sistema, cuatro grupos: Salud (datos por cuenta, integridad, tama\xF1o); Aprendizaje (calidad de cada an\xE1lisis, qu\xE9 pas\xF3 despu\xE9s de cada accionable, reflexiones, qui\xE9n escribe qu\xE9 y lo que el reconciliador corrigi\xF3); Automatizaci\xF3n (alertas, ejecuciones aprobadas, cambios de configuraci\xF3n); Soporte (tickets para Claude, bit\xE1cora de lo que Andr\xE9s cambi\xF3 a mano, ajustes).
+- Cmd+K abre la paleta para saltar a cualquier lado. El bot\xF3n flotante abajo a la derecha: Preguntar (este asistente) y Reportar (ticket).
+- Al abrir un accionable: Por qu\xE9, C\xF3mo hacerlo (pasos en Google Ads), D\xF3nde, y si es negativa o pausa, "Aprobar y que se haga" para que un script lo ejecute en la pr\xF3xima hora.
 
-C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:00, semanal lunes 7:00). Cada ma\xF1ana 6:45 Sonnet 5 lee el d\xEDa anterior contra el plan de la semana y escribe el pulso. Cada lunes Opus 5 en Cowork analiza la semana, escribe el brief, accionables, reporte al cliente y el plan siguiente. Andr\xE9s ejecuta los accionables en Google Ads y aprueba los reportes. Nada cambia en Google Ads sin que \xE9l lo haga.
+C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:00, semanal lunes 7:00). Centinela cada 4 horas dentro de Google Ads: el \xFAnico que ve el d\xEDa en curso. Cada ma\xF1ana 6:45 Sonnet 5 lee el d\xEDa anterior contra el plan de la semana y escribe el pulso, buscando en la memoria sem\xE1ntica episodios parecidos. Cada lunes Opus 5 en Cowork analiza la semana, escribe el brief, accionables con pasos, reporte al cliente, el plan siguiente y dos predicciones con rango y probabilidad. Un reconciliador en SQL cada ma\xF1ana vence lo que nadie toc\xF3, deduplica por entidad y cierra alertas que cesaron. Andr\xE9s ejecuta los accionables (o aprueba que el script ejecute negativas y pausas) y aprueba los reportes. Nada cambia en Google Ads sin que \xE9l lo decida.
 
-REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducci\xF3n, espera confirmaci\xF3n de Andr\xE9s. Hecho = ejecutado, con fecha. Descartado = decidi\xF3 no hacerlo. Naturaleza: Observaci\xF3n (dato visto), Inferencia (deducido), Hip\xF3tesis (explicaci\xF3n posible).
+REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducci\xF3n o lo propuso un proceso autom\xE1tico; espera confirmaci\xF3n. En curso = aprobado para ejecuci\xF3n autom\xE1tica. Hecho = ejecutado, con fecha. Descartado = decidi\xF3 no hacerlo. Origen: Semanal, Pulso diario, Anomalias, Andres, Reconciliador. Naturaleza: Observaci\xF3n, Inferencia, Hip\xF3tesis.
 `;
 var TOOLS = [
   { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] } }, required: ["cuenta"] } },
@@ -725,6 +738,46 @@ PREGUNTA: ${mensajes[mensajes.length - 1]?.content || ""}`;
     msgs.push({ role: "user", content: results });
   }
   return { texto: "No pude cerrar la respuesta en cuatro pasos. Prob\xE1 una pregunta m\xE1s acotada.", costo_usd: costo };
+}
+
+// src/server/lib/memoria.ts
+async function embed(textos) {
+  if (!ai || !textos.length) return null;
+  try {
+    const out = [];
+    for (const t of textos) {
+      const r = await ai.models.embedContent({ model: "text-embedding-004", contents: t.slice(0, 2e3) });
+      const v = r?.embeddings?.[0]?.values || r?.embedding?.values;
+      if (!v) return null;
+      out.push(v);
+    }
+    return out;
+  } catch (e) {
+    console.error("[embed] " + e.message);
+    return null;
+  }
+}
+async function embeberPendientes(supabase2) {
+  const { data: pend } = await supabase2.from("v_memoria_pendiente").select("*");
+  if (!pend?.length) return 0;
+  const vecs = await embed(pend.map((p) => `${p.tipo}: ${p.texto}`));
+  if (!vecs) return 0;
+  let n = 0;
+  for (let i = 0; i < pend.length; i++) {
+    const { error } = await supabase2.from("memoria").update({ embedding: JSON.stringify(vecs[i]) }).eq("id", pend[i].id);
+    if (!error) n++;
+  }
+  return n;
+}
+async function parecidoA(supabase2, texto, account, k = 5, excluirDesde = null) {
+  const v = await embed([texto]);
+  if (!v) return [];
+  const { data, error } = await supabase2.rpc("parecido_a", { p_embedding: JSON.stringify(v[0]), p_account: account, p_k: k, p_excluir_desde: excluirDesde });
+  if (error) {
+    console.error("[parecido_a] " + error.message);
+    return [];
+  }
+  return data || [];
 }
 
 // src/server/auth/session.ts
@@ -2750,6 +2803,26 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       const { error } = await supabase.from("accionables_espejo").upsert(filas, { onConflict: "notion_id" });
       if (error) throw new Error(error.message);
     }
+    let rellenados = 0;
+    for (const f of filas) {
+      if (!["Propuesto", "Bloqueado", "En curso"].includes(f.estado)) continue;
+      const props = {};
+      if (!f.origen) props.Origen = { select: { name: "Semanal" } };
+      if (!f.entidad) {
+        const r = await notion.pages.retrieve({ page_id: f.notion_id });
+        const donde = r?.properties?.Donde?.rich_text?.map((t) => t.plain_text).join("") || "";
+        if (donde.trim()) props.Entidad = { rich_text: [{ text: { content: donde.trim().slice(0, 200) } }] };
+      }
+      if (Object.keys(props).length) {
+        try {
+          await notion.pages.update({ page_id: f.notion_id, properties: props });
+          rellenados++;
+        } catch (e) {
+          console.error("[espejo relleno] " + e.message);
+        }
+      }
+    }
+    if (rellenados) console.log(`[espejo] ${rellenados} accionables con Origen/Entidad rellenados`);
     return filas.length;
   }
   app2.all("/api/cron/espejo", async (req, res) => {
@@ -2790,6 +2863,63 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
     }
     res.json({ ok: true, resumen, aplicadas, errores });
+  });
+  app2.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account, tipo, campana, grupo, keyword, match_type, ad_id, modo } = req.body || {};
+    if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio"].includes(tipo)) return res.status(400).json({ error: "Solo negativas y pausas se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
+    if (!account || !campana || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account, campana y keyword o ad_id" });
+    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || "PHRASE", ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (notion) {
+      try {
+        await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: "En curso" } } } });
+        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica (${modo === "ejecutar" ? "real" : "simulaci\xF3n"}). El script ejecutor lo aplica en la pr\xF3xima hora.` } }] });
+      } catch {
+      }
+    }
+    res.json(data);
+  });
+  app2.get("/api/acciones-aprobadas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("acciones_aprobadas").select("*").order("aprobada_el", { ascending: false }).limit(50);
+    res.json(data || []);
+  });
+  app2.post("/api/cron/ejecutor-resultado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { id, estado, resultado } = req.body || {};
+    if (!id || !estado) return res.status(400).json({ error: "id y estado" });
+    const { data: acc } = await supabase.from("acciones_aprobadas").update({ estado, resultado, ejecutada_el: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id).select().single();
+    if (acc?.notion_id && notion && estado === "ejecutada") {
+      try {
+        await notion.pages.update({ page_id: acc.notion_id, properties: { Estado: { select: { name: NOTION_STATES.HECHO } }, "Ejecutado el": { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } }, "Decision final": { rich_text: [{ text: { content: `Ejecutado por el script a las ${(/* @__PURE__ */ new Date()).toISOString().slice(11, 16)} UTC. ${resultado || ""}`.slice(0, 1900) } }] } } });
+      } catch {
+      }
+      await supabase.from("operator_log").insert({ account: acc.account, fecha: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), hora: (/* @__PURE__ */ new Date()).toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keyword || acc.ad_id}`, donde: `${acc.campana}${acc.grupo ? " \u203A " + acc.grupo : ""}`, por_que: "Aprobado en la app, ejecutado por el script", accionable_notion_id: acc.notion_id });
+    }
+    res.json({ ok: true });
+  });
+  app2.get("/api/limitada", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("v_por_que_limitada").select("*").eq("account", req.query.client).maybeSingle();
+    res.json(data || null);
+  });
+  app2.get("/api/briefing", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.rpc("get_briefing");
+    res.json(data);
+  });
+  app2.get("/api/ciclo", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    const [cal, calg, imp, tasa, pred] = await Promise.all([
+      supabase.from("v_calibracion").select("*"),
+      supabase.from("v_calibracion_global").select("*").maybeSingle(),
+      client ? supabase.from("v_impacto_accionables").select("*").eq("account", client).order("ejecutado_el", { ascending: false }).limit(10) : supabase.from("v_impacto_accionables").select("*").order("ejecutado_el", { ascending: false }).limit(10),
+      supabase.from("v_tasa_acierto").select("*"),
+      client ? supabase.from("predicciones").select("*").eq("account", client).order("semana", { ascending: false }).limit(8) : supabase.from("predicciones").select("*").order("semana", { ascending: false }).limit(12)
+    ]);
+    res.json({ calibracion: cal.data || [], global: calg.data, impactos: imp.data || [], tasa_acierto: tasa.data || [], predicciones: pred.data || [] });
   });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -2840,7 +2970,13 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
       const { data: cta } = await supabase.from("cuentas").select("reglas_dominio").eq("account", cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || "";
-      const r = await correrPulso(cuenta, fecha2, input, reglas);
+      let parecidos = [];
+      try {
+        const resumenHoy = [input?.anomalias_2d?.map((a) => a.explicacion).join(". "), input?.grupos_ayer?.slice(0, 4).map((g) => `${g.grupo} ${g.conv} conv ${g.clics} clics`).join("; "), input?.terminos_nuevos_con_gasto?.slice(0, 3).map((t) => t.t).join(", ")].filter(Boolean).join(" | ");
+        if (resumenHoy.length > 40) parecidos = await parecidoA(supabase, resumenHoy, cuenta, 5, fecha2);
+      } catch {
+      }
+      const r = await correrPulso(cuenta, fecha2, input, reglas, parecidos);
       if (r.error || !r.parsed) throw new Error(r.error || "sin salida");
       const p = r.parsed;
       const planId = input?.plan?.id || null;
@@ -2909,6 +3045,13 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     }));
     const out = resultados.map((r, i) => r.status === "fulfilled" ? r.value : { cuenta: pendientes[i], error: r.reason.message });
     out.filter((r) => r.error).forEach((r) => console.error(`[pulso] ${r.cuenta}: ${r.error}`));
+    try {
+      await supabase.rpc("memoria_ingestar");
+      const n = await embeberPendientes(supabase);
+      if (n) console.log(`[memoria] ${n} embebidos`);
+    } catch (e) {
+      console.error("[memoria] " + e.message);
+    }
     res.json({ ok: true, fecha: fecha2, modelo: "claude-sonnet-5", resultados: out, costo_total_usd: Number(out.reduce((a, r) => a + (r.costo_usd || 0), 0).toFixed(5)) });
   });
   app2.get("/api/plan", async (req, res) => {

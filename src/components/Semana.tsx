@@ -22,6 +22,20 @@ function formatCurrency(val: number, client?: string | null) {
   return `$${val.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+
+function Plegable({ titulo, resumen, children }: { titulo: string; resumen: string; children: React.ReactNode }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setAbierto(v => !v)} className="w-full text-left px-4 py-3 rounded-2xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div><span className="text-[13px] font-medium text-[#FFFFFF]">{titulo}</span><span className="text-xs text-[#F5F7FA] opacity-50 ml-3">{resumen}</span></div>
+        <span className="text-[#F5F7FA] opacity-50">{abierto ? '▴' : '▾'}</span>
+      </button>
+      {abierto && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
 export function Semana({ onOpenActionable }: SemanaProps) {
   const { selectedClient } = useAppStore();
   const activeClient = selectedClient || '360';
@@ -32,6 +46,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [customHasta, setCustomHasta] = useState('');
   // Hallazgos reales de la semana: pulsos diarios + titular del brief
   const [hallazgosSemana, setHallazgosSemana] = useState<any[]>([]);
+  const [plan, setPlan] = useState<any>(null);
+  useEffect(() => { fetch(`/api/plan?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPlan(d)).catch(() => {}); }, [activeClient]);
   useEffect(() => {
     fetch(`/api/pulso?client=${activeClient}&days=14`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(d => d && setHallazgosSemana(d.pulsos || [])).catch(() => {});
@@ -252,6 +268,64 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </div>
       </div>
 
+      {/* BLOQUE 1D: EL PLAN DE LA SEMANA Y LA EVIDENCIA ACUMULADA */}
+      {plan?.plan && (() => {
+        const p = plan.plan;
+        const dias = plan.pulsos.length;
+        const nombres: Record<string, string> = { clics: 'Clics', conv_rate: 'Conv. rate', impresiones: 'Impresiones', cpc: 'CPC', ctr: 'CTR', lost_is_budget: 'Lost IS budget', lost_is_rank: 'Lost IS rank', pct_terminos_nuevos: 'Término nuevo', cpa_marginal: 'CPA marginal', conversiones: 'Conversiones', gasto: 'Gasto', conv_rate_grupo: 'Conv. rate' };
+        return (
+          <div className="p-4 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <h2 className="text-[13px] font-medium text-[#FFFFFF]"><Termino t="Plan semanal">Plan de la semana</Termino> · {activeClient}</h2>
+                <p className="text-[11px] text-[#F5F7FA] opacity-60">{p.contexto}</p>
+              </div>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">desde {p.semana} · {dias} día{dias !== 1 ? 's' : ''} de evidencia</span>
+            </div>
+            <div className="space-y-1.5">
+              {p.indicadores.map((i: any, idx: number) => {
+                const ultimo = i.serie[i.serie.length - 1];
+                const cumpliendo = ultimo?.dias || 0;
+                return (
+                  <div key={idx} className="grid grid-cols-[minmax(140px,1fr)_auto_auto_minmax(200px,2fr)] items-center gap-3 py-1.5 px-2 rounded-lg" style={{ backgroundColor: cumpliendo >= 2 ? 'var(--primary-faint)' : 'var(--surface-2)' }}>
+                    <div className="text-xs text-[#FFFFFF]">
+                      <Termino t={nombres[i.nombre] || i.nombre}>{nombres[i.nombre] || i.nombre}</Termino>
+                      {i.grupo && <span className="text-[#F5F7FA] opacity-60"> · {i.grupo}</span>}
+                    </div>
+                    <div className="text-[11px] tabular text-[#F5F7FA] opacity-70">{i.direccion === 'sube' ? '≥' : i.direccion === 'baja' ? '≤' : '⇄'} {i.umbral}</div>
+                    <div className="flex gap-0.5">
+                      {i.serie.map((s: any, k: number) => (
+                        <span key={k} title={`${s.fecha}: ${s.valor ?? '—'}`} className="w-3 h-3 rounded-sm" style={{ backgroundColor: s.cumple === true ? '#0062CC' : s.cumple === false ? 'var(--surface-1)' : 'transparent', border: '1px solid var(--border)' }} />
+                      ))}
+                      {Array.from({ length: Math.max(0, 7 - i.serie.length) }, (_, k) => <span key={'e' + k} className="w-3 h-3 rounded-sm" style={{ border: '1px dashed var(--border)' }} />)}
+                    </div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-70 truncate" title={i.habilita}>
+                      {cumpliendo >= 2 ? <span className="text-[#FFFFFF] font-medium">{cumpliendo} días · </span> : ''}{i.habilita}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {p.hipotesis?.length > 0 && (
+              <div className="pt-2 space-y-1" style={{ borderTop: '1px solid var(--border)' }}>
+                {p.hipotesis.map((h: any) => {
+                  const movs = plan.pulsos.flatMap((pp: any) => (pp.hipotesis_movidas || []).filter((m: any) => m.id === h.id));
+                  const confirma = movs.filter((m: any) => m.movimiento === 'confirma').length, descarta = movs.filter((m: any) => m.movimiento === 'descarta').length;
+                  return (
+                    <div key={h.id} className="text-[11px] text-[#F5F7FA] opacity-80 flex gap-2">
+                      <span className="font-bold text-[#FFFFFF] shrink-0">{h.id}</span>
+                      <span className="flex-1">{h.texto}</span>
+                      <span className="tabular shrink-0 opacity-60">{confirma > 0 ? `+${confirma}` : ''}{descarta > 0 ? ` −${descarta}` : ''}{!confirma && !descarta ? 'sin mov.' : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+
       {/* Main 14-Day Chart Container */}
       <div 
         className="p-5 rounded-2xl space-y-4"
@@ -403,13 +477,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </div>
       </div>
 
-      {/* Qué Pasó: Lista Directa (NO acordeón) */}
-      <div 
-        className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
-      >
-
-
+      <Plegable titulo="Conversiones por grupo" resumen="en qué grupo cayeron, día por día">
       {/* Conversiones por grupo y día: en qué grupo cayeron */}
       {convGrupo.grupos.length > 0 && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: convGrupo.hallazgo ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
@@ -439,6 +507,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </div>
       )}
 
+      </Plegable>
+      <Plegable titulo="Cuándo convierte" resumen="hora y día de la última semana">
       {/* Mapa de calor: hora x día de la última semana cerrada */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -488,10 +558,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
               </div>
             </div>
           );
-        })() : <p className="text-xs text-[#F5F7FA] opacity-50 py-4 text-center">Sin datos de hora y día para esta cuenta.</p>}
+        })() : <p className="text-xs text-[#F5F7FA] opacity-50 py-4 text-center">Sin datos de hora y día todavía. Los trae la extracción semanal de los lunes.</p>}
       </div>
-      </div>
-
+      </Plegable>
       {/* Qué pasó: hallazgos reales del análisis diario, con fecha */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -516,6 +585,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         )}
       </div>
 
+      <Plegable titulo="Búsquedas nuevas" resumen="las que gastan sin convertir y las que convierten">
       {/* Términos nuevos: solo los que importan, con la decisión al lado */}
       {(() => {
         const conGasto = newTerms.filter((t: any) => Number(t.gasto_acumulado || 0) > 0);
@@ -583,6 +653,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         );
       })()}
 
+      </Plegable>
       {/* Cambios de la semana: lo lee el análisis; para vos, colapsado con el resumen a la vista */}
       <details className="group/cambios">
         <summary className="cursor-pointer list-none p-4 rounded-2xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>

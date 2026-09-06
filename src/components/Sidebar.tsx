@@ -1,8 +1,5 @@
 import React from 'react';
-import { 
-  Sun, CheckSquare, Calendar, FileText, 
-  Database, Users, Sliders, ShieldCheck, LogOut 
-} from 'lucide-react';
+import { Inbox, Building2, Table2, Wrench, Settings, LogOut } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 interface SidebarProps {
@@ -43,77 +40,12 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
       {/* Navigation Sections */}
       <nav className="flex-1 py-4 px-2 space-y-5 overflow-y-auto custom-scrollbar">
-        
-        {/* GRUPO 1: OPERAR */}
-        <div className="space-y-1">
-          <div className="px-2.5 py-1 text-[10px] font-bold text-[#F5F7FA] opacity-50 uppercase tracking-wider whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            Operar
-          </div>
-          <NavItem 
-            icon={<Sun size={17} />} 
-            label="HOY" 
-            active={activeTab === 'hoy'} 
-            onClick={() => onTabChange('hoy')}
-          />
-          <NavItem 
-            icon={<CheckSquare size={17} />} 
-            label="Accionables" 
-            active={activeTab === 'accionables'} 
-            onClick={() => onTabChange('accionables')}
-          />
-          <NavItem 
-            icon={<Calendar size={17} />} 
-            label="Semana" 
-            active={activeTab === 'semana'} 
-            onClick={() => onTabChange('semana')}
-          />
-        </div>
-
-        {/* GRUPO 2: ENTENDER */}
-        <div className="space-y-1">
-          <div className="px-2.5 py-1 text-[10px] font-bold text-[#F5F7FA] opacity-50 uppercase tracking-wider whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            Entender
-          </div>
-          <NavItem 
-            icon={<FileText size={17} />} 
-            label="Briefs" 
-            active={activeTab === 'briefs'} 
-            onClick={() => onTabChange('briefs')}
-          />
-          <NavItem 
-            icon={<Database size={17} />} 
-            label="Datos" 
-            active={activeTab === 'datos'} 
-            onClick={() => onTabChange('datos')}
-          />
-          <NavItem 
-            icon={<Users size={17} />} 
-            label="Clientes" 
-            active={activeTab === 'clientes'} 
-            onClick={() => onTabChange('clientes')}
-          />
-        </div>
-
-        {/* GRUPO 3: MANTENER */}
-        <div className="space-y-1">
-          <div className="px-2.5 py-1 text-[10px] font-bold text-[#F5F7FA] opacity-50 uppercase tracking-wider whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            Mantener
-          </div>
-          <NavItem 
-            icon={<Sliders size={17} />} 
-            label="Herramientas" 
-            active={activeTab === 'herramientas'} 
-            onClick={() => onTabChange('herramientas')}
-          />
-          <NavItem 
-            icon={<ShieldCheck size={17} />} 
-            label="Sistema" 
-            active={activeTab === 'sistema'} 
-            onClick={() => onTabChange('sistema')}
-          />
-        </div>
-
-      </nav>
+          <NavItem icon={<Inbox size={18} />} label="Bandeja" active={activeTab === 'bandeja'} onClick={() => onTabChange('bandeja')} />
+          <NavItem icon={<Building2 size={18} />} label="Cuenta" active={activeTab === 'cuenta'} onClick={() => onTabChange('cuenta')} />
+          <NavItem icon={<Table2 size={18} />} label="Datos" active={activeTab === 'datos'} onClick={() => onTabChange('datos')} />
+          <NavItem icon={<Wrench size={18} />} label="Herramientas" active={activeTab === 'herramientas'} onClick={() => onTabChange('herramientas')} />
+          <NavItem icon={<Settings size={18} />} label="Sistema" active={activeTab === 'sistema'} onClick={() => onTabChange('sistema')} />
+        </nav>
 
       {/* Footer: Logout */}
       <div className="p-2 shrink-0 overflow-hidden" style={{ borderTop: '1px solid var(--border)' }}>

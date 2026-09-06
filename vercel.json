@@ -22,7 +22,7 @@
   "crons": [
     {
       "path": "/api/cron/anomalias",
-      "schedule": "0 */4 * * *"
+      "schedule": "30 9 * * *"
     },
     {
       "path": "/api/cron/pulso-diario",

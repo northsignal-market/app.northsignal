@@ -10,6 +10,7 @@ import { notion } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
 import { responderAsistente } from './src/server/lib/asistente';
+import { embeberPendientes, parecidoA } from './src/server/lib/memoria';
 import type { ReporteInput } from './src/server/lib/reporte-pdf';
 // react-pdf se carga solo cuando se genera un PDF: su dependencia pdfkit hace
 // requires dinamicos que tumban el arranque si el bundle no los incluye.
@@ -2170,6 +2171,21 @@ Las descripciones no deben superar los 90 caracteres.`;
       cursor = r.has_more ? r.next_cursor : undefined;
     } while (cursor);
     if (filas.length) { const { error } = await supabase.from('accionables_espejo').upsert(filas, { onConflict: 'notion_id' }); if (error) throw new Error(error.message); }
+    // Relleno unico: los accionables anteriores a la capa de coherencia no tienen Origen ni Entidad.
+    // Sin Entidad el reconciliador no deduplica. Origen = Semanal (todos los viejos son del semanal); Entidad = Donde.
+    let rellenados = 0;
+    for (const f of filas) {
+      if (!['Propuesto', 'Bloqueado', 'En curso'].includes(f.estado)) continue;
+      const props: any = {};
+      if (!f.origen) props.Origen = { select: { name: 'Semanal' } };
+      if (!f.entidad) {
+        const r: any = await notion.pages.retrieve({ page_id: f.notion_id });
+        const donde = r?.properties?.Donde?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        if (donde.trim()) props.Entidad = { rich_text: [{ text: { content: donde.trim().slice(0, 200) } }] };
+      }
+      if (Object.keys(props).length) { try { await notion.pages.update({ page_id: f.notion_id, properties: props }); rellenados++; } catch (e: any) { console.error('[espejo relleno] ' + e.message); } }
+    }
+    if (rellenados) console.log(`[espejo] ${rellenados} accionables con Origen/Entidad rellenados`);
     return filas.length;
   }
   app.all("/api/cron/espejo", async (req, res) => {
@@ -2199,6 +2215,65 @@ Las descripciones no deben superar los 90 caracteres.`;
       } catch (e: any) { errores.push(`${r.objeto}: ${e.message}`); }
     }
     res.json({ ok: true, resumen, aplicadas, errores });
+  });
+
+
+  // ================================================================
+  // CICLO CERRADO: aprobar y ejecutar, briefing, calibracion, impacto
+  // ================================================================
+  // Aprobar un accionable para que el script ejecutor lo aplique. Solo negativas y pausas.
+  app.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, tipo, campana, grupo, keyword, match_type, ad_id, modo } = req.body || {};
+    if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas y pausas se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
+    if (!account || !campana || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account, campana y keyword o ad_id' });
+    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || 'PHRASE', ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    // Estado en Notion: En curso
+    if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.` } }] }); } catch {} }
+    res.json(data);
+  });
+  app.get("/api/acciones-aprobadas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('acciones_aprobadas').select('*').order('aprobada_el', { ascending: false }).limit(50);
+    res.json(data || []);
+  });
+  // El script ejecutor reporta resultado (Bearer CRON_SECRET)
+  app.post("/api/cron/ejecutor-resultado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { id, estado, resultado } = req.body || {};
+    if (!id || !estado) return res.status(400).json({ error: 'id y estado' });
+    const { data: acc } = await supabase.from('acciones_aprobadas').update({ estado, resultado, ejecutada_el: new Date().toISOString() }).eq('id', id).select().single();
+    if (acc?.notion_id && notion && estado === 'ejecutada') {
+      try { await notion.pages.update({ page_id: acc.notion_id, properties: { Estado: { select: { name: NOTION_STATES.HECHO } }, 'Ejecutado el': { date: { start: new Date().toISOString().slice(0, 10) } }, 'Decision final': { rich_text: [{ text: { content: `Ejecutado por el script a las ${new Date().toISOString().slice(11, 16)} UTC. ${resultado || ''}`.slice(0, 1900) } }] } } }); } catch {}
+      await supabase.from('operator_log').insert({ account: acc.account, fecha: new Date().toISOString().slice(0, 10), hora: new Date().toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keyword || acc.ad_id}`, donde: `${acc.campana}${acc.grupo ? ' › ' + acc.grupo : ''}`, por_que: 'Aprobado en la app, ejecutado por el script', accionable_notion_id: acc.notion_id });
+    }
+    res.json({ ok: true });
+  });
+
+  app.get("/api/limitada", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('v_por_que_limitada').select('*').eq('account', req.query.client as string).maybeSingle();
+    res.json(data || null);
+  });
+  // Briefing: lo que hay para vos hoy. Lo lee el script de briefing (mail) y la app.
+  app.get("/api/briefing", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.rpc('get_briefing');
+    res.json(data);
+  });
+  // Calibracion e impacto: el ciclo cerrado visible
+  app.get("/api/ciclo", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    const [cal, calg, imp, tasa, pred] = await Promise.all([
+      supabase.from('v_calibracion').select('*'),
+      supabase.from('v_calibracion_global').select('*').maybeSingle(),
+      client ? supabase.from('v_impacto_accionables').select('*').eq('account', client).order('ejecutado_el', { ascending: false }).limit(10) : supabase.from('v_impacto_accionables').select('*').order('ejecutado_el', { ascending: false }).limit(10),
+      supabase.from('v_tasa_acierto').select('*'),
+      client ? supabase.from('predicciones').select('*').eq('account', client).order('semana', { ascending: false }).limit(8) : supabase.from('predicciones').select('*').order('semana', { ascending: false }).limit(12),
+    ]);
+    res.json({ calibracion: cal.data || [], global: calg.data, impactos: imp.data || [], tasa_acierto: tasa.data || [], predicciones: pred.data || [] });
   });
 
   // ---- Doc maestro ensamblado ----
@@ -2269,7 +2344,13 @@ Las descripciones no deben superar los 90 caracteres.`;
       if (estado) { input.estado_cuenta = estado; input.foto_tomada = estado.foto_tomada; }
       const { data: cta } = await supabase!.from('cuentas').select('reglas_dominio').eq('account', cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || '';
-      const r = await correrPulso(cuenta, fecha, input, reglas);
+      // Memoria semantica: que se parece a lo de hoy (anomalias, terminos, grupos). Antes de esta fecha, para no encontrarse a si mismo.
+      let parecidos: any[] = [];
+      try {
+        const resumenHoy = [input?.anomalias_2d?.map((a: any) => a.explicacion).join('. '), input?.grupos_ayer?.slice(0, 4).map((g: any) => `${g.grupo} ${g.conv} conv ${g.clics} clics`).join('; '), input?.terminos_nuevos_con_gasto?.slice(0, 3).map((t: any) => t.t).join(', ')].filter(Boolean).join(' | ');
+        if (resumenHoy.length > 40) parecidos = await parecidoA(supabase!, resumenHoy, cuenta, 5, fecha);
+      } catch {}
+      const r = await correrPulso(cuenta, fecha, input, reglas, parecidos);
       if (r.error || !r.parsed) throw new Error(r.error || 'sin salida');
       const p = r.parsed;
       const planId = input?.plan?.id || null;
@@ -2325,6 +2406,8 @@ Las descripciones no deben superar los 90 caracteres.`;
 
     const out = resultados.map((r, i) => r.status === 'fulfilled' ? r.value : { cuenta: pendientes[i], error: (r.reason as Error).message });
     out.filter((r: any) => r.error).forEach((r: any) => console.error(`[pulso] ${r.cuenta}: ${r.error}`));
+    // Ingestar a memoria lo nuevo y embeber lo pendiente
+    try { await supabase.rpc('memoria_ingestar'); const n = await embeberPendientes(supabase); if (n) console.log(`[memoria] ${n} embebidos`); } catch (e: any) { console.error('[memoria] ' + e.message); }
     res.json({ ok: true, fecha, modelo: 'claude-sonnet-5', resultados: out, costo_total_usd: Number(out.reduce((a: number, r: any) => a + (r.costo_usd || 0), 0).toFixed(5)) });
   });
 
