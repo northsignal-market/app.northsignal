@@ -1506,6 +1506,29 @@ Las descripciones no deben superar los 90 caracteres.`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+
+  // Entidades por rango: como Google Ads. Cualquier rango de fechas, desde la capa diaria.
+  app.get("/api/entidades/:entidad", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      const { entidad } = req.params;
+      const client = (req.query.client as string) || (req.query.account as string);
+      const from = req.query.from as string;
+      const to = req.query.to as string;
+      if (!client || !from || !to) return res.status(400).json({ error: 'client, from y to son obligatorios' });
+      const { data, error } = await supabase.rpc('get_entidades', {
+        p_entidad: entidad, p_account: client, p_from: from, p_to: to,
+        p_search: (req.query.search as string) || null,
+        p_order_by: (req.query.orderBy as string) || 'cost',
+        p_order_dir: (req.query.orderDir as string) || 'desc',
+        p_limit: Number(req.query.limit) || 1000,
+        p_offset: Number(req.query.offset) || 0
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // Objetivos y headroom: dónde está la cuenta respecto de lo que el negocio necesita
   app.get("/api/objetivos", async (req, res) => {
     try {

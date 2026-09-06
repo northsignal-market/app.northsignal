@@ -29,9 +29,9 @@ const getEndOfWeek = (dateStr: string) => {
 };
 
 const VIEW_CONFIGS = {
-  'v_campaign_analisis': { label: 'Campañas', searchCol: 'campaign' },
+  'v_campaign_analisis': { label: 'Campañas · semanal', searchCol: 'campaign' },
   'v_adgroup_analisis': { label: 'Grupos', searchCol: 'ad_group' },
-  'v_keywords_analisis': { label: 'Keywords', searchCol: 'keyword' },
+  'v_keywords_analisis': { label: 'Keywords · semanal', searchCol: 'keyword' },
   'v_search_terms_analisis': { label: 'Términos', searchCol: 'search_term' },
   'v_conversiones_por_accion': { label: 'Conversiones', searchCol: 'conversion_action' },
   'v_ngrams_sin_conversion': { label: 'N-grams', searchCol: 'palabra' },
@@ -43,6 +43,10 @@ const VIEW_CONFIGS = {
 };
 
 const DEFAULT_COLS: Record<string, string[]> = {
+  'ent_campaign': ['campaign','status','impressions','clicks','ctr','avg_cpc','cost','conversions','cost_per_conv','conv_rate','impr_share','lost_is_budget','lost_is_rank','limitada_por','dias_con_datos'],
+  'ent_adgroup': ['ad_group','campaign','ad_group_status','impressions','clicks','ctr','avg_cpc','cost','conversions','cost_per_conv','conv_rate','impr_share','dias_con_datos'],
+  'ent_keyword': ['keyword','match_type','ad_group','keyword_status','impressions','clicks','ctr','avg_cpc','cost','conversions','cost_per_conv','conv_rate','quality_score','impr_share','dias_con_datos'],
+  'ent_search_term': ['search_term','match_type','triggered_keyword','ad_group','impressions','clicks','ctr','avg_cpc','cost','conversions','cost_per_conv','clasificacion','dias_con_datos'],
   'v_campaign_analisis': ['campaign','status','impressions','clicks','ctr','cost','conversions','cost_per_conv','impr_share','limitada_por'],
   'v_adgroup_analisis':  ['ad_group','campaign','ad_group_status','impressions','clicks','ctr','cost','conversions','cost_per_conv','impr_share'],
   'v_keywords_analisis': ['keyword','match_type','ad_group','serving_status','impressions','clicks','ctr','cost','conversions','cost_per_conv','quality_score','motivo'],
@@ -57,6 +61,7 @@ const DEFAULT_COLS: Record<string, string[]> = {
 };
 
 const COL_LABELS: Record<string, string> = {
+  dias_con_datos: 'Días',
   date: 'Fecha',
   madurez: 'Madurez',
   dias_con_actividad: 'Días activos',
@@ -166,7 +171,8 @@ export function Datos() {
   
   const [dateRangeMode, setDateRangeMode] = useState<string>('last_week');
   // Las vistas diarias usan días, no semanas. La capa diaria cubre 14 días móviles.
-  const isDailyView = ['v_keywords_daily','v_search_terms_daily','v_campaign_daily','v_adgroup_daily'].includes(activeView);
+  const isEntidad = activeView.startsWith('ent_');
+  const isDailyView = isEntidad || ['v_keywords_daily','v_search_terms_daily','v_campaign_daily','v_adgroup_daily'].includes(activeView);
   const isoDaysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
   const [customRange, setCustomRange] = useState<{from: string, to: string}>({from: '', to: ''});
   const [comparePrev, setComparePrev] = useState<boolean>(false);
@@ -279,7 +285,7 @@ export function Datos() {
   }, [selectedClient]);
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState<number>(100);
+  const [limit, setLimit] = useState<number>(1000);
   const [density, setDensity] = useState<'compact'|'normal'|'comfortable'>('normal');
   useEffect(() => {
     const saved = localStorage.getItem('northsignal.density');
@@ -385,7 +391,7 @@ export function Datos() {
   // Vistas diarias: arrancar en "últimos 14 días" con fechas reales
   useEffect(() => {
     if (isDailyView && ['last_week','4_weeks','8_weeks','12_weeks','all_time'].includes(dateRangeMode)) {
-      setDateRangeMode('last_14d');
+      setDateRangeMode('last_7d');
     } else if (!isDailyView && ['last_7d','last_14d'].includes(dateRangeMode)) {
       setDateRangeMode('last_week');
     }
@@ -456,14 +462,24 @@ export function Datos() {
     else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
-    if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+    // Entidades por rango: endpoint propio, requiere from/to
+    if (isEntidad) {
+      const offset = (page - 1) * limit;
+      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
+      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
+      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
+    }
+    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
     const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-    if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-    if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-    if (comparePrev) url += `&compare=true`;
-    if (groupBy) url += `&groupBy=${groupBy}`;
-    if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    if (!isEntidad) {
+      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
+      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
+      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
+      if (comparePrev) url += `&compare=true`;
+      if (groupBy) url += `&groupBy=${groupBy}`;
+      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -481,7 +497,7 @@ export function Datos() {
         const result = isJson ? await res.json() : { data: [] };
         setData(result.data || []);
         setTotalCount(result.total || 0);
-        setTotals(result.totals || {});
+        setTotals({ ...(result.totals || {}), _dias_con_datos: result.dias_con_datos, _dias_en_rango: result.dias_en_rango, _rango_completo: result.rango_completo });
         
         if (result.data && result.data.length > 0 && allCols.length === 0) {
           setAllCols(Object.keys(result.data[0]).filter(k => k !== 'account'));
@@ -527,14 +543,24 @@ export function Datos() {
     else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
-    if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+    // Entidades por rango: endpoint propio, requiere from/to
+    if (isEntidad) {
+      const offset = (page - 1) * limit;
+      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
+      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
+      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
+    }
+    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
     const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-    if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-    if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-    if (comparePrev) url += `&compare=true`;
-    if (groupBy) url += `&groupBy=${groupBy}`;
-    if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    if (!isEntidad) {
+      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
+      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
+      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
+      if (comparePrev) url += `&compare=true`;
+      if (groupBy) url += `&groupBy=${groupBy}`;
+      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -585,14 +611,24 @@ export function Datos() {
     else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
-    if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+    // Entidades por rango: endpoint propio, requiere from/to
+    if (isEntidad) {
+      const offset = (page - 1) * limit;
+      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
+      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
+      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
+    }
+    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
     const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-    if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-    if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-    if (comparePrev) url += `&compare=true`;
-    if (groupBy) url += `&groupBy=${groupBy}`;
-    if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    if (!isEntidad) {
+      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
+      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
+      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
+      if (comparePrev) url += `&compare=true`;
+      if (groupBy) url += `&groupBy=${groupBy}`;
+      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -733,142 +769,11 @@ export function Datos() {
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col p-8 overflow-hidden bg-[#1A1F36] relative">
+      <div className="flex-1 flex flex-col p-4 overflow-hidden bg-[#1A1F36] relative">
       
         
 
-        {(totals as any).dataHealth && (totals as any).dataHealth.status !== 'OK' && (
-           <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
-             <div className="flex items-start gap-3">
-                <AlertTriangle className="text-[#F5F7FA] shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium text-[#F5F7FA]">
-                  Advertencia de Frescura: Los datos de {selectedClient} son del {(totals as any).dataHealth.last_run ? new Date((totals as any).dataHealth.last_run).toLocaleDateString() : 'desconocido'}. 
-                  El script no corrió o falló en la última extracción.
-                </p>
-             </div>
-           </div>
-        )}
-
-        {(totals as any).dataIntegrity && ((totals as any).dataIntegrity.diff_adgroup > 0 || (totals as any).dataIntegrity.diff_keyword > 0) && (
-           <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
-             <div className="flex items-start gap-3">
-                <AlertCircle className="text-[#0062CC] shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium text-[#0062CC]">
-                  Pérdida de Integridad: El gasto de campaña no coincide con los niveles inferiores. 
-                  (Dif. Grupos: {(totals as any).dataIntegrity.diff_adgroup}, Dif. Keywords: {(totals as any).dataIntegrity.diff_keyword}). Posible truncado de datos.
-                </p>
-             </div>
-           </div>
-        )}
-
-
-        
-        <div className="grid grid-cols-5 gap-2 mb-3 shrink-0">
-          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">Inversión (Filtro)</p>
-            <h3 className="text-base font-light text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">Conversiones (Filtro)</p>
-            <h3 className="text-base font-light text-[#FFFFFF]">{totals.conversions || 0}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">CPA (Ponderado)</p>
-            <h3 className="text-base font-light text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">CPC (Promedio)</p>
-            <h3 className="text-base font-light text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1" title={totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen'}>Restricción Principal</p>
-            <h3 className="text-lg font-medium text-[#0062CC] line-clamp-1">
-              {totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A'}
-            </h3>
-          </div>
-        </div>
-
-        
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4 shrink-0 bg-[#1A1F36]/50 p-4 rounded-2xl border border-[#0062CC]/20 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA]/50" size={16} />
-              <input 
-                type="text" 
-                placeholder={`Buscar en ${VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.label}...`}
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
-                className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-9 pr-4 py-2 text-sm text-[#FFFFFF] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <select 
-                value={dateRangeMode} 
-                onChange={e => setDateRangeMode(e.target.value)}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-              >
-                {isDailyView ? (<>
-                  <option value="last_7d">Últimos 7 días</option>
-                  <option value="last_14d">Últimos 14 días</option>
-                </>) : (<>
-                  <option value="last_week">Última semana</option>
-                  <option value="4_weeks">Últimas 4 semanas</option>
-                  <option value="8_weeks">Últimas 8 semanas</option>
-                  <option value="12_weeks">Últimas 12 semanas</option>
-                  <option value="all_time">Todo el histórico</option>
-                </>)}
-                <option value="custom">Rango personalizado...</option>
-              </select>
-              
-              {dateRangeMode === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input type="date" value={customRange.from} max={customRange.to || undefined}
-                    onChange={e => setCustomRange(p => ({...p, from: e.target.value}))}
-                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
-                    style={{ colorScheme: 'dark' }} />
-                  <span className="text-[#F5F7FA]/50">→</span>
-                  <input type="date" value={customRange.to} min={customRange.from || undefined}
-                    onChange={e => setCustomRange(p => ({...p, to: e.target.value}))}
-                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
-                    style={{ colorScheme: 'dark' }} />
-                  {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select 
-                value={limit} 
-                onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-              >
-                <option value={100}>100 filas</option>
-                <option value={250}>250 filas</option>
-                <option value={500}>500 filas</option>
-                <option value={1000}>Todas (hasta 1000)</option>
-              </select>
-            </div>
-          </div>
-          
-          <div className="text-sm font-medium text-[#F5F7FA]/60 text-right">
-             {(() => {
-                let text = '';
-                if (dateRangeMode === 'last_week' && weeks.length > 0) text = `Semana del ${formatDatePretty(weeks[0])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '4_weeks' && weeks.length > 0) text = `4 semanas: del ${formatDatePretty(weeks[Math.min(3, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '8_weeks' && weeks.length > 0) text = `8 semanas: del ${formatDatePretty(weeks[Math.min(7, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '12_weeks' && weeks.length > 0) text = `12 semanas: del ${formatDatePretty(weeks[Math.min(11, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === 'all_time' && weeks.length > 0) text = `Todo el histórico: del ${formatDatePretty(weeks[weeks.length - 1])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === 'last_7d') text = `Últimos 7 días: del ${formatDatePretty(isoDaysAgo(7))} al ${formatDatePretty(isoDaysAgo(1))}`;
-                else if (dateRangeMode === 'last_14d') text = `Últimos 14 días: del ${formatDatePretty(isoDaysAgo(14))} al ${formatDatePretty(isoDaysAgo(1))}`;
-                else if (dateRangeMode === 'custom' && customRange.from && customRange.to) text = `Del ${formatDatePretty(customRange.from)} al ${formatDatePretty(customRange.to)}`;
-                
-                return text ? `${text} · ${totalCount} filas` : '';
-             })()}
-          </div>
-        </div>
-
-<div className="flex items-center justify-between mb-4 shrink-0 flex-wrap gap-4">
+<div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
           <div className="flex gap-2 bg-[#1A1F36]/80 p-1 rounded-xl border border-[#0062CC]/20 overflow-x-auto custom-scrollbar shadow-sm">
             {Object.entries(VIEW_CONFIGS).map(([val, config]) => (
               <button
@@ -1136,11 +1041,18 @@ export function Datos() {
             </table>
         </div>
         
-        {/* Pagination Controls */}
-        <div className="flex items-center justify-between mt-4 shrink-0 px-2">
-          <div className="text-xs text-[#F5F7FA]/70">
-            Mostrando {(page - 1) * limit + 1} - {Math.min(page * limit, totalCount)} de {totalCount} filas
+        {/* Paginación: solo si hay más filas que el límite. Con 1000 por defecto, casi nunca. */}
+        <div className="flex items-center justify-between mt-2 shrink-0 px-2">
+          <div className="text-xs text-[#F5F7FA]/70 tabular">
+            {totalCount} filas
+            {totals && (totals as any)._dias_en_rango && (
+              <span className={(totals as any)._rango_completo ? ' opacity-60' : ' text-[#0062CC]'}>
+                {' · '}{(totals as any)._dias_con_datos} de {(totals as any)._dias_en_rango} días con datos
+                {!(totals as any)._rango_completo && ' (rango parcial)'}
+              </span>
+            )}
           </div>
+          {totalCount > limit && (
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -1160,8 +1072,140 @@ export function Datos() {
               Siguiente
             </button>
           </div>
+          )}
         </div>
       </div>
+
+        {(totals as any).dataHealth && (totals as any).dataHealth.status !== 'OK' && (
+           <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
+             <div className="flex items-start gap-3">
+                <AlertTriangle className="text-[#F5F7FA] shrink-0 mt-0.5" size={18} />
+                <p className="text-sm font-medium text-[#F5F7FA]">
+                  Advertencia de Frescura: Los datos de {selectedClient} son del {(totals as any).dataHealth.last_run ? new Date((totals as any).dataHealth.last_run).toLocaleDateString() : 'desconocido'}. 
+                  El script no corrió o falló en la última extracción.
+                </p>
+             </div>
+           </div>
+        )}
+
+        {(totals as any).dataIntegrity && ((totals as any).dataIntegrity.diff_adgroup > 0 || (totals as any).dataIntegrity.diff_keyword > 0) && (
+           <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
+             <div className="flex items-start gap-3">
+                <AlertCircle className="text-[#0062CC] shrink-0 mt-0.5" size={18} />
+                <p className="text-sm font-medium text-[#0062CC]">
+                  Pérdida de Integridad: El gasto de campaña no coincide con los niveles inferiores. 
+                  (Dif. Grupos: {(totals as any).dataIntegrity.diff_adgroup}, Dif. Keywords: {(totals as any).dataIntegrity.diff_keyword}). Posible truncado de datos.
+                </p>
+             </div>
+           </div>
+        )}
+
+
+        
+        <div className="grid grid-cols-5 gap-2 mt-3 shrink-0">
+          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Inversión (Filtro)</p>
+            <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
+          </div>
+          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Conversiones (Filtro)</p>
+            <h3 className="text-sm font-semibold text-[#FFFFFF]">{totals.conversions || 0}</h3>
+          </div>
+          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPA (Ponderado)</p>
+            <h3 className="text-sm font-semibold text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
+          </div>
+          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPC (Promedio)</p>
+            <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
+          </div>
+          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1" title={totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen'}>Restricción Principal</p>
+            <h3 className="text-lg font-medium text-[#0062CC] line-clamp-1">
+              {totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A'}
+            </h3>
+          </div>
+        </div>
+
+        
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 mb-2 shrink-0 px-1">
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA]/50" size={16} />
+              <input 
+                type="text" 
+                placeholder={`Buscar en ${VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.label}...`}
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+                className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-9 pr-4 py-2 text-sm text-[#FFFFFF] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <select 
+                value={dateRangeMode} 
+                onChange={e => setDateRangeMode(e.target.value)}
+                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
+              >
+                {isDailyView ? (<>
+                  <option value="last_7d">Últimos 7 días</option>
+                  <option value="last_14d">Últimos 14 días</option>
+                </>) : (<>
+                  <option value="last_week">Última semana</option>
+                  <option value="4_weeks">Últimas 4 semanas</option>
+                  <option value="8_weeks">Últimas 8 semanas</option>
+                  <option value="12_weeks">Últimas 12 semanas</option>
+                  <option value="all_time">Todo el histórico</option>
+                </>)}
+                <option value="custom">Rango personalizado...</option>
+              </select>
+              
+              {dateRangeMode === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={customRange.from} max={customRange.to || undefined}
+                    onChange={e => setCustomRange(p => ({...p, from: e.target.value}))}
+                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
+                    style={{ colorScheme: 'dark' }} />
+                  <span className="text-[#F5F7FA]/50">→</span>
+                  <input type="date" value={customRange.to} min={customRange.from || undefined}
+                    onChange={e => setCustomRange(p => ({...p, to: e.target.value}))}
+                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
+                    style={{ colorScheme: 'dark' }} />
+                  {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select 
+                value={limit} 
+                onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
+                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
+              >
+                <option value={100}>100 filas</option>
+                <option value={250}>250 filas</option>
+                <option value={500}>500 filas</option>
+                <option value={1000}>Todas (hasta 1000)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="text-sm font-medium text-[#F5F7FA]/60 text-right">
+             {(() => {
+                let text = '';
+                if (dateRangeMode === 'last_week' && weeks.length > 0) text = `Semana del ${formatDatePretty(weeks[0])} al ${getEndOfWeek(weeks[0])}`;
+                else if (dateRangeMode === '4_weeks' && weeks.length > 0) text = `4 semanas: del ${formatDatePretty(weeks[Math.min(3, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
+                else if (dateRangeMode === '8_weeks' && weeks.length > 0) text = `8 semanas: del ${formatDatePretty(weeks[Math.min(7, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
+                else if (dateRangeMode === '12_weeks' && weeks.length > 0) text = `12 semanas: del ${formatDatePretty(weeks[Math.min(11, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
+                else if (dateRangeMode === 'all_time' && weeks.length > 0) text = `Todo el histórico: del ${formatDatePretty(weeks[weeks.length - 1])} al ${getEndOfWeek(weeks[0])}`;
+                else if (dateRangeMode === 'last_7d') text = `Últimos 7 días: del ${formatDatePretty(isoDaysAgo(7))} al ${formatDatePretty(isoDaysAgo(1))}`;
+                else if (dateRangeMode === 'last_14d') text = `Últimos 14 días: del ${formatDatePretty(isoDaysAgo(14))} al ${formatDatePretty(isoDaysAgo(1))}`;
+                else if (dateRangeMode === 'custom' && customRange.from && customRange.to) text = `Del ${formatDatePretty(customRange.from)} al ${formatDatePretty(customRange.to)}`;
+                
+                return text ? `${text} · ${totalCount} filas` : '';
+             })()}
+          </div>
+        </div>
 
       <div className="mt-4 space-y-3">
         {burnRate && (

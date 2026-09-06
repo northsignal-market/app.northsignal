@@ -1568,6 +1568,31 @@ Las descripciones no deben superar los 90 caracteres.`;
       res.status(500).json({ error: e.message });
     }
   });
+  app2.get("/api/entidades/:entidad", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+      const { entidad } = req.params;
+      const client = req.query.client || req.query.account;
+      const from = req.query.from;
+      const to = req.query.to;
+      if (!client || !from || !to) return res.status(400).json({ error: "client, from y to son obligatorios" });
+      const { data, error } = await supabase.rpc("get_entidades", {
+        p_entidad: entidad,
+        p_account: client,
+        p_from: from,
+        p_to: to,
+        p_search: req.query.search || null,
+        p_order_by: req.query.orderBy || "cost",
+        p_order_dir: req.query.orderDir || "desc",
+        p_limit: Number(req.query.limit) || 1e3,
+        p_offset: Number(req.query.offset) || 0
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app2.get("/api/objetivos", async (req, res) => {
     try {
       if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
