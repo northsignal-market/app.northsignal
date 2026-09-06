@@ -13,14 +13,28 @@
  * texto o viñetas debajo, con el largo que cada una necesite.
  */
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font, Image, renderToBuffer } from '@react-pdf/renderer';
 
-Font.registerHyphenationCallback((w) => [w]);
+// react-pdf se carga en runtime, la primera vez que se genera un PDF. Un
+// import estatico lo cargaria al arrancar la funcion de Vercel, y su
+// dependencia pdfkit hace requires dinamicos de fuentes que el empaquetador
+// no incluye: la app entera caia con MODULE_NOT_FOUND (6 sep 2026).
+// El nombre del paquete va en una variable para que esbuild no pueda
+// resolverlo estaticamente y lo deje como import() dinamico. Es ESM puro:
+// require() no sirve.
+type RP = typeof import('@react-pdf/renderer');
+let rpCache: RP | null = null;
+async function rp(): Promise<RP> {
+  if (rpCache) return rpCache;
+  const nombre = '@react-pdf/renderer';
+  rpCache = (await import(nombre)) as RP;
+  rpCache.Font.registerHyphenationCallback((w: string) => [w]);
+  return rpCache;
+}
 
 const AZUL = '#0062CC', NAVY = '#1A1F36', GRIS_FILA = '#F5F7FA', TEXTO = '#323232', SUAVE = '#646464', PIE = '#969696';
 export const LOGO_URL = 'https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png';
 
-const s = StyleSheet.create({
+const s: Record<string, any> = ({
   page: { fontFamily: 'Helvetica', fontSize: 10, color: TEXTO, paddingTop: 36, paddingBottom: 42, paddingHorizontal: 42 },
   cab: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   logo: { width: 40, height: 40, marginRight: 14 },
@@ -67,7 +81,8 @@ const num = (v: number | null | undefined, l: string, d = 1) => v == null ? '-' 
 const fecha = (iso: string, idioma: 'es' | 'en') => new Date(iso + 'T12:00:00').toLocaleDateString(idioma === 'en' ? 'en-GB' : 'es-CL');
 const delta = (a: number | null, b: number | null) => (a == null || b == null || b === 0) ? '' : `${a - b >= 0 ? '+' : ''}${(((a - b) / b) * 100).toFixed(1)}%`;
 
-function Reporte({ r }: { r: ReporteInput }) {
+function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
+  const { Document, Page, Text, View, Image } = R;
   const t = T[r.idioma];
   const m = r.metricas;
   const kpi = (k: string) => k === 'cost' || k === 'cpa' ? money(m[k]?.actual, r.moneda, r.locale) : k === 'ctr' ? (m[k]?.actual == null ? '-' : `${num(m[k].actual, r.locale, 2)}%`) : num(m[k]?.actual, r.locale, k === 'conversions' ? 2 : 0);
@@ -165,4 +180,4 @@ export async function descargarLogo(): Promise<Buffer | null> {
   if (logoCache) return logoCache;
   try { const res = await fetch(LOGO_URL); if (!res.ok) return null; logoCache = Buffer.from(await res.arrayBuffer()); return logoCache; } catch { return null; }
 }
-export async function generarReportePDF(r: ReporteInput): Promise<Buffer> { return renderToBuffer(<Reporte r={r} />); }
+export async function generarReportePDF(r: ReporteInput): Promise<Buffer> { const R = await rp(); return R.renderToBuffer(<Reporte r={r} R={R} />); }

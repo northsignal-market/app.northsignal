@@ -1,4 +1,220 @@
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// src/server/lib/reporte-pdf.tsx
+var reporte_pdf_exports = {};
+__export(reporte_pdf_exports, {
+  LOGO_URL: () => LOGO_URL,
+  descargarLogo: () => descargarLogo,
+  generarReportePDF: () => generarReportePDF,
+  parsearBloques: () => parsearBloques
+});
+import { jsx, jsxs } from "react/jsx-runtime";
+async function rp() {
+  if (rpCache) return rpCache;
+  const nombre = "@react-pdf/renderer";
+  rpCache = await import(nombre);
+  rpCache.Font.registerHyphenationCallback((w) => [w]);
+  return rpCache;
+}
+function Reporte({ r, R }) {
+  const { Document, Page, Text, View, Image } = R;
+  const t = T[r.idioma];
+  const m = r.metricas;
+  const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, 2)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
+  const lbl = { cost: t.inv, clicks: t.clics, impressions: t.impr, conversions: t.conv, cpa: t.cpa, ctr: t.ctr };
+  const orden = ["cost", "clicks", "impressions", "conversions", "cpa", "ctr"].filter((k) => m[k]?.actual != null);
+  const totales = orden.map((k) => `${lbl[k]}: ${kpi(k)}`).join("  |  ");
+  const deltas = r.periodo_anterior_completo ? ["cost", "conversions", "cpa"].map((k) => {
+    const d = delta(m[k]?.actual ?? null, m[k]?.anterior ?? null);
+    return d ? `${lbl[k]} ${d}` : "";
+  }).filter(Boolean).join("  |  ") : "";
+  const hoy = fecha((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), r.idioma);
+  const Pie = () => /* @__PURE__ */ jsx(Text, { style: s.pie, fixed: true, render: ({ pageNumber, totalPages }) => `${t.pag} ${pageNumber} ${t.de} ${totalPages} - NorthSignal` });
+  return /* @__PURE__ */ jsx(Document, { title: `${r.titulo || t.titulo} - ${r.nombre_cliente}`, author: "NorthSignal", children: /* @__PURE__ */ jsxs(Page, { size: "A4", orientation: "landscape", style: s.page, wrap: true, children: [
+    /* @__PURE__ */ jsx(Pie, {}),
+    /* @__PURE__ */ jsxs(View, { style: s.cab, children: [
+      r.logo ? /* @__PURE__ */ jsx(Image, { src: { data: r.logo, format: "png" }, style: s.logo }) : null,
+      /* @__PURE__ */ jsxs(View, { children: [
+        /* @__PURE__ */ jsxs(Text, { style: s.titulo, children: [
+          r.titulo || t.titulo,
+          " - NorthSignal"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { style: s.sub, children: [
+          t.cliente,
+          ": ",
+          r.nombre_cliente,
+          " | ",
+          t.periodo,
+          ": ",
+          fecha(r.periodo_desde, r.idioma),
+          " - ",
+          fecha(r.periodo_hasta, r.idioma),
+          " | ",
+          t.fecha,
+          ": ",
+          hoy
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs(Text, { style: s.totales, children: [
+      totales,
+      deltas ? `
+${deltas} ${t.vs}` : ""
+    ] }),
+    r.bloques.map((b, i) => /* @__PURE__ */ jsxs(View, { style: s.bloque, wrap: false, children: [
+      /* @__PURE__ */ jsx(Text, { style: s.etiqueta, children: b.etiqueta }),
+      b.texto ? b.texto.split(/\n\s*\n/).map((p, j) => /* @__PURE__ */ jsx(Text, { style: s.p, children: p.trim() }, j)) : null,
+      (b.vinetas || []).map((v, j) => /* @__PURE__ */ jsxs(View, { style: s.vineta, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.guion, children: "-" }),
+        /* @__PURE__ */ jsx(Text, { style: s.vinetaTxt, children: v })
+      ] }, j))
+    ] }, i)),
+    r.campanas.length > 0 && /* @__PURE__ */ jsxs(View, { children: [
+      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.campanas }),
+        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.campana }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.ctr })
+        ] }),
+        r.campanas.slice(0, 1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
+        ] }, i))
+      ] }),
+      r.campanas.slice(1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
+      ] }, i))
+    ] }),
+    r.grupos.length > 1 && /* @__PURE__ */ jsxs(View, { children: [
+      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.grupos }),
+        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.grupo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa })
+        ] }),
+        r.grupos.slice(0, 1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
+        ] }, i))
+      ] }),
+      r.grupos.slice(1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
+      ] }, i)),
+      /* @__PURE__ */ jsx(Text, { style: s.nota, children: t.nota })
+    ] })
+  ] }) });
+}
+function parsearBloques(texto) {
+  const lineas = texto.split("\n");
+  const bloques = [];
+  let actual = null;
+  const esEtiqueta = (l) => /^[A-ZÁÉÍÓÚÑ][^:\n]{2,40}:\s*$/.test(l.trim()) || /^(Contexto|Métricas|Metricas|Observaciones|Cambios aplicados|Cambios|Puntos de atención|Puntos de atencion|Próximos pasos|Proximos pasos|Context|Metrics|Observations|Changes applied|Changes|Points of attention|Attention|Next steps):/i.test(l.trim());
+  for (const raw2 of lineas) {
+    const l = raw2.trim();
+    if (!l) continue;
+    if (esEtiqueta(l)) {
+      const [etq, ...resto] = l.split(":");
+      actual = { etiqueta: etq.trim(), texto: resto.join(":").trim() || void 0, vinetas: [] };
+      bloques.push(actual);
+      continue;
+    }
+    if (!actual) {
+      actual = { etiqueta: "", texto: "", vinetas: [] };
+      bloques.push(actual);
+    }
+    if (/^[-•*]\s+/.test(l)) actual.vinetas.push(l.replace(/^[-•*]\s+/, ""));
+    else actual.texto = (actual.texto ? actual.texto + "\n\n" : "") + l;
+  }
+  return bloques.map((b) => ({ ...b, vinetas: b.vinetas?.length ? b.vinetas : void 0 })).filter((b) => b.etiqueta || b.texto || b.vinetas);
+}
+async function descargarLogo() {
+  if (logoCache) return logoCache;
+  try {
+    const res = await fetch(LOGO_URL);
+    if (!res.ok) return null;
+    logoCache = Buffer.from(await res.arrayBuffer());
+    return logoCache;
+  } catch {
+    return null;
+  }
+}
+async function generarReportePDF(r) {
+  const R = await rp();
+  return R.renderToBuffer(/* @__PURE__ */ jsx(Reporte, { r, R }));
+}
+var rpCache, AZUL, NAVY, GRIS_FILA, TEXTO, SUAVE, PIE, LOGO_URL, s, T, money, num, fecha, delta, logoCache;
+var init_reporte_pdf = __esm({
+  "src/server/lib/reporte-pdf.tsx"() {
+    rpCache = null;
+    AZUL = "#0062CC";
+    NAVY = "#1A1F36";
+    GRIS_FILA = "#F5F7FA";
+    TEXTO = "#323232";
+    SUAVE = "#646464";
+    PIE = "#969696";
+    LOGO_URL = "https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png";
+    s = {
+      page: { fontFamily: "Helvetica", fontSize: 10, color: TEXTO, paddingTop: 36, paddingBottom: 42, paddingHorizontal: 42 },
+      cab: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
+      logo: { width: 40, height: 40, marginRight: 14 },
+      titulo: { fontSize: 20, color: NAVY, marginTop: 2, lineHeight: 1.15 },
+      sub: { fontSize: 10, color: SUAVE, marginTop: 5, lineHeight: 1.3 },
+      totales: { fontSize: 10, color: TEXTO, marginBottom: 16, lineHeight: 1.45 },
+      bloque: { marginBottom: 10 },
+      etiqueta: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginBottom: 3 },
+      p: { fontSize: 10, marginBottom: 4, lineHeight: 1.45 },
+      vineta: { flexDirection: "row", marginBottom: 3, paddingLeft: 4 },
+      guion: { width: 12, fontSize: 10 },
+      vinetaTxt: { flex: 1, fontSize: 10, lineHeight: 1.45 },
+      tablaTitulo: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginTop: 14, marginBottom: 5 },
+      th: { flexDirection: "row", backgroundColor: AZUL, paddingVertical: 5, paddingHorizontal: 8 },
+      thT: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#FFFFFF" },
+      tr: { flexDirection: "row", paddingVertical: 4.5, paddingHorizontal: 8 },
+      trAlt: { backgroundColor: GRIS_FILA },
+      td: { fontSize: 8.5, color: TEXTO },
+      n: { textAlign: "right" },
+      cNombre: { flex: 4 },
+      cNum: { flex: 1 },
+      nota: { fontSize: 8, color: SUAVE, marginTop: 6 },
+      pie: { position: "absolute", bottom: 18, left: 42, fontSize: 8, color: PIE }
+    };
+    T = {
+      es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo." },
+      en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown." }
+    };
+    money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
+    num = (v, l, d = 1) => v == null ? "-" : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
+    fecha = (iso, idioma) => (/* @__PURE__ */ new Date(iso + "T12:00:00")).toLocaleDateString(idioma === "en" ? "en-GB" : "es-CL");
+    delta = (a, b) => a == null || b == null || b === 0 ? "" : `${a - b >= 0 ? "+" : ""}${((a - b) / b * 100).toFixed(1)}%`;
+    logoCache = null;
+  }
+});
 
 // server.ts
 import "dotenv/config";
@@ -345,193 +561,6 @@ ${JSON.stringify(input)}`;
   }
 }
 
-// src/server/lib/reporte-pdf.tsx
-import { Document, Page, Text, View, StyleSheet, Font, Image, renderToBuffer } from "@react-pdf/renderer";
-import { jsx, jsxs } from "react/jsx-runtime";
-Font.registerHyphenationCallback((w) => [w]);
-var AZUL = "#0062CC";
-var NAVY = "#1A1F36";
-var GRIS_FILA = "#F5F7FA";
-var TEXTO = "#323232";
-var SUAVE = "#646464";
-var PIE = "#969696";
-var LOGO_URL = "https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png";
-var s = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 10, color: TEXTO, paddingTop: 36, paddingBottom: 42, paddingHorizontal: 42 },
-  cab: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
-  logo: { width: 40, height: 40, marginRight: 14 },
-  titulo: { fontSize: 20, color: NAVY, marginTop: 2, lineHeight: 1.15 },
-  sub: { fontSize: 10, color: SUAVE, marginTop: 5, lineHeight: 1.3 },
-  totales: { fontSize: 10, color: TEXTO, marginBottom: 16, lineHeight: 1.45 },
-  bloque: { marginBottom: 10 },
-  etiqueta: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginBottom: 3 },
-  p: { fontSize: 10, marginBottom: 4, lineHeight: 1.45 },
-  vineta: { flexDirection: "row", marginBottom: 3, paddingLeft: 4 },
-  guion: { width: 12, fontSize: 10 },
-  vinetaTxt: { flex: 1, fontSize: 10, lineHeight: 1.45 },
-  tablaTitulo: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginTop: 14, marginBottom: 5 },
-  th: { flexDirection: "row", backgroundColor: AZUL, paddingVertical: 5, paddingHorizontal: 8 },
-  thT: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#FFFFFF" },
-  tr: { flexDirection: "row", paddingVertical: 4.5, paddingHorizontal: 8 },
-  trAlt: { backgroundColor: GRIS_FILA },
-  td: { fontSize: 8.5, color: TEXTO },
-  n: { textAlign: "right" },
-  cNombre: { flex: 4 },
-  cNum: { flex: 1 },
-  nota: { fontSize: 8, color: SUAVE, marginTop: 6 },
-  pie: { position: "absolute", bottom: 18, left: 42, fontSize: 8, color: PIE }
-});
-var T = {
-  es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo." },
-  en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown." }
-};
-var money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
-var num = (v, l, d = 1) => v == null ? "-" : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
-var fecha = (iso, idioma) => (/* @__PURE__ */ new Date(iso + "T12:00:00")).toLocaleDateString(idioma === "en" ? "en-GB" : "es-CL");
-var delta = (a, b) => a == null || b == null || b === 0 ? "" : `${a - b >= 0 ? "+" : ""}${((a - b) / b * 100).toFixed(1)}%`;
-function Reporte({ r }) {
-  const t = T[r.idioma];
-  const m = r.metricas;
-  const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, 2)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
-  const lbl = { cost: t.inv, clicks: t.clics, impressions: t.impr, conversions: t.conv, cpa: t.cpa, ctr: t.ctr };
-  const orden = ["cost", "clicks", "impressions", "conversions", "cpa", "ctr"].filter((k) => m[k]?.actual != null);
-  const totales = orden.map((k) => `${lbl[k]}: ${kpi(k)}`).join("  |  ");
-  const deltas = r.periodo_anterior_completo ? ["cost", "conversions", "cpa"].map((k) => {
-    const d = delta(m[k]?.actual ?? null, m[k]?.anterior ?? null);
-    return d ? `${lbl[k]} ${d}` : "";
-  }).filter(Boolean).join("  |  ") : "";
-  const hoy = fecha((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), r.idioma);
-  const Pie = () => /* @__PURE__ */ jsx(Text, { style: s.pie, fixed: true, render: ({ pageNumber, totalPages }) => `${t.pag} ${pageNumber} ${t.de} ${totalPages} - NorthSignal` });
-  return /* @__PURE__ */ jsx(Document, { title: `${r.titulo || t.titulo} - ${r.nombre_cliente}`, author: "NorthSignal", children: /* @__PURE__ */ jsxs(Page, { size: "A4", orientation: "landscape", style: s.page, wrap: true, children: [
-    /* @__PURE__ */ jsx(Pie, {}),
-    /* @__PURE__ */ jsxs(View, { style: s.cab, children: [
-      r.logo ? /* @__PURE__ */ jsx(Image, { src: { data: r.logo, format: "png" }, style: s.logo }) : null,
-      /* @__PURE__ */ jsxs(View, { children: [
-        /* @__PURE__ */ jsxs(Text, { style: s.titulo, children: [
-          r.titulo || t.titulo,
-          " - NorthSignal"
-        ] }),
-        /* @__PURE__ */ jsxs(Text, { style: s.sub, children: [
-          t.cliente,
-          ": ",
-          r.nombre_cliente,
-          " | ",
-          t.periodo,
-          ": ",
-          fecha(r.periodo_desde, r.idioma),
-          " - ",
-          fecha(r.periodo_hasta, r.idioma),
-          " | ",
-          t.fecha,
-          ": ",
-          hoy
-        ] })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxs(Text, { style: s.totales, children: [
-      totales,
-      deltas ? `
-${deltas} ${t.vs}` : ""
-    ] }),
-    r.bloques.map((b, i) => /* @__PURE__ */ jsxs(View, { style: s.bloque, wrap: false, children: [
-      /* @__PURE__ */ jsx(Text, { style: s.etiqueta, children: b.etiqueta }),
-      b.texto ? b.texto.split(/\n\s*\n/).map((p, j) => /* @__PURE__ */ jsx(Text, { style: s.p, children: p.trim() }, j)) : null,
-      (b.vinetas || []).map((v, j) => /* @__PURE__ */ jsxs(View, { style: s.vineta, children: [
-        /* @__PURE__ */ jsx(Text, { style: s.guion, children: "-" }),
-        /* @__PURE__ */ jsx(Text, { style: s.vinetaTxt, children: v })
-      ] }, j))
-    ] }, i)),
-    r.campanas.length > 0 && /* @__PURE__ */ jsxs(View, { children: [
-      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
-        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.campanas }),
-        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.campana }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.ctr })
-        ] }),
-        r.campanas.slice(0, 1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
-        ] }, i))
-      ] }),
-      r.campanas.slice(1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
-      ] }, i))
-    ] }),
-    r.grupos.length > 1 && /* @__PURE__ */ jsxs(View, { children: [
-      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
-        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.grupos }),
-        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.grupo }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
-          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa })
-        ] }),
-        r.grupos.slice(0, 1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
-          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
-        ] }, i))
-      ] }),
-      r.grupos.slice(1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
-        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
-      ] }, i)),
-      /* @__PURE__ */ jsx(Text, { style: s.nota, children: t.nota })
-    ] })
-  ] }) });
-}
-function parsearBloques(texto) {
-  const lineas = texto.split("\n");
-  const bloques = [];
-  let actual = null;
-  const esEtiqueta = (l) => /^[A-ZÁÉÍÓÚÑ][^:\n]{2,40}:\s*$/.test(l.trim()) || /^(Contexto|Métricas|Metricas|Observaciones|Cambios aplicados|Cambios|Puntos de atención|Puntos de atencion|Próximos pasos|Proximos pasos|Context|Metrics|Observations|Changes applied|Changes|Points of attention|Attention|Next steps):/i.test(l.trim());
-  for (const raw2 of lineas) {
-    const l = raw2.trim();
-    if (!l) continue;
-    if (esEtiqueta(l)) {
-      const [etq, ...resto] = l.split(":");
-      actual = { etiqueta: etq.trim(), texto: resto.join(":").trim() || void 0, vinetas: [] };
-      bloques.push(actual);
-      continue;
-    }
-    if (!actual) {
-      actual = { etiqueta: "", texto: "", vinetas: [] };
-      bloques.push(actual);
-    }
-    if (/^[-•*]\s+/.test(l)) actual.vinetas.push(l.replace(/^[-•*]\s+/, ""));
-    else actual.texto = (actual.texto ? actual.texto + "\n\n" : "") + l;
-  }
-  return bloques.map((b) => ({ ...b, vinetas: b.vinetas?.length ? b.vinetas : void 0 })).filter((b) => b.etiqueta || b.texto || b.vinetas);
-}
-var logoCache = null;
-async function descargarLogo() {
-  if (logoCache) return logoCache;
-  try {
-    const res = await fetch(LOGO_URL);
-    if (!res.ok) return null;
-    logoCache = Buffer.from(await res.arrayBuffer());
-    return logoCache;
-  } catch {
-    return null;
-  }
-}
-async function generarReportePDF(r) {
-  return renderToBuffer(/* @__PURE__ */ jsx(Reporte, { r }));
-}
-
 // src/server/auth/session.ts
 import * as crypto2 from "crypto";
 var SECRET = () => process.env.SESSION_SECRET || process.env.APP_ACCESS_TOKEN || "";
@@ -706,6 +735,7 @@ import path from "path";
 import { z as z3 } from "zod";
 import cookieParser from "cookie-parser";
 import { Client as NotionClient } from "@notionhq/client";
+var cargarPdf = () => Promise.resolve().then(() => (init_reporte_pdf(), reporte_pdf_exports));
 var notionClientCache = {};
 async function resolveNotionClient(notion2, relationProp) {
   if (!relationProp?.relation || relationProp.relation.length === 0) return "Unknown";
@@ -2331,6 +2361,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   app2.post("/api/reportes/:id/pdf", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
+      const pdf = await cargarPdf();
       const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
       if (!r) return res.status(404).json({ error: "no encontrado" });
       const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
@@ -2349,14 +2380,14 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         periodo_desde: r.periodo_desde,
         periodo_hasta: r.periodo_hasta,
         tipo: r.tipo,
-        bloques: parsearBloques(textoCompleto),
+        bloques: pdf.parsearBloques(textoCompleto),
         metricas: r.metricas,
         periodo_anterior_completo: (anteriorCount ?? 0) >= dias,
         campanas: r.campanas?.campanas || [],
         grupos: r.campanas?.grupos || [],
-        logo: await descargarLogo()
+        logo: await pdf.descargarLogo()
       };
-      const buf = await generarReportePDF(input);
+      const buf = await pdf.generarReportePDF(input);
       const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
       const { error: up } = await supabase.storage.from("reportes").upload(ruta, buf, { contentType: "application/pdf", upsert: true });
       if (up) return res.status(500).json({ error: up.message });

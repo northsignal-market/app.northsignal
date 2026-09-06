@@ -9,7 +9,10 @@ import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/vi
 import { notion } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
-import { generarReportePDF, descargarLogo, parsearBloques, type ReporteInput } from './src/server/lib/reporte-pdf';
+import type { ReporteInput } from './src/server/lib/reporte-pdf';
+// react-pdf se carga solo cuando se genera un PDF: su dependencia pdfkit hace
+// requires dinamicos que tumban el arranque si el bundle no los incluye.
+const cargarPdf = () => import('./src/server/lib/reporte-pdf');
 import { supabase } from './src/server/lib/supabase';
 import { authMiddleware } from './src/server/auth/middleware';
 import { authRouter } from './src/server/auth/routes';
@@ -1982,6 +1985,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   app.post("/api/reportes/:id/pdf", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     try {
+      const pdf = await cargarPdf();
       const { data: r } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
       if (!r) return res.status(404).json({ error: 'no encontrado' });
       const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', r.account).single();
@@ -1995,13 +1999,13 @@ Las descripciones no deben superar los 90 caracteres.`;
         account: r.account, nombre_cliente: cuenta.nombre_cliente, idioma: r.idioma, moneda: cuenta.moneda, locale: cuenta.locale,
         titulo: (cuenta.encabezado_reporte || '').split('|')[0].trim() || undefined,
         periodo_desde: r.periodo_desde, periodo_hasta: r.periodo_hasta, tipo: r.tipo,
-        bloques: parsearBloques(textoCompleto),
+        bloques: pdf.parsearBloques(textoCompleto),
         metricas: r.metricas,
         periodo_anterior_completo: ((anteriorCount as any) ?? 0) >= dias,
         campanas: r.campanas?.campanas || [], grupos: r.campanas?.grupos || [],
-        logo: await descargarLogo()
+        logo: await pdf.descargarLogo()
       };
-      const buf = await generarReportePDF(input);
+      const buf = await pdf.generarReportePDF(input);
       const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
       const { error: up } = await supabase.storage.from('reportes').upload(ruta, buf, { contentType: 'application/pdf', upsert: true });
       if (up) return res.status(500).json({ error: up.message });
