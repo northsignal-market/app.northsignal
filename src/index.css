@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* ================================================================
+   NORTH SIGNAL · SISTEMA VISUAL
+   Cuatro colores, una tipografía, un material.
+   Paleta: #0062CC · #1A1F36 · #FFFFFF · #F5F7FA. Todo lo demás por color-mix.
+   Tipografía: Inter 400/500/700. Cifras con tabular-nums.
+   Material: Liquid Glass para lo que flota; superficie sólida para contenido.
+   ================================================================ */
+
+:root {
+  --primary: #0062CC;
+  --navy: #1A1F36;
+  --white: #FFFFFF;
+  --gray: #F5F7FA;
+
+  --primary-hover: color-mix(in oklab, var(--primary) 85%, var(--white));
+  --primary-soft: color-mix(in oklab, var(--primary) 18%, transparent);
+  --primary-faint: color-mix(in oklab, var(--primary) 8%, transparent);
+
+  --surface-0: var(--navy);
+  --surface-1: color-mix(in oklab, var(--navy) 92%, var(--white));
+  --surface-2: color-mix(in oklab, var(--navy) 85%, var(--white));
+  --surface-3: color-mix(in oklab, var(--navy) 78%, var(--white));
+
+  --border: color-mix(in oklab, var(--gray) 12%, transparent);
+  --border-strong: color-mix(in oklab, var(--gray) 24%, transparent);
+
+  --text: var(--white);
+  --text-secondary: color-mix(in oklab, var(--gray) 70%, transparent);
+  --text-muted: color-mix(in oklab, var(--gray) 45%, transparent);
+
+  --glass-tint: color-mix(in oklab, var(--navy) 72%, transparent);
+  --glass-tint-dense: color-mix(in oklab, var(--navy) 84%, transparent);
+  --glass-tint-light: color-mix(in oklab, var(--navy) 55%, transparent);
+  --glass-border: color-mix(in oklab, var(--white) 14%, transparent);
+  --glass-border-hover: color-mix(in oklab, var(--white) 22%, transparent);
+  --glass-specular: color-mix(in oklab, var(--white) 42%, transparent);
+  --glass-inner: color-mix(in oklab, var(--white) 5%, transparent);
+  --glass-shadow: 0 24px 60px color-mix(in oklab, #000000 45%, transparent);
+
+  --radius-btn: 6px;
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 100ms;
+  --dur-base: 160ms;
+  --dur-slow: 240ms;
+
+  font-family: 'Inter', sans-serif;
+}
+
+html, body {
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, color-mix(in oklab, var(--primary) 18%, var(--navy)), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, color-mix(in oklab, var(--primary) 10%, var(--navy)), transparent 55%),
+    var(--navy);
+  background-attachment: fixed;
+  color: var(--text);
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
+h4, h5, h6 { font-weight: 500; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+.glass-dense {
+  background: linear-gradient(180deg, var(--glass-tint-dense), var(--glass-tint));
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 1px var(--glass-specular), inset 0 -8px 20px var(--glass-inner), var(--glass-shadow);
+  contain: paint;
+}
+
+.glass {
+  background: linear-gradient(180deg, var(--glass-tint), color-mix(in oklab, var(--navy) 62%, transparent));
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 1px 1px var(--glass-specular), var(--glass-shadow);
+  contain: paint;
+  transition: border-color var(--dur-base) var(--ease);
+}
+.glass:hover { border-color: var(--glass-border-hover); }
+
+.glass-light {
+  background: var(--glass-tint-light);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  contain: paint;
+}
+
+@supports (backdrop-filter: url(#glass-refract)) {
+  .glass, .glass-dense { backdrop-filter: url(#glass-refract) blur(18px) saturate(130%); }
+}
+
+.surface { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-card); }
+.surface:hover { background: var(--surface-2); }
+.surface-attention { border-left: 2px solid var(--primary); }
+
+button, [role="button"] { transition: transform var(--dur-fast) var(--ease), opacity var(--dur-base) var(--ease); }
+button:active, [role="button"]:active { transform: scale(0.97); }
+
+@keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.drawer-enter { animation: drawer-in var(--dur-slow) var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: var(--radius-pill); }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }

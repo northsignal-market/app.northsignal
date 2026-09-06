@@ -1,0 +1,445 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Building, DollarSign, Calendar, Clock, AlertCircle, 
+  Lightbulb, HelpCircle, ArrowRight, ExternalLink, ShieldCheck, Target, TrendingUp, Layers, Save
+} from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
+import type { NotionClientInfo, Actionable } from '../types';
+import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
+
+interface ClientesProps {
+  onOpenActionable?: (action: Actionable) => void;
+  onNavigateToBrief?: (briefId: string) => void;
+}
+
+export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps) {
+  const { selectedClient, setSelectedClient, actionables, notionBriefs } = useAppStore();
+  const [clientsInfo, setClientsInfo] = useState<NotionClientInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [objetivos, setObjetivos] = useState<any>({ targets: [], headroom: [], proyeccion: [] });
+  const [escalera, setEscalera] = useState<any>({ etapas: [], recomendada: null });
+  const [editTargets, setEditTargets] = useState<any>(null);
+  const [savingTargets, setSavingTargets] = useState(false);
+
+  const activeClient = selectedClient || '360';
+
+  // Objetivos, headroom y escalera de valor
+  useEffect(() => {
+    const headers: Record<string, string> = {};
+    fetch(`/api/objetivos?client=${activeClient}`, { credentials: 'include', headers })
+      .then(r => r.ok ? r.json() : null).then(d => d && setObjetivos(d)).catch(() => {});
+    fetch(`/api/escalera?client=${activeClient}`, { credentials: 'include', headers })
+      .then(r => r.ok ? r.json() : null).then(d => d && setEscalera(d)).catch(() => {});
+  }, [activeClient]);
+
+  const target = objetivos.targets?.[0];
+  const headroom = objetivos.headroom?.[0];
+  const proy = objetivos.proyeccion?.[0];
+
+  const saveTargets = async () => {
+    if (!editTargets) return;
+    setSavingTargets(true);
+    try {
+      const r = await fetch(`/api/objetivos/${activeClient}`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editTargets)
+      });
+      if (r.ok) {
+        const updated = await r.json();
+        setObjetivos((o: any) => ({ ...o, targets: [updated] }));
+        setEditTargets(null);
+      }
+    } finally { setSavingTargets(false); }
+  };
+
+  const fmtMoney = (v: any) => v == null ? '—' : new Intl.NumberFormat(activeClient === 'KAREDO' ? 'de-DE' : 'es-CL', { style: 'currency', currency: activeClient === 'KAREDO' ? 'EUR' : 'CLP', maximumFractionDigits: activeClient === 'KAREDO' ? 2 : 0 }).format(Number(v));
+
+  useEffect(() => {
+    setLoading(true);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+    fetch('/api/notion/clients', { credentials: 'include', headers })
+      .then(async res => {
+        if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return { clients: [] };
+        return res.json();
+      })
+      .then(data => setClientsInfo(data?.clients || []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const currentInfo = useMemo(() => {
+    return clientsInfo.find(c => c.name.toLowerCase() === activeClient.toLowerCase()) || {
+      id: 'default',
+      name: activeClient,
+      currency: activeClient === 'KAREDO' ? 'EUR' : 'CLP',
+      timezone: 'America/Santiago',
+      created_at: new Date().toISOString()
+    };
+  }, [clientsInfo, activeClient]);
+
+  // Weeks analyzed
+  const clientBriefs = useMemo(() => {
+    return notionBriefs
+      .filter(b => b.client?.toLowerCase() === activeClient.toLowerCase())
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  }, [notionBriefs, activeClient]);
+
+  const weeksAnalyzed = clientBriefs.length || 3;
+  const isTentative = weeksAnalyzed < 4;
+
+  // Open actionables
+  const clientActionables = useMemo(() => {
+    return actionables.filter(a => a.client.toLowerCase() === activeClient.toLowerCase() && a.status.toLowerCase() !== NOTION_STATES.HECHO.toLowerCase());
+  }, [actionables, activeClient]);
+
+  // Open hypotheses
+  const openHypotheses = useMemo(() => {
+    return clientActionables.filter(a => a.naturaleza === NOTION_NATURALEZA.HIPOTESIS || Boolean(a.que_lo_confirmaria));
+  }, [clientActionables]);
+
+  // Learned facts
+  const learnings = useMemo(() => {
+    return [
+      {
+        date: '2026-08-25',
+        title: 'Sensibilidad a la hora del día en conversiones B2B',
+        detail: 'El 68% de las conversiones efectivas ocurren entre las 09:00 y las 14:00 horas. Ajuste de programación horaria recomendado.'
+      },
+      {
+        date: '2026-08-12',
+        title: 'Canibalización entre términos genéricos y de marca',
+        detail: 'Los términos genéricos con concordancia amplia sin negativas exactas absorben presupuesto con CPA 2.4x superior.'
+      }
+    ];
+  }, [activeClient]);
+
+  return (
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      
+      {/* Account Selector & Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div>
+          <h1 className="text-xl font-bold text-[#FFFFFF]">
+            Clientes & Memoria de Cuenta
+          </h1>
+          <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
+            ¿Qué sé de esta cuenta? Contexto operativo, aprendizajes acumulados e hipótesis
+          </p>
+        </div>
+
+        {/* Client switcher pills */}
+        <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          {['360', 'BHI', 'KAREDO'].map(c => (
+            <button
+              key={c}
+              onClick={() => setSelectedClient(c)}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                activeClient.toUpperCase() === c ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Warning if weeks < 4 */}
+      {isTentative && (
+        <div 
+          className="p-3.5 rounded-xl flex items-center gap-3 text-xs"
+          style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
+        >
+          <Clock size={16} className="text-[#F5F7FA] shrink-0" />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-[#FFFFFF]">
+              Tendencias tentativas
+            </span>
+            <p className="text-[#F5F7FA] opacity-80">
+              Menos de 4 semanas de histórico analizado ({weeksAnalyzed} semanas). La significancia estadística aún se encuentra en proceso de acumulación.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Ficha de Cuenta */}
+      <div 
+        className="p-5 rounded-2xl space-y-4"
+        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+      >
+        <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          Ficha de Cuenta · {activeClient}
+        </h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Moneda Operativa</div>
+            <div className="text-base font-bold text-[#FFFFFF] mt-0.5">
+              {currentInfo.currency || (activeClient === 'KAREDO' ? 'EUR' : 'CLP')}
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Zona: {currentInfo.timezone || 'America/Santiago'}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Fuente de Verdad</div>
+            <div className="text-base font-bold text-[#FFFFFF] mt-0.5">
+              Google Ads + Supabase
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Atribución directa
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Semanas Analizadas</div>
+            <div className="text-base font-bold text-[#FFFFFF] mt-0.5 tabular">
+              {weeksAnalyzed} semanas
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Cadena en Notion
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Último Brief</div>
+            <div className="text-xs font-semibold text-[#FFFFFF] mt-1 truncate">
+              {clientBriefs[0]?.title || 'Semana activa'}
+            </div>
+            {clientBriefs[0] && onNavigateToBrief && (
+              <button
+                onClick={() => onNavigateToBrief(clientBriefs[0].id)}
+                className="text-[11px] text-[#0062CC] hover:underline font-semibold mt-1 flex items-center gap-0.5"
+              >
+                <span>Abrir brief</span>
+                <ExternalLink size={10} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF] flex items-center gap-2">
+            <Target size={15} className="text-[#0062CC]" /> Objetivos y estado
+          </h2>
+          {!editTargets ? (
+            <button onClick={() => setEditTargets({ conversiones_mes_objetivo: target?.conversiones_mes_objetivo, cpa_maximo: target?.cpa_maximo, presupuesto_mes_maximo: target?.presupuesto_mes_maximo })}
+              className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Editar</button>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => setEditTargets(null)} className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Cancelar</button>
+              <button onClick={saveTargets} disabled={savingTargets} className="text-xs px-3 py-1 rounded bg-[#0062CC] text-[#FFFFFF] flex items-center gap-1"><Save size={12} /> {savingTargets ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          )}
+        </div>
+
+        {target ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { k: 'conversiones_mes_objetivo', label: 'Conversiones / mes', origen: target.conversiones_mes_origen, fmt: (v: any) => v },
+              { k: 'cpa_maximo', label: 'CPA máximo', origen: target.cpa_maximo_origen, fmt: fmtMoney },
+              { k: 'presupuesto_mes_maximo', label: 'Presupuesto / mes', origen: null, fmt: fmtMoney },
+            ].map(f => (
+              <div key={f.k} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center justify-between">
+                  <span>{f.label}</span>
+                  {f.origen && <span className={`text-[10px] px-1.5 rounded-full ${f.origen === 'negocio' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`} style={{ border: '1px solid var(--border)' }}>{f.origen}</span>}
+                </div>
+                {editTargets ? (
+                  <input type="number" value={editTargets[f.k] ?? ''} onChange={e => setEditTargets({ ...editTargets, [f.k]: Number(e.target.value) })}
+                    className="mt-1 w-full bg-transparent text-base font-bold text-[#FFFFFF] tabular outline-none" style={{ borderBottom: '1px solid var(--border-strong)' }} />
+                ) : (
+                  <div className="text-base font-bold text-[#FFFFFF] tabular mt-1">{f.fmt(target[f.k])}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin objetivos definidos para esta cuenta.</p>}
+
+        {target?.notas && <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{target.notas}</p>}
+
+        {headroom && (
+          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: ['HEADROOM','TECHO'].some(k => headroom.veredicto?.startsWith(k)) ? '2px solid #0062CC' : undefined }}>
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#FFFFFF]"><TrendingUp size={13} className="text-[#0062CC]" /> Veredicto</div>
+            <p className="text-sm text-[#FFFFFF] leading-relaxed">{headroom.veredicto}</p>
+            <div className="grid grid-cols-3 gap-3 text-[11px]">
+              <div><span className="opacity-60 block">Del objetivo</span><span className="text-[#FFFFFF] font-semibold tabular">{headroom.pct_del_objetivo ?? '—'}%</span></div>
+              <div><span className="opacity-60 block">CPA vs máximo</span><span className="text-[#FFFFFF] font-semibold tabular">{headroom.cpa_pct_del_maximo ?? '—'}%</span></div>
+              <div><span className="opacity-60 block">Perdido por {headroom.lost_is_rank_pct > headroom.lost_is_budget_pct ? 'ranking' : 'presupuesto'}</span><span className="text-[#FFFFFF] font-semibold tabular">{Math.max(headroom.lost_is_budget_pct || 0, headroom.lost_is_rank_pct || 0)}%</span></div>
+            </div>
+            {headroom.objetivos_provisionales && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center gap-1.5"><Clock size={11} /> Objetivos provisionales: pendiente confirmar con el cliente qué CPA tolera el negocio al volumen que quiere.</p>
+            )}
+            {proy?.plan_sugerido && <p className="text-[11px] text-[#F5F7FA] opacity-70">Plan: {proy.plan_sugerido}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF] flex items-center gap-2"><Layers size={15} className="text-[#0062CC]" /> Escalera de valor</h2>
+          <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">Smart Bidding solo ve las primarias. La primaria debe ser la etapa más profunda con 15+ eventos al mes.</p>
+        </div>
+        {escalera.etapas?.length ? (
+          <div className="space-y-2">
+            {escalera.etapas.map((e: any) => (
+              <div key={e.stage_order} className="flex items-center gap-3 p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: e.google_status === 'primaria' ? '2px solid #0062CC' : undefined }}>
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-[#FFFFFF] shrink-0" style={{ backgroundColor: e.google_status === 'primaria' ? '#0062CC' : 'var(--surface-3)' }}>{e.stage_order}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[#FFFFFF] font-medium truncate">{e.stage_name} <span className="opacity-50 font-normal">· {e.google_status}</span></div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-60">{e.accion}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[#FFFFFF] tabular">{e.eventos_ultimos_30d ?? '—'}<span className="opacity-50 text-[10px]">/30d</span></div>
+                  <div className="text-[10px] text-[#F5F7FA] opacity-60 tabular">{e.stage_value ? fmtMoney(e.stage_value) : '—'}</div>
+                </div>
+              </div>
+            ))}
+            {escalera.recomendada?.recomendacion && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1">{escalera.recomendada.recomendacion}</p>
+            )}
+          </div>
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin escalera definida para esta cuenta.</p>}
+      </div>
+
+      {/* Hipótesis Abiertas */}
+      <div 
+        className="p-5 rounded-2xl space-y-3"
+        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2">
+            <HelpCircle size={16} />
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+              Hipótesis Abiertas & Qué las Resolvería
+            </h2>
+          </div>
+          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
+            {openHypotheses.length} registradas
+          </span>
+        </div>
+
+        {openHypotheses.length === 0 ? (
+          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
+            No hay hipótesis abiertas pendientes para {activeClient}.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {openHypotheses.map(hyp => (
+              <div 
+                key={hyp.id}
+                className="p-3.5 rounded-xl space-y-1.5 text-xs"
+                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-[#FFFFFF]">
+                    {hyp.title}
+                  </div>
+                  {onOpenActionable && (
+                    <button
+                      onClick={() => onOpenActionable(hyp)}
+                      className="text-xs text-[#0062CC] hover:underline font-semibold flex items-center gap-1 shrink-0"
+                    >
+                      <span>Ver accionable</span>
+                      <ArrowRight size={11} />
+                    </button>
+                  )}
+                </div>
+
+                {hyp.que_lo_confirmaria && (
+                  <div className="text-xs text-[#F5F7FA] opacity-80 flex items-start gap-1.5 pt-0.5">
+                    <span className="font-semibold text-[#FFFFFF] shrink-0">Qué lo confirmaría:</span>
+                    <span>{hyp.que_lo_confirmaria}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Aprendizajes Consolidados (Fechados) */}
+      <div 
+        className="p-5 rounded-2xl space-y-3"
+        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <Lightbulb size={16} />
+          <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+            Aprendizajes Consolidados (Bitácora de Conocimiento)
+          </h2>
+        </div>
+
+        <div className="space-y-2.5">
+          {learnings.map((l, i) => (
+            <div 
+              key={i}
+              className="p-3.5 rounded-xl space-y-1 text-xs"
+              style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex items-center justify-between text-[11px] text-[#F5F7FA] opacity-60">
+                <span className="tabular">{l.date}</span>
+                <span className="font-semibold text-[#FFFFFF]">Validado</span>
+              </div>
+              <div className="font-semibold text-[#FFFFFF]">
+                {l.title}
+              </div>
+              <p className="text-[#F5F7FA] opacity-80 leading-relaxed">
+                {l.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Accionables Abiertos de esta cuenta */}
+      <div 
+        className="p-5 rounded-2xl space-y-3"
+        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+            Accionables Activos para {activeClient}
+          </h2>
+          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
+            {clientActionables.length} activos
+          </span>
+        </div>
+
+        {clientActionables.length === 0 ? (
+          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
+            Sin accionables pendientes para esta cuenta.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {clientActionables.slice(0, 6).map(act => (
+              <div
+                key={act.id}
+                onClick={() => onOpenActionable && onOpenActionable(act)}
+                className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
+                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-semibold text-[#FFFFFF] truncate">
+                    {act.title}
+                  </div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-60">
+                    Prioridad: {act.priority} · Estado: {act.status}
+                  </div>
+                </div>
+                <ArrowRight size={12} className="text-[#0062CC] shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}

@@ -1,0 +1,8 @@
+{
+  "name": "North Signal",
+  "description": "North Signal - Sistema de análisis de campañas publicitarias y centro de operaciones para Google Ads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
