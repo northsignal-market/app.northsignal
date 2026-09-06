@@ -201,12 +201,6 @@ var NOTION_STATES = {
   DESCARTADO: "Descartado",
   BLOQUEADO: "Bloqueado"
 };
-var NOTION_PRIORITIES = {
-  URGENTE: "Urgente",
-  ALTA: "Alta",
-  MEDIA: "Media",
-  BAJA: "Baja"
-};
 var NOTION_REVISION_IA = {
   SIN_REVISAR: "Sin revisar",
   ANALIZADO: "Analizado por Gemini",
@@ -446,7 +440,7 @@ function createApp() {
       const { data: integridadDatos } = await supabase.from("v_integridad_datos").select("*");
       const { data: runScorecard } = await supabase.from("v_run_scorecard").select("*").order("run_date", { ascending: false });
       const { data: runTendencia } = await supabase.from("v_run_tendencia").select("*");
-      const { data: cambiosDetectados } = await supabase.from("v_cambios_detectados").select("*").order("fecha_actual", { ascending: false }).limit(25);
+      const { data: cambiosDetectados } = await supabase.from("v_cambios_detectados").select("*").order("detectado_hasta", { ascending: false }).limit(25);
       const { data: diccionarioDatos } = await supabase.rpc("diccionario_datos");
       res.json({
         dataHealth: dataHealth || [],
@@ -1801,14 +1795,14 @@ Las descripciones no deben superar los 90 caracteres.`;
       res.status(500).json({ error: e.message });
     }
   });
-  app2.post("/api/cron/anomalias", async (req, res) => {
+  app2.all("/api/cron/anomalias", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const secret = process.env.CRON_SECRET;
     const auth = req.headers.authorization;
     if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
     try {
-      await runAnomalyWorker();
-      res.json({ ok: true, ran_at: (/* @__PURE__ */ new Date()).toISOString() });
+      const r = await runAnomalyWorker();
+      res.json({ ok: true, ran_at: (/* @__PURE__ */ new Date()).toISOString(), ...r });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -1816,7 +1810,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   app2.all("/api/*", (req, res) => {
     res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
   });
-  app2.post("/api/cron/aprendizaje", async (req, res) => {
+  app2.all("/api/cron/aprendizaje", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
@@ -1973,7 +1967,7 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
-  app2.post("/api/cron/mantenimiento", async (req, res) => {
+  app2.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
@@ -1994,70 +1988,70 @@ Las descripciones no deben superar los 90 caracteres.`;
   });
   return app2;
 }
+async function findNotionClientId(notionClient, account) {
+  if (!NOTION_BASES.CLIENTES) return null;
+  try {
+    const r = await notionClient.databases.query({ database_id: NOTION_BASES.CLIENTES });
+    for (const p of r.results) {
+      const nombre = p.properties?.Cliente?.title?.map((t) => t.plain_text).join("") || p.properties?.Name?.title?.map((t) => t.plain_text).join("") || "";
+      if (account === "KAREDO" && /karedo/i.test(nombre) || account === "BHI" && /bhi|best health/i.test(nombre) || account === "360" && /360/.test(nombre)) return p.id;
+    }
+  } catch {
+  }
+  return null;
+}
 async function runAnomalyWorker() {
-  console.log("Running autonomous worker: Z-Score Anomalies Check");
   const actionablesDbId = NOTION_BASES.ACCIONABLES;
-  if (!supabase || !notion || !actionablesDbId) return;
-  const clients = ["360", "BHI", "KAREDO"];
-  for (const client of clients) {
-    const { data, error } = await supabase.from("v_campaign_analisis").select("*").eq("account", client).order("date_start", { ascending: false }).limit(9);
-    if (!error && data && data.length >= 4) {
-      const current = data[0];
-      const history = data.slice(1, 9);
-      const metrics = ["cpa", "gasto", "conversiones", "ctr_promedio"];
-      for (const m of metrics) {
-        const vals = history.map((r) => Number(r[m]) || 0);
-        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-        const sqDiffs = vals.map((v) => Math.pow(v - avg, 2));
-        const stdDev = Math.sqrt(sqDiffs.reduce((a, b) => a + b, 0) / vals.length);
-        const currVal = Number(current[m]) || 0;
-        if (stdDev > 0) {
-          const zScore = Math.abs((currVal - avg) / stdDev);
-          if (zScore >= 2) {
-            const direction = currVal > avg ? "up" : "down";
-            const task_hash = `ANOMALY-${client}-${m}-${current.week_start || (/* @__PURE__ */ new Date()).toISOString().split("T")[0]}`;
-            try {
-              const title = `[Anomal\xEDa] Pico de ${m.toUpperCase()} (${direction}) en ${client}`;
-              const existing = await notion.databases.query({
-                database_id: actionablesDbId,
-                filter: {
-                  property: "Accion",
-                  title: { equals: title }
-                }
-              });
-              const isCompletedOrDiscarded = (page) => {
-                const state = page?.properties?.Estado?.select?.name;
-                return state === NOTION_STATES.HECHO || state === NOTION_STATES.DESCARTADO;
-              };
-              const activeCard = existing.results.find((p) => !isCompletedOrDiscarded(p));
-              if (activeCard) {
-                await notion.comments.create({
-                  parent: { page_id: activeCard.id },
-                  rich_text: [{ text: { content: `Actualizaci\xF3n del Centinela: La anomal\xEDa en ${m.toUpperCase()} (${direction}) persiste. Z-Score actual: ${zScore.toFixed(2)}.` } }]
-                });
-                console.log(`Added comment to existing actionable for anomaly: ${title}`);
-              } else {
-                const why = `Se detect\xF3 una desviaci\xF3n estad\xEDstica con un Z-Score de ${zScore.toFixed(2)}. El valor actual es ${currVal.toFixed(2)} frente a un promedio hist\xF3rico de ${avg.toFixed(2)}.`;
-                await notion.pages.create({
-                  parent: { database_id: actionablesDbId },
-                  properties: {
-                    "Accion": { title: [{ text: { content: title } }] },
-                    "Cliente": { select: { name: client } },
-                    "Prioridad": { select: { name: NOTION_PRIORITIES.ALTA } },
-                    "Estado": { select: { name: NOTION_STATES.PROPUESTO } },
-                    "Por que": { rich_text: [{ text: { content: why } }] }
-                  }
-                });
-                console.log(`Created actionable for anomaly: ${title}`);
-              }
-            } catch (e) {
-              console.error(`Failed to handle actionable for anomaly: ${e}`);
-            }
-          }
-        }
-      }
+  if (!supabase || !notion || !actionablesDbId) return { creados: 0, motivo: "sin supabase o notion" };
+  const desde = /* @__PURE__ */ new Date();
+  desde.setDate(desde.getDate() - 5);
+  const { data: anomalias, error } = await supabase.from("v_anomalia_explicada").select("*").in("severidad", ["critica", "alta"]).gte("date", desde.toISOString().slice(0, 10)).order("date", { ascending: false });
+  if (error) {
+    console.error("[anomalias] " + error.message);
+    return { creados: 0, error: error.message };
+  }
+  let creados = 0, comentados = 0;
+  for (const a of anomalias || []) {
+    const cuenta = a.account;
+    const fecha = a.date;
+    const metrica = a.metrica_anomala || (a.gasto_direccion ? "gasto" : "cpa");
+    const title = `[Anomal\xEDa] ${cuenta} \xB7 ${metrica} ${a.gasto_direccion || a.cpa_direccion || ""} el ${fecha}`;
+    try {
+      const existing = await notion.databases.query({
+        database_id: actionablesDbId,
+        filter: { property: "Accion", title: { equals: title } }
+      });
+      const activo = existing.results.find((p) => {
+        const st = p?.properties?.Estado?.select?.name;
+        return st !== NOTION_STATES.HECHO && st !== NOTION_STATES.DESCARTADO;
+      });
+      if (activo) continue;
+      const explicado = /Cambio (propio|automático)|registró/.test(a.explicacion || "");
+      const naturaleza = explicado ? "Observacion" : "Hipotesis";
+      const estado = explicado ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO;
+      const clienteId = await findNotionClientId(notion, cuenta);
+      const why = `Desv\xEDo estad\xEDstico el ${fecha}: severidad ${a.severidad}. ` + (a.gasto_z != null ? `Gasto z=${Number(a.gasto_z).toFixed(1)} (${a.gasto} vs baseline ${a.gasto_baseline}). ` : "") + (a.cpa_z != null ? `CPA z=${Number(a.cpa_z).toFixed(1)} (${a.cpa} vs baseline ${a.cpa_baseline}). ` : "") + (a.campana_principal ? `Campa\xF1a principal: ${a.campana_principal}. ` : "") + `Explicaci\xF3n de la vista: ${a.explicacion}`;
+      const props = {
+        Accion: { title: [{ text: { content: title } }] },
+        Estado: { select: { name: estado } },
+        Prioridad: { select: { name: a.severidad === "critica" ? "Urgente" : "Alta" } },
+        Naturaleza: { select: { name: naturaleza } },
+        "Por que": { rich_text: [{ text: { content: why.slice(0, 1900) } }] },
+        "Causa raiz": { rich_text: [{ text: { content: explicado ? "Cambio registrado ese d\xEDa" : "Desv\xEDo sin cambio registrado: verificar operador, reloj y configuraci\xF3n" } }] },
+        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada \xB7 ${cuenta} \xB7 ${fecha}` } }] },
+        Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
+        "Semanas pendiente": { number: 0 }
+      };
+      if (!explicado) props["Que lo confirmaria"] = { rich_text: [{ text: { content: "Una fila en operator_log de Andr\xE9s para ese d\xEDa, o un diff en v_cambios_detectados, o confirmaci\xF3n de que fue el mercado (mismo d\xEDa de la semana previa similar)." } }] };
+      if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
+      await notion.pages.create({ parent: { database_id: actionablesDbId }, properties: props });
+      creados++;
+    } catch (e) {
+      console.error(`[anomalias] ${title}: ${e.message}`);
     }
   }
+  console.log(`[anomalias] ${(anomalias || []).length} detectadas, ${creados} accionables nuevos`);
+  return { detectadas: (anomalias || []).length, creados, comentados };
 }
 async function startLocal() {
   const app2 = createApp();

@@ -93,7 +93,7 @@ export function createApp() {
       const { data: integridadDatos } = await supabase.from('v_integridad_datos').select('*');
       const { data: runScorecard } = await supabase.from('v_run_scorecard').select('*').order('run_date', { ascending: false });
       const { data: runTendencia } = await supabase.from('v_run_tendencia').select('*');
-      const { data: cambiosDetectados } = await supabase.from('v_cambios_detectados').select('*').order('fecha_actual', { ascending: false }).limit(25);
+      const { data: cambiosDetectados } = await supabase.from('v_cambios_detectados').select('*').order('detectado_hasta', { ascending: false }).limit(25);
       const { data: diccionarioDatos } = await supabase.rpc('diccionario_datos');
       
       res.json({ 
@@ -1731,14 +1731,14 @@ Las descripciones no deben superar los 90 caracteres.`;
   // Trabajador autónomo: detección de anomalías y creación de accionables.
   // En Vercel no hay proceso persistente: lo dispara Vercel Cron (vercel.json)
   // llamando este endpoint. En local se puede invocar a mano.
-  app.post("/api/cron/anomalias", async (req, res) => {
+  app.all("/api/cron/anomalias", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const secret = process.env.CRON_SECRET;
     const auth = req.headers.authorization;
     if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      await runAnomalyWorker();
-      res.json({ ok: true, ran_at: new Date().toISOString() });
+      const r = await runAnomalyWorker();
+      res.json({ ok: true, ran_at: new Date().toISOString(), ...r });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1753,7 +1753,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   // Vercel Cron, lunes 05:30 UTC (antes de las tareas semanales). Cierra el
   // ciclo sin intervencion: sincroniza accionables Hechos desde Notion,
   // calcula su impacto, actualiza los parametros estimados con los reales.
-  app.post("/api/cron/aprendizaje", async (req, res) => {
+  app.all("/api/cron/aprendizaje", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
@@ -1931,7 +1931,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   });
 
   // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
-  app.post("/api/cron/mantenimiento", async (req, res) => {
+  app.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
@@ -1954,89 +1954,84 @@ Las descripciones no deben superar los 90 caracteres.`;
   return app;
 }
 
-async function runAnomalyWorker() {
-    console.log('Running autonomous worker: Z-Score Anomalies Check');
-    
-    
-    const actionablesDbId = NOTION_BASES.ACCIONABLES;
-    if (!supabase || !notion || !actionablesDbId) return;
-    const clients = ['360', 'BHI', 'KAREDO'];
-
-    for (const client of clients) {
-      const { data, error } = await supabase
-        .from('v_campaign_analisis')
-        .select('*')
-        .eq('account', client)
-        .order('date_start', { ascending: false })
-        .limit(9);
-
-      if (!error && data && data.length >= 4) {
-        const current = data[0];
-        const history = data.slice(1, 9);
-        const metrics = ['cpa', 'gasto', 'conversiones', 'ctr_promedio'];
-        
-        for (const m of metrics) {
-          const vals = history.map((r: any) => Number(r[m]) || 0);
-          const avg = vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
-          const sqDiffs = vals.map((v: number) => Math.pow(v - avg, 2));
-          const stdDev = Math.sqrt(sqDiffs.reduce((a: number, b: number) => a + b, 0) / vals.length);
-          const currVal = Number(current[m]) || 0;
-
-          if (stdDev > 0) {
-            const zScore = Math.abs((currVal - avg) / stdDev);
-            if (zScore >= 2) {
-              const direction = currVal > avg ? 'up' : 'down';
-              const task_hash = `ANOMALY-${client}-${m}-${current.week_start || new Date().toISOString().split('T')[0]}`;
-              
-              try {
-                const title = `[Anomalía] Pico de ${m.toUpperCase()} (${direction}) en ${client}`;
-                // Check if card exists by title
-                const existing = await notion.databases.query({
-                  database_id: actionablesDbId,
-                  filter: {
-                    property: 'Accion',
-                    title: { equals: title }
-                  }
-                });
-
-                const isCompletedOrDiscarded = (page: any) => {
-                  const state = page?.properties?.Estado?.select?.name;
-                  return state === NOTION_STATES.HECHO || state === NOTION_STATES.DESCARTADO;
-                };
-
-                const activeCard = existing.results.find(p => !isCompletedOrDiscarded(p));
-
-                if (activeCard) {
-                  // Add comment
-                  await notion.comments.create({
-                    parent: { page_id: activeCard.id },
-                    rich_text: [{ text: { content: `Actualización del Centinela: La anomalía en ${m.toUpperCase()} (${direction}) persiste. Z-Score actual: ${zScore.toFixed(2)}.` } }]
-                  });
-                  console.log(`Added comment to existing actionable for anomaly: ${title}`);
-                } else {
-                  // Create card
-                  const why = `Se detectó una desviación estadística con un Z-Score de ${zScore.toFixed(2)}. El valor actual es ${currVal.toFixed(2)} frente a un promedio histórico de ${avg.toFixed(2)}.`;
-                  
-                  await notion.pages.create({
-                    parent: { database_id: actionablesDbId },
-                    properties: {
-                      'Accion': { title: [{ text: { content: title } }] },
-                      'Cliente': { select: { name: client } },
-                      'Prioridad': { select: { name: NOTION_PRIORITIES.ALTA } },
-                      'Estado': { select: { name: NOTION_STATES.PROPUESTO } },
-                      'Por que': { rich_text: [{ text: { content: why } }] }
-                    }
-                  });
-                  console.log(`Created actionable for anomaly: ${title}`);
-                }
-              } catch (e) {
-                console.error(`Failed to handle actionable for anomaly: ${e}`);
-              }
-            }
-          }
-        }
-      }
+async function findNotionClientId(notionClient: any, account: string): Promise<string | null> {
+  if (!NOTION_BASES.CLIENTES) return null;
+  try {
+    const r: any = await notionClient.databases.query({ database_id: NOTION_BASES.CLIENTES });
+    for (const p of r.results) {
+      const nombre = p.properties?.Cliente?.title?.map((t: any) => t.plain_text).join('') || p.properties?.Name?.title?.map((t: any) => t.plain_text).join('') || '';
+      if ((account === 'KAREDO' && /karedo/i.test(nombre)) || (account === 'BHI' && /bhi|best health/i.test(nombre)) || (account === '360' && /360/.test(nombre))) return p.id;
     }
+  } catch {}
+  return null;
+}
+
+async function runAnomalyWorker() {
+  // Lee v_anomalia_explicada (z-score diario contra media movil de 7 dias, con
+  // explicacion que considera la hora del primer cambio) y crea un accionable
+  // por cada anomalia critica o alta de los ultimos 3 dias consolidados que no
+  // tenga ya uno abierto. Reemplaza al worker anterior, que leia la capa
+  // semanal con una columna inexistente y nunca corrio.
+  const actionablesDbId = NOTION_BASES.ACCIONABLES;
+  if (!supabase || !notion || !actionablesDbId) return { creados: 0, motivo: 'sin supabase o notion' };
+
+  const desde = new Date(); desde.setDate(desde.getDate() - 5);
+  const { data: anomalias, error } = await supabase
+    .from('v_anomalia_explicada').select('*')
+    .in('severidad', ['critica', 'alta'])
+    .gte('date', desde.toISOString().slice(0, 10))
+    .order('date', { ascending: false });
+  if (error) { console.error('[anomalias] ' + error.message); return { creados: 0, error: error.message }; }
+
+  let creados = 0, comentados = 0;
+  for (const a of anomalias || []) {
+    const cuenta = a.account;
+    const fecha = a.date;
+    const metrica = a.metrica_anomala || (a.gasto_direccion ? 'gasto' : 'cpa');
+    const title = `[Anomalía] ${cuenta} · ${metrica} ${a.gasto_direccion || a.cpa_direccion || ''} el ${fecha}`;
+    try {
+      const existing: any = await notion.databases.query({
+        database_id: actionablesDbId,
+        filter: { property: 'Accion', title: { equals: title } }
+      });
+      const activo = existing.results.find((p: any) => {
+        const st = p?.properties?.Estado?.select?.name;
+        return st !== NOTION_STATES.HECHO && st !== NOTION_STATES.DESCARTADO;
+      });
+      if (activo) continue; // ya existe, no se repite ni se comenta: la vista es determinista
+
+      // Naturaleza: Observacion si la vista encontro un cambio que lo explica; Hipotesis si no
+      const explicado = /Cambio (propio|automático)|registró/.test(a.explicacion || '');
+      const naturaleza = explicado ? 'Observacion' : 'Hipotesis';
+      const estado = explicado ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO;
+      const clienteId = await findNotionClientId(notion, cuenta);
+
+      const why = `Desvío estadístico el ${fecha}: severidad ${a.severidad}. ` +
+        (a.gasto_z != null ? `Gasto z=${Number(a.gasto_z).toFixed(1)} (${a.gasto} vs baseline ${a.gasto_baseline}). ` : '') +
+        (a.cpa_z != null ? `CPA z=${Number(a.cpa_z).toFixed(1)} (${a.cpa} vs baseline ${a.cpa_baseline}). ` : '') +
+        (a.campana_principal ? `Campaña principal: ${a.campana_principal}. ` : '') +
+        `Explicación de la vista: ${a.explicacion}`;
+
+      const props: any = {
+        Accion: { title: [{ text: { content: title } }] },
+        Estado: { select: { name: estado } },
+        Prioridad: { select: { name: a.severidad === 'critica' ? 'Urgente' : 'Alta' } },
+        Naturaleza: { select: { name: naturaleza } },
+        'Por que': { rich_text: [{ text: { content: why.slice(0, 1900) } }] },
+        'Causa raiz': { rich_text: [{ text: { content: explicado ? 'Cambio registrado ese día' : 'Desvío sin cambio registrado: verificar operador, reloj y configuración' } }] },
+        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada · ${cuenta} · ${fecha}` } }] },
+        Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
+        'Semanas pendiente': { number: 0 }
+      };
+      if (!explicado) props['Que lo confirmaria'] = { rich_text: [{ text: { content: 'Una fila en operator_log de Andrés para ese día, o un diff en v_cambios_detectados, o confirmación de que fue el mercado (mismo día de la semana previa similar).' } }] };
+      if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
+
+      await notion.pages.create({ parent: { database_id: actionablesDbId }, properties: props });
+      creados++;
+    } catch (e: any) { console.error(`[anomalias] ${title}: ${e.message}`); }
+  }
+  console.log(`[anomalias] ${(anomalias || []).length} detectadas, ${creados} accionables nuevos`);
+  return { detectadas: (anomalias || []).length, creados, comentados };
 }
 
 /**
