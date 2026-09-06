@@ -1682,6 +1682,133 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
   });
 
+
+  // ================================================================
+  // CICLO DE APRENDIZAJE SEMANAL: evaluar, diagnosticar, actualizar
+  // ================================================================
+  // Vercel Cron, lunes 05:30 UTC (antes de las tareas semanales). Cierra el
+  // ciclo sin intervencion: sincroniza accionables Hechos desde Notion,
+  // calcula su impacto, actualiza los parametros estimados con los reales.
+  app.post("/api/cron/aprendizaje", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    const resultado: any = { ran_at: new Date().toISOString() };
+    try {
+      // 1. Sincronizar accionables Hechos con Ejecutado el desde Notion
+      if (notion && NOTION_BASES.ACCIONABLES) {
+        const pages: any[] = [];
+        let cursor: string | undefined;
+        do {
+          const r: any = await notion.databases.query({
+            database_id: NOTION_BASES.ACCIONABLES,
+            filter: { and: [ { property: 'Estado', select: { equals: NOTION_STATES.HECHO } }, { property: 'Ejecutado el', date: { is_not_empty: true } } ] },
+            start_cursor: cursor, page_size: 100
+          });
+          pages.push(...r.results); cursor = r.has_more ? r.next_cursor : undefined;
+        } while (cursor);
+
+        const filas = [];
+        for (const page of pages) {
+          const p = page.properties;
+          const titulo = p.Accion?.title?.map((t: any) => t.plain_text).join('') || '';
+          const client = await resolveNotionClient(notion, p.Cliente || p.Client);
+          const verificar = (p['Por que']?.rich_text?.map((t: any) => t.plain_text).join('') || '') + ' ' + titulo;
+          // Inferir metrica y direccion del texto del accionable
+          const low = (titulo + ' ' + verificar).toLowerCase();
+          const metrica = /cpa|costo por/.test(low) ? 'cpa' : /conversi/.test(low) ? 'conversiones' : /ctr/.test(low) ? 'ctr' : /gasto|presupuesto|budget/.test(low) ? 'gasto' : /clic/.test(low) ? 'clics' : null;
+          const direccion = /baj|reduc|recort|pausar|quitar|negativ|elimin/.test(low) ? 'baja' : /sub|aument|activ|agregar|crear|escal/.test(low) ? 'sube' : (metrica === 'cpa' ? 'baja' : 'sube');
+          filas.push({
+            notion_id: page.id, account: client || 'DESCONOCIDO', titulo,
+            ejecutado_el: p['Ejecutado el']?.date?.start,
+            metrica_objetivo: metrica, direccion_esperada: direccion,
+            causa_raiz: p['Causa raiz']?.rich_text?.map((t: any) => t.plain_text).join('') || null,
+            naturaleza: p.Naturaleza?.select?.name || null,
+            sincronizado_el: new Date().toISOString()
+          });
+        }
+        if (filas.length) {
+          const { error } = await supabase.from('accionables_ejecutados').upsert(filas, { onConflict: 'notion_id' });
+          resultado.accionables_sincronizados = error ? `error: ${error.message}` : filas.length;
+        } else resultado.accionables_sincronizados = 0;
+      }
+
+      // 2. Evaluar impacto y escribir Resultado observado en Notion para los que ya tienen veredicto
+      const { data: impactos } = await supabase.from('v_impacto_accionables').select('*').not('veredicto', 'like', 'PENDIENTE%');
+      let escritos = 0;
+      for (const imp of impactos || []) {
+        if (!notion) break;
+        try {
+          const page: any = await notion.pages.retrieve({ page_id: imp.notion_id });
+          const ya = page.properties?.['Resultado observado']?.rich_text?.length > 0;
+          if (ya) continue;
+          const texto = `[AUTO ${new Date().toISOString().slice(0,10)}] ${imp.veredicto}. ${imp.metrica_objetivo || 'metrica'}: ${imp.metrica_objetivo === 'cpa' ? `${imp.cpa_antes} → ${imp.cpa_despues}` : imp.metrica_objetivo === 'gasto' ? `${imp.gasto_antes} → ${imp.gasto_despues}` : imp.metrica_objetivo === 'conversiones' ? `${imp.conv_antes} → ${imp.conv_despues}` : `${imp.ctr_antes} → ${imp.ctr_despues}`} (${imp.variacion_pct ?? '?'}%). Ventana: 14 días antes vs ${imp.dias_despues} días consolidados después.`;
+          await notion.pages.update({ page_id: imp.notion_id, properties: { 'Resultado observado': { rich_text: [{ text: { content: texto.slice(0, 1900) } }] } } });
+          escritos++;
+        } catch (e) { /* seguir con el siguiente */ }
+      }
+      resultado.resultados_escritos_en_notion = escritos;
+
+      // 3. Actualizar parametros estimados con reales
+      const { data: wr } = await supabase.rpc('actualizar_win_rates');
+      resultado.win_rates_actualizados = wr || [];
+      await supabase.rpc('actualizar_eventos_escalera');
+
+      // 4. Tasa de acierto y reflexiones recurrentes: el resumen del ciclo
+      const { data: tasa } = await supabase.from('v_tasa_acierto').select('*');
+      const { data: refl } = await supabase.from('v_reflexiones_recurrentes').select('*').limit(10);
+      resultado.tasa_acierto = tasa || [];
+      resultado.propuestas_de_cambio_al_prompt = refl || [];
+
+      res.json({ ok: true, ...resultado });
+    } catch (e: any) { res.status(500).json({ error: e.message, parcial: resultado }); }
+  });
+
+  // Lectura de la inteligencia retroactiva para la app
+  app.get("/api/aprendizaje", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    const q = (t: string) => client ? supabase!.from(t).select('*').eq('account', client) : supabase!.from(t).select('*');
+    const [impacto, tasa, refl, recurrentes] = await Promise.all([
+      q('v_impacto_accionables').order('ejecutado_el', { ascending: false }).limit(30),
+      q('v_tasa_acierto'),
+      q('reflexiones').order('run_date', { ascending: false }).limit(20),
+      q('v_reflexiones_recurrentes')
+    ]);
+    res.json({ impacto: impacto.data || [], tasa_acierto: tasa.data || [], reflexiones: refl.data || [], propuestas: recurrentes.data || [] });
+  });
+
+  // Escribir una reflexion (lo usa la tarea semanal via SQL, y la app si Andres quiere anotar)
+  app.post("/api/reflexiones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, tipo, que_paso, que_haria_distinto, regla_del_prompt, confianza } = req.body;
+    if (!account || !tipo || !que_paso || !que_haria_distinto) return res.status(400).json({ error: 'faltan campos' });
+    const { data, error } = await supabase.from('reflexiones').insert({ account, tipo, que_paso, que_haria_distinto, regla_del_prompt, confianza: confianza || 'media' }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
+  app.post("/api/cron/mantenimiento", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { data, error } = await supabase.rpc('mantenimiento_semanal');
+      if (error) return res.status(500).json({ error: error.message });
+      const { data: salud } = await supabase.from('v_salud_sistema').select('tabla, filas, estado').neq('estado', 'OK');
+      res.json({ ok: true, ran_at: new Date().toISOString(), borrado: data, alertas: salud || [] });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Salud del sistema: tamaño y crecimiento por tabla
+  app.get("/api/salud-sistema", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.from('v_salud_sistema').select('*');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
   return app;
 }
 
