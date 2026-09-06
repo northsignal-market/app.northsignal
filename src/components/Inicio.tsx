@@ -11,6 +11,16 @@ export function Inicio({ onNavigate }: InicioProps) {
   const { notionBriefs, actionables, setSelectedClient } = useAppStore();
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [pulses, setPulses] = useState<Record<string, any>>({});
+  const [semana, setSemana] = useState<Record<string, any>>({});
+  const [veredictos, setVeredictos] = useState<Record<string, string>>({});
+
+  // Contexto semanal por cuenta: últimos 7 días consolidados de v_serie_diaria
+  useEffect(() => {
+    fetch('/api/objetivos', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.headroom) { const v: Record<string,string> = {}; d.headroom.forEach((h: any) => { v[h.account] = h.veredicto?.split(':')[0] || ''; }); setVeredictos(v); } })
+      .catch(() => {});
+  }, []);
   const [now, setNow] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -41,6 +51,13 @@ export function Inicio({ onNavigate }: InicioProps) {
         .then(data => {
           if (data?.pulse) {
             setPulses(prev => ({ ...prev, [acc]: data.pulse }));
+          }
+          const serie: any[] = data?.daily || data?.dailySeries || [];
+          if (serie.length) {
+            const cons = serie.filter(d => d.madurez !== 'provisional').slice(-7);
+            const gasto = cons.reduce((a, d) => a + Number(d.gasto || 0), 0);
+            const conv = cons.reduce((a, d) => a + Number(d.conversiones || 0), 0);
+            setSemana(prev => ({ ...prev, [acc]: { gasto, conv, cpa: conv > 0 ? gasto / conv : null, dias: cons.length } }));
           }
         })
         .catch(console.error);
@@ -179,8 +196,14 @@ export function Inicio({ onNavigate }: InicioProps) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
           {accounts.map(acc => {
             const p = pulses[acc];
-            const spend = p ? (acc === 'KAREDO' ? `${Math.round(p.gasto_hoy || 0)} €` : `$${Math.round(p.gasto_hoy || 0).toLocaleString('es-CL')}`) : '—';
-            const conv = p ? `${p.conv_hoy || 0} conv` : '0 conv';
+            const w = semana[acc];
+            const fmt = (v: number) => acc === 'KAREDO'
+              ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
+              : `$${Math.round(v).toLocaleString('es-CL')}`;
+            const spend = p ? fmt(Number(p.gasto_hasta_ahora || 0)) : '—';
+            const conv = p ? `${Number(p.conversiones_hasta_ahora || 0)} conv` : '—';
+            const hace = p?.minutos_desde_medicion != null ? `hace ${p.minutos_desde_medicion} min` : '';
+            const veredicto = veredictos[acc];
             return (
               <div
                 key={acc}
@@ -201,14 +224,19 @@ export function Inicio({ onNavigate }: InicioProps) {
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: isDataHealthy ? 'var(--white)' : 'var(--primary)' }} />
                 </div>
                 <div className="text-sm font-semibold text-[#FFFFFF] tabular">
-                  {spend} hoy
+                  {spend} <span className="text-[11px] font-normal opacity-60">hoy · {conv}</span>
                 </div>
-                <div className="text-xs text-[#F5F7FA] opacity-70 tabular mt-0.5">
-                  {conv}
-                </div>
-                <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-2 flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isDataHealthy ? 'bg-[var(--surface-2)]' : 'bg-[var(--primary-faint)]'}`} />
-                  <span>{isDataHealthy ? 'al día' : 'revisar'}</span>
+                {w && (
+                  <div className="text-xs text-[#F5F7FA] opacity-70 tabular mt-1">
+                    7 días: {fmt(w.gasto)} · {w.conv} conv{w.cpa ? ` · CPA ${fmt(w.cpa)}` : ''}
+                  </div>
+                )}
+                <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-2 flex items-center justify-between gap-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isDataHealthy ? 'bg-[var(--surface-2)]' : 'bg-[var(--primary-faint)]'}`} />
+                    <span>{isDataHealthy ? (hace || 'al día') : 'revisar'}</span>
+                  </span>
+                  {veredicto && <span className="uppercase tracking-wide opacity-80">{veredicto.toLowerCase()}</span>}
                 </div>
               </div>
             );

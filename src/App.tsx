@@ -26,7 +26,7 @@ function getInitialPage() {
   const params = new URLSearchParams(window.location.search);
   const p = params.get('page');
   const valid = ['inicio', 'hoy', 'accionables', 'semana', 'briefs', 'datos', 'clientes', 'herramientas', 'sistema'];
-  return p && valid.includes(p) ? p : 'hoy';
+  return p && valid.includes(p) ? p : 'inicio';
 }
 
 function App() {
@@ -71,6 +71,17 @@ function App() {
       fetchData();
     }
   }, [fetchData, isAuthenticated, authChecked]);
+
+  // Tras iniciar sesión, siempre Inicio: es la antesala. La URL con ?page=
+  // se respeta solo al recargar con sesión ya activa.
+  const wasAuth = React.useRef(false);
+  useEffect(() => {
+    if (isAuthenticated && !wasAuth.current && authChecked) {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('page')) setActiveTab('inicio');
+    }
+    wasAuth.current = isAuthenticated;
+  }, [isAuthenticated, authChecked]);
 
   // Sync active page & client with URL
   useEffect(() => {

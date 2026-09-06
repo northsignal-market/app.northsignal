@@ -165,6 +165,9 @@ export function Datos() {
   const [weeks, setWeeks] = useState<string[]>([]);
   
   const [dateRangeMode, setDateRangeMode] = useState<string>('last_week');
+  // Las vistas diarias usan días, no semanas. La capa diaria cubre 14 días móviles.
+  const isDailyView = ['v_keywords_daily','v_search_terms_daily','v_campaign_daily','v_adgroup_daily'].includes(activeView);
+  const isoDaysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
   const [customRange, setCustomRange] = useState<{from: string, to: string}>({from: '', to: ''});
   const [comparePrev, setComparePrev] = useState<boolean>(false);
   
@@ -276,7 +279,7 @@ export function Datos() {
   }, [selectedClient]);
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState<number>(25);
+  const [limit, setLimit] = useState<number>(100);
   const [density, setDensity] = useState<'compact'|'normal'|'comfortable'>('normal');
   useEffect(() => {
     const saved = localStorage.getItem('northsignal.density');
@@ -379,6 +382,15 @@ export function Datos() {
     setOrderDir('desc');
   }, [activeView, selectedClient, debouncedSearch, dateRangeMode, customRange]);
 
+  // Vistas diarias: arrancar en "últimos 14 días" con fechas reales
+  useEffect(() => {
+    if (isDailyView && ['last_week','4_weeks','8_weeks','12_weeks','all_time'].includes(dateRangeMode)) {
+      setDateRangeMode('last_14d');
+    } else if (!isDailyView && ['last_7d','last_14d'].includes(dateRangeMode)) {
+      setDateRangeMode('last_week');
+    }
+  }, [isDailyView]);
+
   // Fetch Weeks
   useEffect(() => {
     if (!selectedClient) return;
@@ -440,6 +452,8 @@ export function Datos() {
     else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
     else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
     else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
+    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
+    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
     if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
@@ -509,6 +523,8 @@ export function Datos() {
     else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
     else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
     else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
+    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
+    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
     if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
@@ -565,6 +581,8 @@ export function Datos() {
     else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
     else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
     else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
+    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
+    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
     else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
 
     if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
@@ -667,7 +685,7 @@ export function Datos() {
       <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 bg-[#1A1F36] shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <Database size={20} className="text-[#0062CC]" />
-          <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Metrics Diagnostics</h1>
+          <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Datos</h1>
         </div>
         
         <div className="flex items-center gap-4">
@@ -717,25 +735,7 @@ export function Datos() {
 
       <div className="flex-1 flex flex-col p-8 overflow-hidden bg-[#1A1F36] relative">
       
-        {selectedClient === 'KAREDO' && !dismissedAlerts.includes('KAREDO') && (
-          <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-[#0062CC] shrink-0 mt-0.5" size={18} />
-              <p className="text-sm font-medium text-[#FFFFFF]">KAREDO: Las conversiones son direccionales. Enhanced Conversions tiene entre 0 y 15% de coincidencia y dispara en el clic, no al completar el registro. La dirección del error es desconocida.</p>
-            </div>
-            <button onClick={() => setDismissedAlerts([...dismissedAlerts, 'KAREDO'])} className="text-[#0062CC] hover:text-[#FFFFFF] transition-colors"><X size={16} /></button>
-          </div>
-        )}
         
-        {selectedClient === 'BHI' && !dismissedAlerts.includes('BHI') && (
-          <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
-            <div className="flex items-start gap-3">
-               <AlertCircle className="text-[#0062CC] shrink-0 mt-0.5" size={18} />
-               <p className="text-sm font-medium text-[#FFFFFF]">BHI: Las conversiones de Google no son la fuente de verdad del negocio. El pipeline real vive en GoHighLevel.</p>
-            </div>
-            <button onClick={() => setDismissedAlerts([...dismissedAlerts, 'BHI'])} className="text-[#0062CC] hover:text-[#FFFFFF] transition-colors"><X size={16} /></button>
-          </div>
-        )}
 
         {(totals as any).dataHealth && (totals as any).dataHealth.status !== 'OK' && (
            <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
@@ -761,60 +761,26 @@ export function Datos() {
            </div>
         )}
 
-        {burnRate && (
-          <div className="mb-6 p-5 rounded-xl bg-[#1A1F36] border border-[#0062CC]/20 flex items-center justify-between gap-4 shrink-0 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[#0062CC]/10 border-[#0062CC]/30 text-[#0062CC]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#FFFFFF]'}`}>
-                 <TrendingUp size={20} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[#FFFFFF]">Pacing Predictivo (Burn Rate)</h3>
-                <p className="text-xs text-[#F5F7FA]/70">Proyección fin de mes basada en gasto diario promedio ({formatValue('gasto', burnRate.dailyAvg, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}/día)</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <p className="text-xs text-[#F5F7FA]/60 font-medium">Proyección Mensual</p>
-                <p className={`text-lg font-bold tabular ${burnRate.status === 'over' ? 'text-[#0062CC]' : burnRate.status === 'under' ? 'text-[#F5F7FA]' : 'text-[#FFFFFF]'}`}>
-                  {formatValue('gasto', burnRate.projectedTotal, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
-                </p>
-              </div>
-              <div className="w-px h-10 bg-[#0062CC]/20"></div>
-              <div className="text-right">
-                <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
-                <p className="text-lg font-bold tabular text-[#FFFFFF]">
-                  {formatValue('gasto', burnRate.monthlyBudget, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {totals?.limited && (
-          <div className="mb-4 p-3 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 text-[#F5F7FA] text-xs flex items-center gap-2 shrink-0">
-            <AlertTriangle className="text-[#F5F7FA] shrink-0" size={16} />
-            <span>Totales sobre las primeras 1000 filas del filtro</span>
-          </div>
-        )}
         
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 shrink-0">
-          <div className="bg-[#1A1F36] rounded-2xl p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+        <div className="grid grid-cols-5 gap-2 mb-3 shrink-0">
+          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">Inversión (Filtro)</p>
-            <h3 className="text-2xl font-light text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
+            <h3 className="text-base font-light text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-2xl p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">Conversiones (Filtro)</p>
-            <h3 className="text-2xl font-light text-[#FFFFFF]">{totals.conversions || 0}</h3>
+            <h3 className="text-base font-light text-[#FFFFFF]">{totals.conversions || 0}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-2xl p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">CPA (Ponderado)</p>
-            <h3 className="text-2xl font-light text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
+            <h3 className="text-base font-light text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-2xl p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1">CPC (Promedio)</p>
-            <h3 className="text-2xl font-light text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
+            <h3 className="text-base font-light text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-2xl p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-lg p-6 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1" title={totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen'}>Restricción Principal</p>
             <h3 className="text-lg font-medium text-[#0062CC] line-clamp-1">
               {totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A'}
@@ -842,33 +808,31 @@ export function Datos() {
                 onChange={e => setDateRangeMode(e.target.value)}
                 className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
               >
-                <option value="last_week">Última semana</option>
-                <option value="4_weeks">Últimas 4 semanas</option>
-                <option value="8_weeks">Últimas 8 semanas</option>
-                <option value="12_weeks">Últimas 12 semanas</option>
-                <option value="all_time">Todo el histórico</option>
+                {isDailyView ? (<>
+                  <option value="last_7d">Últimos 7 días</option>
+                  <option value="last_14d">Últimos 14 días</option>
+                </>) : (<>
+                  <option value="last_week">Última semana</option>
+                  <option value="4_weeks">Últimas 4 semanas</option>
+                  <option value="8_weeks">Últimas 8 semanas</option>
+                  <option value="12_weeks">Últimas 12 semanas</option>
+                  <option value="all_time">Todo el histórico</option>
+                </>)}
                 <option value="custom">Rango personalizado...</option>
               </select>
               
               {dateRangeMode === 'custom' && (
                 <div className="flex items-center gap-2">
-                  <select 
-                    value={customRange.from} 
+                  <input type="date" value={customRange.from} max={customRange.to || undefined}
                     onChange={e => setCustomRange(p => ({...p, from: e.target.value}))}
-                    className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-                  >
-                    <option value="">Desde...</option>
-                    {weeks.map(w => <option key={`from-${w}`} value={w}>{w}</option>)}
-                  </select>
-                  <span className="text-[#F5F7FA]/50">-</span>
-                  <select 
-                    value={customRange.to} 
+                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
+                    style={{ colorScheme: 'dark' }} />
+                  <span className="text-[#F5F7FA]/50">→</span>
+                  <input type="date" value={customRange.to} min={customRange.from || undefined}
                     onChange={e => setCustomRange(p => ({...p, to: e.target.value}))}
-                    className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-                  >
-                    <option value="">Hasta...</option>
-                    {weeks.map(w => <option key={`to-${w}`} value={w}>{w}</option>)}
-                  </select>
+                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
+                    style={{ colorScheme: 'dark' }} />
+                  {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
                 </div>
               )}
             </div>
@@ -879,10 +843,10 @@ export function Datos() {
                 onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
                 className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
               >
-                <option value={10}>10 filas</option>
-                <option value={25}>25 filas</option>
-                <option value={50}>50 filas</option>
                 <option value={100}>100 filas</option>
+                <option value={250}>250 filas</option>
+                <option value={500}>500 filas</option>
+                <option value={1000}>Todas (hasta 1000)</option>
               </select>
             </div>
           </div>
@@ -895,7 +859,9 @@ export function Datos() {
                 else if (dateRangeMode === '8_weeks' && weeks.length > 0) text = `8 semanas: del ${formatDatePretty(weeks[Math.min(7, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
                 else if (dateRangeMode === '12_weeks' && weeks.length > 0) text = `12 semanas: del ${formatDatePretty(weeks[Math.min(11, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
                 else if (dateRangeMode === 'all_time' && weeks.length > 0) text = `Todo el histórico: del ${formatDatePretty(weeks[weeks.length - 1])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === 'custom') text = `Rango: del ${formatDatePretty(customRange.from)} al ${getEndOfWeek(customRange.to)}`;
+                else if (dateRangeMode === 'last_7d') text = `Últimos 7 días: del ${formatDatePretty(isoDaysAgo(7))} al ${formatDatePretty(isoDaysAgo(1))}`;
+                else if (dateRangeMode === 'last_14d') text = `Últimos 14 días: del ${formatDatePretty(isoDaysAgo(14))} al ${formatDatePretty(isoDaysAgo(1))}`;
+                else if (dateRangeMode === 'custom' && customRange.from && customRange.to) text = `Del ${formatDatePretty(customRange.from)} al ${formatDatePretty(customRange.to)}`;
                 
                 return text ? `${text} · ${totalCount} filas` : '';
              })()}
@@ -1195,6 +1161,43 @@ export function Datos() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {burnRate && (
+          <div className="mb-6 p-5 rounded-xl bg-[#1A1F36] border border-[#0062CC]/20 flex items-center justify-between gap-4 shrink-0 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[#0062CC]/10 border-[#0062CC]/30 text-[#0062CC]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#FFFFFF]'}`}>
+                 <TrendingUp size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-[#FFFFFF]">Pacing Predictivo (Burn Rate)</h3>
+                <p className="text-xs text-[#F5F7FA]/70">Proyección fin de mes basada en gasto diario promedio ({formatValue('gasto', burnRate.dailyAvg, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}/día)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <p className="text-xs text-[#F5F7FA]/60 font-medium">Proyección Mensual</p>
+                <p className={`text-lg font-bold tabular ${burnRate.status === 'over' ? 'text-[#0062CC]' : burnRate.status === 'under' ? 'text-[#F5F7FA]' : 'text-[#FFFFFF]'}`}>
+                  {formatValue('gasto', burnRate.projectedTotal, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
+                </p>
+              </div>
+              <div className="w-px h-10 bg-[#0062CC]/20"></div>
+              <div className="text-right">
+                <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
+                <p className="text-lg font-bold tabular text-[#FFFFFF]">
+                  {formatValue('gasto', burnRate.monthlyBudget, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        {totals?.limited && (
+          <div className="mb-4 p-3 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 text-[#F5F7FA] text-xs flex items-center gap-2 shrink-0">
+            <AlertTriangle className="text-[#F5F7FA] shrink-0" size={16} />
+            <span>Totales sobre las primeras 1000 filas del filtro</span>
+          </div>
+        )}
       </div>
 
       {/* Drawer de keyword: tendencia acumulada */}

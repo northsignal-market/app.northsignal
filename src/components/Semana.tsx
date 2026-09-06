@@ -26,8 +26,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const { selectedClient } = useAppStore();
   const activeClient = selectedClient || '360';
 
-  // Range selector: '1w' | '4w' | '8w' | 'all'
-  const [range, setRange] = useState<'1w' | '4w' | '8w' | 'all'>('4w');
+  // La capa diaria cubre 14 días (ventana móvil del script). Dos rangos: 7 y 14.
+  const [range, setRange] = useState<'7d' | '14d'>('14d');
 
   // Chart lens: 'gasto_cpa' | 'conv_clics' | 'ctr_cpc'
   const [lens, setLens] = useState<'gasto_cpa' | 'conv_clics' | 'ctr_cpc'>('gasto_cpa');
@@ -48,6 +48,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [selectedDay, setSelectedDay] = useState<any | null>(null);
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
   const [anomalias, setAnomalias] = useState<any>({ serie: [], anomalias: [], titulo: '' });
+  const [horaDia, setHoraDia] = useState<any>({ celdas: [], mejor: null, peor_sin_conv: null });
+
+  useEffect(() => {
+    fetch(`/api/hora-dia?client=${activeClient}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setHoraDia(d)).catch(() => {});
+  }, [activeClient]);
   const [annotationText, setAnnotationText] = useState('');
   const [savingAnnotation, setSavingAnnotation] = useState(false);
   const [annotationSuccess, setAnnotationSuccess] = useState(false);
@@ -121,7 +127,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // Filter chart series based on range
   const displayedDaily = useMemo(() => {
     if (!dailyData.length) return [];
-    const limit = range === '1w' ? 7 : range === '4w' ? 28 : range === '8w' ? 56 : dailyData.length;
+    const limit = range === '7d' ? 7 : 14;
     const base = dailyData.slice(-limit);
     // Cruzar con la capa de anomalías por fecha
     const byDate: Record<string, any> = {};
@@ -202,7 +208,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         <div className="flex items-center gap-2">
           {/* Range pills */}
           <div className="flex items-center rounded-lg p-0.5" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            {(['1w', '4w', '8w', 'all'] as const).map(r => (
+            {(['7d', '14d'] as const).map(r => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
@@ -210,7 +216,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   range === r ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
                 }`}
               >
-                {r === '1w' ? '1 sem' : r === '4w' ? '4 sem' : r === '8w' ? '8 sem' : 'Completo'}
+                {r === '7d' ? '7 días' : '14 días'}
               </button>
             ))}
           </div>
@@ -326,7 +332,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   <Line 
                     yAxisId="left" 
                     type="monotone" 
-                    dataKey="cost" 
+                    dataKey="gasto" 
                     name="Gasto" 
                     stroke="#0062CC" 
                     strokeWidth={2} 
@@ -353,8 +359,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   <YAxis yAxisId="left" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} />
                   <YAxis yAxisId="right" orientation="right" stroke="rgba(245, 247, 250, 0.5)" fontSize={11} tickLine={false} />
                   <RechartsTooltip contentStyle={{ backgroundColor: 'var(--surface-2)', borderColor: 'var(--border-strong)', borderRadius: '8px', fontSize: '12px', color: '#FFFFFF' }} />
-                  <Bar yAxisId="left" dataKey="conversions" name="Conversiones" fill="#0062CC" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="right" dataKey="clicks" name="Clics" fill="rgba(245, 247, 250, 0.4)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="conversiones" name="Conversiones" fill="#0062CC" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="right" dataKey="clics" name="Clics" fill="rgba(245, 247, 250, 0.4)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               ) : (
                 <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
@@ -377,6 +383,59 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         className="p-5 rounded-2xl space-y-3"
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
+
+      {/* Mapa de calor: hora x día de la última semana cerrada */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Cuándo convierte: hora y día</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">
+              Última semana cerrada{horaDia.semana ? ` · desde ${horaDia.semana}` : ''} · intensidad = gasto · punto = conversión
+            </p>
+          </div>
+          {(horaDia.mejor || horaDia.peor_sin_conv) && (
+            <div className="text-[11px] text-[#F5F7FA] opacity-80 space-y-0.5">
+              {horaDia.mejor && <div>Mejor CPA: {horaDia.mejor.dia} {String(horaDia.mejor.hora).padStart(2,'0')}:00 · {formatCurrency(Number(horaDia.mejor.cpa), activeClient)}</div>}
+              {horaDia.peor_sin_conv && <div>Mayor gasto sin conv.: {horaDia.peor_sin_conv.dia} {String(horaDia.peor_sin_conv.hora).padStart(2,'0')}:00 · {formatCurrency(Number(horaDia.peor_sin_conv.gasto), activeClient)}</div>}
+            </div>
+          )}
+        </div>
+        {horaDia.celdas?.length ? (() => {
+          const maxGasto = Math.max(...horaDia.celdas.map((c: any) => Number(c.gasto) || 0), 1);
+          const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+          const grid: Record<string, any> = {};
+          horaDia.celdas.forEach((c: any) => { grid[`${c.dow_num}-${c.hour}`] = c; });
+          return (
+            <div className="overflow-x-auto custom-scrollbar">
+              <div className="min-w-[720px]">
+                <div className="grid text-[9px] text-[#F5F7FA] opacity-50 tabular" style={{ gridTemplateColumns: '36px repeat(24, 1fr)' }}>
+                  <div />
+                  {Array.from({ length: 24 }, (_, h) => <div key={h} className="text-center">{h}</div>)}
+                </div>
+                {dias.map((d, i) => (
+                  <div key={d} className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '36px repeat(24, 1fr)' }}>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-70 flex items-center">{d}</div>
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const c = grid[`${i + 1}-${h}`];
+                      const g = c ? Number(c.gasto) : 0;
+                      const conv = c ? Number(c.conversiones) : 0;
+                      const op = g > 0 ? 0.12 + (g / maxGasto) * 0.78 : 0;
+                      return (
+                        <div key={h} title={c ? `${d} ${h}:00 · ${formatCurrency(g, activeClient)} · ${c.clics} clics · ${conv} conv` : ''}
+                          className="h-5 rounded-sm relative"
+                          style={{ backgroundColor: op ? `color-mix(in oklab, #0062CC ${Math.round(op * 100)}%, var(--surface-2))` : 'var(--surface-2)' }}>
+                          {conv > 0 && <span className="absolute inset-0 flex items-center justify-center text-[8px] text-[#FFFFFF] font-bold">●</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })() : <p className="text-xs text-[#F5F7FA] opacity-50 py-4 text-center">Sin datos de hora y día para esta cuenta.</p>}
+      </div>
+
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF]">
             Qué pasó esta semana
@@ -455,16 +514,20 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       {term.search_term || term.termino}
                     </td>
                     <td className="py-2 px-3 text-[#F5F7FA] opacity-70">
-                      {term.triggered_keyword || '—'}
+                      <div>{term.keyword_disparadora || '—'}</div>
+                      <div className="text-[10px] opacity-60">{term.ad_group || ''}{term.match_type ? ` · ${term.match_type}` : ''}</div>
                     </td>
                     <td className="py-2 px-3 text-right tabular text-[#F5F7FA] opacity-80">
-                      {term.clicks || 0}
+                      {term.clics_acumulados ?? 0}
                     </td>
                     <td className="py-2 px-3 text-right tabular text-[#FFFFFF] font-medium">
-                      {formatCurrency(term.cost || term.gasto || 0, activeClient)}
+                      {formatCurrency(Number(term.gasto_acumulado || 0), activeClient)}
                     </td>
                     <td className="py-2 px-3 text-right tabular text-[#F5F7FA] opacity-80">
-                      {term.conversions || 0}
+                      {Number(term.conversiones_acumuladas || 0)}
+                      {Number(term.gasto_acumulado || 0) > 0 && Number(term.conversiones_acumuladas || 0) === 0 && (
+                        <span className="ml-1 text-[10px] text-[#0062CC]">· negativa?</span>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -1376,7 +1376,15 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
         required: ["headlines", "descriptions"]
       };
 
-      const prompt = `Actúa como un experto en Google Ads. Genera textos para un Responsive Search Ad (RSA) basado en estos términos de búsqueda exitosos: ${searchTerms.join(', ')}.
+      const { termMetrics, topAssets } = req.body as { termMetrics?: any[]; topAssets?: any[] };
+      const metricsTxt = Array.isArray(termMetrics) && termMetrics.length
+        ? '\n\nMétricas de esos términos (conversiones, clics, gasto):\n' + termMetrics.map((m: any) => `- "${m.term}": ${m.conv} conv, ${m.clicks} clics, ${m.cost} gasto`).join('\n')
+        : '';
+      const assetsTxt = Array.isArray(topAssets) && topAssets.length
+        ? '\n\nAssets actuales que Google califica por rendimiento (no repetir los BEST literalmente; superar los LOW):\n' + topAssets.map((a: any) => `- [${a.label}] ${a.tipo}: "${a.texto}"`).join('\n')
+        : '';
+      const rules = getClientContext(client) || '';
+      const prompt = `Actúa como un experto en Google Ads. Genera textos para un Responsive Search Ad (RSA) basado en estos términos de búsqueda exitosos: ${searchTerms.join(', ')}.${metricsTxt}${assetsTxt}\n\nReglas de la cuenta:\n${rules}\n\nPriorizá los términos con más conversiones. Cada headline debe ser distinto en ángulo, no en sinónimos.
 ${complianceRule}
 Los títulos no deben superar los 30 caracteres.
 Las descripciones no deben superar los 90 caracteres.`;
@@ -1457,6 +1465,44 @@ Las descripciones no deben superar los 90 caracteres.`;
       }
 
       res.json({ serie: serie.data, anomalias: explicadas.data || [], titulo });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+
+  // Mapa de calor hora x día de la última semana cerrada
+  app.get("/api/hora-dia", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      const client = req.query.client as string;
+      if (!client) return res.status(400).json({ error: 'client requerido' });
+      const { data, error } = await supabase.from('v_hora_dia').select('*').eq('account', client).order('dow_num').order('hour');
+      if (error) return res.status(500).json({ error: error.message });
+      const rows = data || [];
+      // Hallazgos: mejor y peor franja
+      const conConv = rows.filter((r: any) => Number(r.conversiones) > 0);
+      const sinConv = rows.filter((r: any) => Number(r.gasto) > 0 && Number(r.conversiones) === 0);
+      const mejor = conConv.sort((a: any, b: any) => Number(a.cpa) - Number(b.cpa))[0];
+      const peor = sinConv.sort((a: any, b: any) => Number(b.gasto) - Number(a.gasto))[0];
+      res.json({
+        celdas: rows,
+        semana: rows[0]?.week_start,
+        mejor: mejor ? { dia: mejor.dia, hora: mejor.hour, cpa: mejor.cpa, conv: mejor.conversiones } : null,
+        peor_sin_conv: peor ? { dia: peor.dia, hora: peor.hour, gasto: peor.gasto } : null
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Assets RSA con etiqueta de rendimiento de Google (BEST / GOOD / LOW / LEARNING)
+  app.get("/api/rsa-assets", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      const client = req.query.client as string;
+      const { data, error } = await supabase.from('rsa_assets').select('field_type, asset_text, performance_label, impressions, clicks, ctr, conversions, ad_group')
+        .eq('account', client).order('conversions', { ascending: false }).limit(60);
+      if (error) return res.status(500).json({ error: error.message });
+      // Los BEST primero, después por conversiones
+      const rank: Record<string, number> = { BEST: 0, GOOD: 1, LEARNING: 2, LOW: 3 };
+      res.json((data || []).sort((a: any, b: any) => (rank[a.performance_label] ?? 9) - (rank[b.performance_label] ?? 9) || Number(b.conversions) - Number(a.conversions)));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

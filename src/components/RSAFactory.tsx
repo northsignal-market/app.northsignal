@@ -7,6 +7,9 @@ export function RSAFactory() {
   const [searchTerms, setSearchTerms] = useState<any[]>([]);
   const [loadingTerms, setLoadingTerms] = useState(true);
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
+  const [orderBy, setOrderBy] = useState<'conversions' | 'clicks' | 'cost' | 'ctr'>('conversions');
+  const [filtro, setFiltro] = useState('');
+  const [topAssets, setTopAssets] = useState<any[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generatedRSA, setGeneratedRSA] = useState<{headlines: string[], descriptions: string[]} | null>(null);
 
@@ -19,25 +22,35 @@ export function RSAFactory() {
       }
       setLoadingTerms(true);
       try {
-        const res = await fetch(`/api/metrics/v_search_terms_analisis?client=${selectedClient}`, { credentials: 'include' });
+        // 200 términos ordenados en el servidor, no 25 sin orden
+        const res = await fetch(`/api/metrics/v_search_terms_analisis?client=${selectedClient}&orderBy=${orderBy}&orderDir=desc&limit=200`, { credentials: 'include' });
         if (res.ok) {
            const data = await res.json();
            setSearchTerms(data.data || []);
         }
+        // Assets que ya funcionan: contexto para no repetir lo que Google ya califica BEST
+        const ra = await fetch(`/api/rsa-assets?client=${selectedClient}`, { credentials: 'include' });
+        if (ra.ok) setTopAssets(await ra.json());
       } catch(e) {
         console.error(e);
       }
       setLoadingTerms(false);
     }
     fetchTerms();
-  }, [selectedClient]);
+  }, [selectedClient, orderBy]);
 
   const handleGenerate = async () => {
     if (selectedTerms.length === 0 || !selectedClient) return;
     setGenerating(true);
     try {
       const res = await fetch('/api/generate-rsa', { credentials: 'include',
-        body: JSON.stringify({ client: selectedClient, searchTerms: selectedTerms })
+        body: JSON.stringify({
+          client: selectedClient,
+          searchTerms: selectedTerms,
+          // Métricas de los términos elegidos y assets con mejor rendimiento
+          termMetrics: searchTerms.filter(t => selectedTerms.includes(t.search_term)).map(t => ({ term: t.search_term, conv: t.conversions, clicks: t.clicks, cost: t.cost })),
+          topAssets: topAssets.slice(0, 12).map(a => ({ tipo: a.field_type, texto: a.asset_text, label: a.performance_label }))
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -88,6 +101,17 @@ export function RSAFactory() {
           </h3>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+            <div className="flex gap-2 mb-2">
+              <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar términos…"
+                className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
+              <select value={orderBy} onChange={e => setOrderBy(e.target.value as any)}
+                className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1.5 text-xs text-[#FFFFFF] focus:outline-none">
+                <option value="conversions">Por conversiones</option>
+                <option value="clicks">Por clics</option>
+                <option value="cost">Por gasto</option>
+                <option value="ctr">Por CTR</option>
+              </select>
+            </div>
             {loadingTerms ? (
               <div className="flex items-center justify-center h-32">
                 <Loader2 className="animate-spin text-[#0062CC]" size={24} />
@@ -95,18 +119,28 @@ export function RSAFactory() {
             ) : searchTerms.length === 0 ? (
               <p className="text-[#F5F7FA]/50 text-sm text-center py-8">No hay términos disponibles o el endpoint aún no retorna datos.</p>
             ) : (
-              searchTerms.slice(0, 50).map((t, idx) => (
+              searchTerms
+                .filter(t => !filtro || String(t.search_term || '').toLowerCase().includes(filtro.toLowerCase()))
+                .slice(0, 100).map((t, idx) => {
+                const sel = selectedTerms.includes(t.search_term);
+                const cpa = Number(t.conversions) > 0 ? Number(t.cost) / Number(t.conversions) : null;
+                return (
                 <div 
                   key={idx} 
-                  onClick={() => toggleTerm(t.search_term || t.termino)}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedTerms.includes(t.search_term || t.termino) ? 'bg-[#0062CC]/20 border-[#0062CC]' : 'bg-[#1A1F36] border-[#0062CC]/20 hover:border-[#0062CC]/50'}`}
+                  onClick={() => toggleTerm(t.search_term)}
+                  className={`p-2.5 rounded-lg border cursor-pointer transition-all ${sel ? 'bg-[#0062CC]/20 border-[#0062CC]' : 'bg-[#1A1F36] border-[#0062CC]/20 hover:border-[#0062CC]/50'}`}
                 >
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#FFFFFF]">{t.search_term || t.termino || 'Desconocido'}</span>
-                    <span className="text-xs tabular text-[#0062CC]">{t.conversions || t.conversiones || 0} cv</span>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-sm text-[#FFFFFF] truncate">{t.search_term || 'Desconocido'}</span>
+                    <span className="text-[11px] tabular text-[#F5F7FA] opacity-70 shrink-0 flex gap-2">
+                      <span className="text-[#0062CC] font-semibold">{Number(t.conversions || 0)} cv</span>
+                      <span>{Number(t.clicks || 0)} clics</span>
+                      {cpa != null && <span>CPA {selectedClient === 'KAREDO' ? cpa.toFixed(0) + '€' : '$' + Math.round(cpa).toLocaleString('es-CL')}</span>}
+                    </span>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
           
