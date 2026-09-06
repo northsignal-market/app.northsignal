@@ -99,17 +99,31 @@ ${sinPlan ? '\nNO HAY PLAN para esta semana. Reportá evidencia sobre los cuatro
   try {
     const msg = await anthropic.messages.parse({
       model: 'claude-sonnet-5',
-      max_tokens: 8000,
+      max_tokens: 16000,
       system,
       messages: [{ role: 'user', content: user }],
       output_config: { effort: 'medium', format: zodOutputFormat(PulsoSchema) }
     });
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error('Sin parsed_output: ' + (msg.stop_reason || 'desconocido'));
+    if (msg.stop_reason === 'max_tokens') throw new Error('Se cortó por max_tokens');
     const tin = msg.usage.input_tokens || 0;
     const tout = msg.usage.output_tokens || 0;
     return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
   } catch (e: any) {
+    // Si se cortó el JSON, reintentar una vez pidiendo cobertura acotada
+    if (/Unterminated|max_tokens|parse structured/i.test(String(e.message)) && !system.includes('REINTENTO')) {
+      try {
+        const msg2 = await anthropic.messages.parse({
+          model: 'claude-sonnet-5', max_tokens: 16000,
+          system: system + '\n\nREINTENTO: la respuesta anterior se cortó por largo. Limitá hallazgos a los 4 más relevantes y cada evidencia_texto a dos oraciones.',
+          messages: [{ role: 'user', content: user }],
+          output_config: { effort: 'medium', format: zodOutputFormat(PulsoSchema) }
+        });
+        const parsed = msg2.parsed_output;
+        if (parsed) { const tin = msg2.usage.input_tokens || 0, tout = msg2.usage.output_tokens || 0; return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed }; }
+      } catch (e2: any) { return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: `${e.message} · reintento: ${e2.message}` }; }
+    }
     return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
   }
 }

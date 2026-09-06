@@ -549,17 +549,36 @@ ${JSON.stringify(input)}`;
   try {
     const msg = await anthropic.messages.parse({
       model: "claude-sonnet-5",
-      max_tokens: 8e3,
+      max_tokens: 16e3,
       system,
       messages: [{ role: "user", content: user }],
       output_config: { effort: "medium", format: zodOutputFormat(PulsoSchema) }
     });
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error("Sin parsed_output: " + (msg.stop_reason || "desconocido"));
+    if (msg.stop_reason === "max_tokens") throw new Error("Se cort\xF3 por max_tokens");
     const tin = msg.usage.input_tokens || 0;
     const tout = msg.usage.output_tokens || 0;
     return { cuenta, fecha: fecha2, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
   } catch (e) {
+    if (/Unterminated|max_tokens|parse structured/i.test(String(e.message)) && !system.includes("REINTENTO")) {
+      try {
+        const msg2 = await anthropic.messages.parse({
+          model: "claude-sonnet-5",
+          max_tokens: 16e3,
+          system: system + "\n\nREINTENTO: la respuesta anterior se cort\xF3 por largo. Limit\xE1 hallazgos a los 4 m\xE1s relevantes y cada evidencia_texto a dos oraciones.",
+          messages: [{ role: "user", content: user }],
+          output_config: { effort: "medium", format: zodOutputFormat(PulsoSchema) }
+        });
+        const parsed = msg2.parsed_output;
+        if (parsed) {
+          const tin = msg2.usage.input_tokens || 0, tout = msg2.usage.output_tokens || 0;
+          return { cuenta, fecha: fecha2, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
+        }
+      } catch (e2) {
+        return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: `${e.message} \xB7 reintento: ${e2.message}` };
+      }
+    }
     return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
   }
 }
