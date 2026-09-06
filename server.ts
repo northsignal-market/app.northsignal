@@ -16,7 +16,6 @@ import { CLIENT_RULES, getClientContext } from './src/server/domain/clientRules'
 
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { z } from "zod";
 import cookieParser from 'cookie-parser';
 import * as crypto from 'crypto';
@@ -1711,6 +1710,9 @@ async function startLocal() {
   const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== "production") {
+    // Import dinámico: Vite solo se carga en desarrollo local. En Vercel este
+    // bloque nunca corre, y un import estático haría crashear la función.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {

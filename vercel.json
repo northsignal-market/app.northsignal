@@ -3,12 +3,25 @@
   "buildCommand": "npm run build:client",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.ts": { "maxDuration": 60, "memory": 1024 }
+    "api/index.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/|assets/).*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/cron/anomalias", "schedule": "0 */4 * * *" }
+    {
+      "path": "/api/cron/anomalias",
+      "schedule": "0 */4 * * *"
+    }
   ]
 }

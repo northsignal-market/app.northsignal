@@ -27,12 +27,15 @@ Opcionales hasta que se activen los webhooks: `ASANA_WEBHOOK_SECRET`, `ASANA_PAT
 
 ## 4. Deploy
 Vercel compila el frontend con `vite build` y sirve la API desde `api/index.ts`.
-El cron de anomalías corre cada 4 horas según `vercel.json`.
+El cron de anomalías corre **una vez al día a las 10:00 UTC** (07:00 Buenos Aires). El plan Hobby de Vercel limita a un cron diario; con Pro se puede bajar a cada 4 horas cambiando el `schedule` en `vercel.json` a `0 */4 * * *`.
 
 ## 5. Verificar
 - `https://<tu-app>.vercel.app/api/health` → `{"status":"ok"}`
 - Iniciar sesión con `APP_ACCESS_TOKEN`
 - Inicio → Hoy → Clientes: objetivos y escalera cargan
+
+## Si el deploy da FUNCTION_INVOCATION_FAILED
+La función serverless no puede cargar Vite. Esta versión ya lo resuelve: `server.ts` importa Vite solo en desarrollo local (import dinámico), y `api/index.ts` expone únicamente la API. Los estáticos los sirve Vercel desde `dist/`.
 
 ## Cambios de esta versión respecto de la v22
 - `Datos` reconstruido desde `MetricsDashboard`: recupera rango de fechas, orden en servidor, filtros, agrupación, columnas, comparación. Más 3 pestañas diarias y drawer de keyword.

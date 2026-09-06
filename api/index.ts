@@ -1,17 +1,9 @@
 /**
- * Entrada para Vercel. Exporta la app Express como handler serverless.
- * Vercel enruta /api/* y todo lo demás acá (vercel.json), y la app sirve
- * el frontend desde dist/ en producción.
+ * Entrada para Vercel. Solo la API: los estáticos de dist/ los sirve Vercel
+ * directamente (outputDirectory en vercel.json), y las rutas del frontend
+ * caen en index.html por el rewrite del SPA.
  */
-import express from 'express';
-import path from 'path';
 import { createApp } from '../server';
 
 const app = createApp();
-
-// Estáticos del frontend compilado
-const distPath = path.join(process.cwd(), 'dist');
-app.use(express.static(distPath));
-app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
-
 export default app;
