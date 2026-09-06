@@ -424,6 +424,20 @@ function createApp() {
   app2.use(cookieParser());
   app2.use("/api", authRouter);
   app2.use("/api", authMiddleware);
+  app2.use("/api", (req, res, next) => {
+    const t0 = Date.now();
+    const origJson = res.json.bind(res);
+    res.json = (body) => {
+      const ms = Date.now() - t0;
+      if (res.statusCode >= 500) {
+        console.error(`[${res.statusCode}] ${req.method} ${req.originalUrl} ${ms}ms \u2014 ${body?.error || JSON.stringify(body).slice(0, 200)}`);
+      } else if (ms > 8e3) {
+        console.warn(`[lento ${ms}ms] ${req.method} ${req.originalUrl}`);
+      }
+      return origJson(body);
+    };
+    next();
+  });
   app2.get("/api/health/system", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase missing" });
     try {
@@ -496,6 +510,7 @@ function createApp() {
         recentChanges: recentChanges || []
       });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -563,6 +578,7 @@ function createApp() {
       });
       res.json({ success: true, clients });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -749,10 +765,12 @@ function createApp() {
       const totalIncome = (data || []).reduce((acc, curr) => acc + (Number(curr.monto) || 0), 0);
       res.json({ success: true, mtd_income: totalIncome });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
   app2.get(["/api/metrics/:view", "/api/views/:view"], async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado", disponible: false });
     const { view } = req.params;
     const client = req.query.client || req.query.account;
     const week = req.query.week;
@@ -823,6 +841,7 @@ function createApp() {
           totals
         });
       } catch (err) {
+        console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${err.message}`);
         return res.status(500).json({ error: err.message, disponible: false });
       }
     }
@@ -891,6 +910,7 @@ function createApp() {
         }
       });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       return res.status(500).json({ error: e.message, disponible: false });
     }
   });
@@ -953,6 +973,7 @@ function createApp() {
       }));
       res.json({ data });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -1002,6 +1023,7 @@ function createApp() {
       }));
       res.json({ data });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -1399,6 +1421,7 @@ Nota: ${resolutionNote || ""}`;
       }
       res.json({ success: true, data });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -1438,6 +1461,7 @@ Nota: ${resolutionNote || ""}`;
       }
       res.json({ success: true });
     } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
     }
   });
@@ -1530,6 +1554,40 @@ Las descripciones no deben superar los 90 caracteres.`;
         titulo = `${altas.length} d\xEDa(s) fuera de lo habitual: ${altas[0].explicacion.toLowerCase()}`;
       }
       res.json({ serie: serie.data, anomalias: explicadas.data || [], titulo });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/conversiones-grupo", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+      const client = req.query.client;
+      const days = Number(req.query.days) || 14;
+      const desde = /* @__PURE__ */ new Date();
+      desde.setDate(desde.getDate() - days);
+      const { data, error } = await supabase.from("v_conversiones_por_grupo").select("date, ad_group, conversion_action, conversions, madurez").eq("account", client).gte("date", desde.toISOString().slice(0, 10)).order("date");
+      if (error) return res.status(500).json({ error: error.message });
+      const grupos = Array.from(new Set((data || []).map((r) => r.ad_group))).sort();
+      const porFecha = {};
+      for (const r of data || []) {
+        porFecha[r.date] = porFecha[r.date] || { date: r.date, madurez: r.madurez };
+        porFecha[r.date][r.ad_group] = (porFecha[r.date][r.ad_group] || 0) + Number(r.conversions);
+      }
+      const filas = Object.values(porFecha).sort((a, b) => a.date.localeCompare(b.date));
+      const apagados = [];
+      for (const g of grupos) {
+        const serie = filas.map((f) => f[g] || 0);
+        const conConv = serie.filter((v) => v > 0).length;
+        if (conConv >= 3) {
+          let racha = 0, maxRacha = 0;
+          for (const v of serie) {
+            racha = v === 0 ? racha + 1 : 0;
+            maxRacha = Math.max(maxRacha, racha);
+          }
+          if (maxRacha >= 2) apagados.push(`${g} (${maxRacha} d\xEDas seguidos en cero)`);
+        }
+      }
+      res.json({ grupos, filas, hallazgo: apagados.length ? `Se apag\xF3: ${apagados.join("; ")}` : null });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

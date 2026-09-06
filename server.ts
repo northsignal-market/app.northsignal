@@ -62,6 +62,25 @@ export function createApp() {
   // Auth middleware extracted to auth/middleware.ts
   app.use('/api', authMiddleware);
 
+  // Observabilidad: Vercel solo ve el status code, no el cuerpo. Este
+  // middleware registra ruta, mensaje y tiempo de cada respuesta >= 500 y de
+  // cada respuesta lenta, para que los logs de Vercel cuenten qué pasó.
+  app.use('/api', (req, res, next) => {
+    const t0 = Date.now();
+    const origJson = res.json.bind(res);
+    res.json = (body: any) => {
+      const ms = Date.now() - t0;
+      if (res.statusCode >= 500) {
+        console.error(`[${res.statusCode}] ${req.method} ${req.originalUrl} ${ms}ms — ${body?.error || JSON.stringify(body).slice(0, 200)}`);
+      } else if (ms > 8000) {
+        console.warn(`[lento ${ms}ms] ${req.method} ${req.originalUrl}`);
+      }
+      return origJson(body);
+    };
+    next();
+  });
+
+
 
 
 
@@ -171,7 +190,8 @@ export function createApp() {
         recentChanges: recentChanges || []
       });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
@@ -255,7 +275,8 @@ export function createApp() {
       });
       res.json({ success: true, clients });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
@@ -530,11 +551,13 @@ export function createApp() {
       const totalIncome = (data || []).reduce((acc: number, curr: any) => acc + (Number(curr.monto) || 0), 0);
       res.json({ success: true, mtd_income: totalIncome });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
   app.get(["/api/metrics/:view", "/api/views/:view"], async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado', disponible: false });
     const { view } = req.params;
     const client = (req.query.client as string) || (req.query.account as string);
     const week = req.query.week as string; // fallback
@@ -614,7 +637,8 @@ export function createApp() {
           totals
         });
       } catch (err: any) {
-        return res.status(500).json({ error: err.message, disponible: false });
+        console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${err.message}`);
+          return res.status(500).json({ error: err.message, disponible: false });
       }
     }
 
@@ -691,7 +715,8 @@ export function createApp() {
         }
       });
     } catch (e: any) {
-      return res.status(500).json({ error: e.message, disponible: false });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        return res.status(500).json({ error: e.message, disponible: false });
     }
   });
 
@@ -774,7 +799,8 @@ export function createApp() {
       }));
       res.json({ data });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
@@ -826,7 +852,8 @@ export function createApp() {
       }));
       res.json({ data });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
   
@@ -1288,7 +1315,8 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
 
       res.json({ success: true, data });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
@@ -1341,7 +1369,8 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
       }
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+        res.status(500).json({ error: e.message });
     }
   });
 
@@ -1468,6 +1497,41 @@ Las descripciones no deben superar los 90 caracteres.`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+
+
+  // Conversiones por grupo y día: en qué grupo cayeron. Desde script v3 (6 sep).
+  app.get("/api/conversiones-grupo", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      const client = req.query.client as string;
+      const days = Number(req.query.days) || 14;
+      const desde = new Date(); desde.setDate(desde.getDate() - days);
+      const { data, error } = await supabase.from('v_conversiones_por_grupo')
+        .select('date, ad_group, conversion_action, conversions, madurez')
+        .eq('account', client).gte('date', desde.toISOString().slice(0, 10)).order('date');
+      if (error) return res.status(500).json({ error: error.message });
+      // Pivot: fecha × grupo
+      const grupos = Array.from(new Set((data || []).map((r: any) => r.ad_group))).sort();
+      const porFecha: Record<string, any> = {};
+      for (const r of data || []) {
+        porFecha[r.date] = porFecha[r.date] || { date: r.date, madurez: r.madurez };
+        porFecha[r.date][r.ad_group] = (porFecha[r.date][r.ad_group] || 0) + Number(r.conversions);
+      }
+      // Hallazgo: grupo que se apagó (convertía y dejó de hacerlo 2+ días)
+      const filas = Object.values(porFecha).sort((a: any, b: any) => a.date.localeCompare(b.date));
+      const apagados: string[] = [];
+      for (const g of grupos) {
+        const serie = filas.map((f: any) => f[g] || 0);
+        const conConv = serie.filter(v => v > 0).length;
+        if (conConv >= 3) {
+          let racha = 0, maxRacha = 0;
+          for (const v of serie) { racha = v === 0 ? racha + 1 : 0; maxRacha = Math.max(maxRacha, racha); }
+          if (maxRacha >= 2) apagados.push(`${g} (${maxRacha} días seguidos en cero)`);
+        }
+      }
+      res.json({ grupos, filas, hallazgo: apagados.length ? `Se apagó: ${apagados.join('; ')}` : null });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
 
   // Mapa de calor hora x día de la última semana cerrada
   app.get("/api/hora-dia", async (req, res) => {

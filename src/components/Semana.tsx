@@ -49,6 +49,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
   const [anomalias, setAnomalias] = useState<any>({ serie: [], anomalias: [], titulo: '' });
   const [horaDia, setHoraDia] = useState<any>({ celdas: [], mejor: null, peor_sin_conv: null });
+  const [convGrupo, setConvGrupo] = useState<any>({ grupos: [], filas: [], hallazgo: null });
+
+  useEffect(() => {
+    fetch(`/api/conversiones-grupo?client=${activeClient}&days=14`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setConvGrupo(d)).catch(() => {});
+  }, [activeClient]);
 
   useEffect(() => {
     fetch(`/api/hora-dia?client=${activeClient}`, { credentials: 'include' })
@@ -383,6 +389,36 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         className="p-5 rounded-2xl space-y-3"
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
+
+
+      {/* Conversiones por grupo y día: en qué grupo cayeron */}
+      {convGrupo.grupos.length > 0 && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: convGrupo.hallazgo ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">{convGrupo.hallazgo || 'Conversiones por grupo'}</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Últimos 14 días · desagregar por grupo antes de buscar causas externas</p>
+          </div>
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-xs">
+              <thead><tr className="text-[#F5F7FA] opacity-60 text-left" style={{ borderBottom: '1px solid var(--border)' }}>
+                <th className="py-1.5 px-2">Día</th>
+                {convGrupo.grupos.map((g: string) => <th key={g} className="py-1.5 px-2 text-right">{g}</th>)}
+              </tr></thead>
+              <tbody>
+                {convGrupo.filas.map((f: any) => (
+                  <tr key={f.date} style={{ borderBottom: '1px solid var(--border)' }} className={f.madurez === 'provisional' ? 'opacity-50' : ''}>
+                    <td className="py-1 px-2 tabular text-[#F5F7FA]">{new Date(f.date + 'T12:00').toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit' })}{f.madurez === 'provisional' ? ' ·' : ''}</td>
+                    {convGrupo.grupos.map((g: string) => {
+                      const v = f[g] || 0;
+                      return <td key={g} className={`py-1 px-2 tabular text-right ${v === 0 ? 'text-[#F5F7FA] opacity-30' : 'text-[#FFFFFF] font-medium'}`}>{v === 0 ? '·' : v}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Mapa de calor: hora x día de la última semana cerrada */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>

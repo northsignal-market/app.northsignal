@@ -8,10 +8,17 @@ import { useAppStore } from '../store/useAppStore';
 export function Sistema() {
   const { selectedClient } = useAppStore();
   const [healthData, setHealthData] = useState<any>(null);
+  const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
+  const [tamano, setTamano] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/aprendizaje', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setAprendizaje(d)).catch(() => {});
+    fetch('/api/salud-sistema', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setTamano(d)).catch(() => {});
+  }, []);
   const [loading, setLoading] = useState(false);
 
   // Tab: 'salud' | 'integridad' | 'scorecard' | 'cambios' | 'bitacora' | 'ajustes'
-  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'cambios' | 'bitacora' | 'ajustes'>('salud');
+  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes'>('salud');
 
   // Operator log form state
   const [logAccount, setLogAccount] = useState('360');
@@ -129,6 +136,8 @@ export function Sistema() {
           { id: 'salud', label: 'Salud de Datos (v_data_health)' },
           { id: 'integridad', label: 'Integridad (v_integridad_datos)' },
           { id: 'scorecard', label: 'Scorecard de Calidad (v_run_scorecard)' },
+          { id: 'aprendizaje', label: 'Aprendizaje (impacto y reflexiones)' },
+          { id: 'tamano', label: 'Tamaño y crecimiento (v_salud_sistema)' },
           { id: 'cambios', label: 'Cambios Detectados (v_cambios_detectados)' },
           { id: 'bitacora', label: 'Bitácora Operador (operator_log)' },
           { id: 'ajustes', label: 'Ajustes de Sincronización' },
@@ -478,6 +487,153 @@ export function Sistema() {
       )}
 
       {/* TAB 6: AJUSTES */}
+
+      {activeTab === 'aprendizaje' && (
+        <div className="space-y-4">
+          {/* Tasa de acierto: la métrica del sistema entero */}
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              Tasa de acierto (v_tasa_acierto)
+            </h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.</p>
+            {aprendizaje.tasa_acierto.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin accionables evaluados todavía. El cron de los lunes 05:30 sincroniza los Hechos con fecha de ejecución y calcula impacto a los 14 días.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {aprendizaje.tasa_acierto.map((t: any) => (
+                  <div key={t.account} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <div className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider mb-1">{t.account}</div>
+                    <div className="text-2xl font-semibold text-[#FFFFFF] tabular">{t.tasa_acierto_pct != null ? `${t.tasa_acierto_pct}%` : '—'}</div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-70 tabular mt-1">
+                      {t.funcionaron} funcionaron · {t.neutros} neutros · {t.empeoraron} empeoraron · {t.pendientes} pendientes
+                    </div>
+                    {(t.acierto_observaciones_pct != null || t.acierto_inferencias_pct != null) && (
+                      <div className="text-[11px] text-[#F5F7FA] opacity-60 tabular mt-1">
+                        Observaciones {t.acierto_observaciones_pct ?? '—'}% · Inferencias {t.acierto_inferencias_pct ?? '—'}%
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Impacto por accionable */}
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              Impacto de accionables ejecutados (v_impacto_accionables)
+            </h2>
+            {aprendizaje.impacto.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin accionables Hechos con fecha de ejecución.</p>
+            ) : (
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[#F5F7FA] opacity-60 text-left" style={{ borderBottom: '1px solid var(--border)' }}>
+                    <th className="py-2 px-2">Cuenta</th><th className="py-2 px-2">Accionable</th><th className="py-2 px-2">Ejecutado</th><th className="py-2 px-2">Métrica</th><th className="py-2 px-2 text-right">Antes → Después</th><th className="py-2 px-2 text-right">Var.</th><th className="py-2 px-2">Veredicto</th>
+                  </tr></thead>
+                  <tbody>
+                    {aprendizaje.impacto.map((i: any) => {
+                      const m = i.metrica_objetivo;
+                      const ad = m === 'cpa' ? `${i.cpa_antes ?? '—'} → ${i.cpa_despues ?? '—'}` : m === 'gasto' ? `${i.gasto_antes ?? '—'} → ${i.gasto_despues ?? '—'}` : m === 'conversiones' ? `${i.conv_antes ?? '—'} → ${i.conv_despues ?? '—'}` : `${i.ctr_antes ?? '—'} → ${i.ctr_despues ?? '—'}`;
+                      const ok = String(i.veredicto).startsWith('FUNCIONO');
+                      const mal = String(i.veredicto).startsWith('EMPEORO');
+                      return (
+                        <tr key={i.notion_id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
+                          <td className="py-2 px-2 font-bold text-[#FFFFFF]">{i.account}</td>
+                          <td className="py-2 px-2 text-[#F5F7FA] max-w-[280px] truncate" title={i.titulo}>{i.titulo}</td>
+                          <td className="py-2 px-2 tabular text-[#F5F7FA] opacity-70">{i.ejecutado_el}</td>
+                          <td className="py-2 px-2 text-[#F5F7FA] opacity-70">{m || '—'}</td>
+                          <td className="py-2 px-2 tabular text-right text-[#F5F7FA]">{ad}</td>
+                          <td className={`py-2 px-2 tabular text-right ${ok ? 'text-[#FFFFFF] font-semibold' : mal ? 'text-[#0062CC] font-semibold' : 'text-[#F5F7FA] opacity-70'}`}>{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${i.variacion_pct}%` : '—'}</td>
+                          <td className={`py-2 px-2 ${ok ? 'text-[#FFFFFF]' : mal ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-70'}`}>{String(i.veredicto).split(':')[0]}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Propuestas de cambio al prompt */}
+          {aprendizaje.propuestas.length > 0 && (
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                Propuestas de cambio al prompt (v_reflexiones_recurrentes)
+              </h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.</p>
+              {aprendizaje.propuestas.map((p: any, i: number) => (
+                <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#FFFFFF] uppercase">{p.account} · {p.tipo}</span>
+                    <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{p.veces} veces · {p.primera_vez} → {p.ultima_vez}</span>
+                  </div>
+                  <p className="text-sm text-[#F5F7FA]">{p.leccion_mas_reciente}</p>
+                  {p.regla && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Regla: {p.regla}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Reflexiones recientes */}
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              Reflexiones de las corridas (memoria episódica)
+            </h2>
+            {aprendizaje.reflexiones.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Las tareas semanales escriben acá qué harían distinto. Empieza el lunes 7.</p>
+            ) : (
+              <div className="space-y-2">
+                {aprendizaje.reflexiones.map((r: any) => (
+                  <div key={r.id} className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-[#FFFFFF] uppercase">{r.account}</span>
+                      <span className="text-[#F5F7FA] opacity-60 tabular">{r.run_date}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide" style={{ backgroundColor: r.tipo === 'acierto' ? 'var(--surface-1)' : 'var(--primary-faint)', color: '#F5F7FA' }}>{r.tipo.replace(/_/g, ' ')}</span>
+                      {r.aplicada && <span className="text-[10px] text-[#F5F7FA] opacity-50">· aplicada</span>}
+                    </div>
+                    <p className="text-[#F5F7FA] opacity-80">{r.que_paso}</p>
+                    <p className="text-[#FFFFFF] mt-1">→ {r.que_haria_distinto}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'tamano' && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            Tamaño y crecimiento (v_salud_sistema)
+          </h2>
+          <p className="text-xs text-[#F5F7FA] opacity-60">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
+          {tamano.length === 0 ? (
+            <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
+          ) : (
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-xs">
+                <thead><tr className="text-[#F5F7FA] opacity-60 text-left" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th className="py-2 px-2">Tabla</th><th className="py-2 px-2 text-right">Filas</th><th className="py-2 px-2 text-right">Tamaño</th><th className="py-2 px-2 text-right">Filas/día</th><th className="py-2 px-2 text-right">En un año</th><th className="py-2 px-2">Estado</th>
+                </tr></thead>
+                <tbody>
+                  {tamano.map((t: any) => (
+                    <tr key={t.tabla} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
+                      <td className="py-1.5 px-2 text-[#FFFFFF]">{t.tabla}</td>
+                      <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA]">{Number(t.filas).toLocaleString('es-CL')}</td>
+                      <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.tamano}</td>
+                      <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_por_dia ?? '—'}</td>
+                      <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_en_un_ano ? Number(t.filas_en_un_ano).toLocaleString('es-CL') : '—'}</td>
+                      <td className={`py-1.5 px-2 ${t.estado === 'OK' ? 'text-[#F5F7FA] opacity-50' : 'text-[#0062CC] font-semibold'}`}>{t.estado}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'ajustes' && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
