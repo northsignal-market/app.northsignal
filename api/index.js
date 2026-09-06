@@ -540,6 +540,8 @@ PRINCIPIOS:
 
 SOBRE EVIDENCIA: por cada indicador del plan, un objeto con el valor de hoy (de leading_7d o grupos_ayer seg\xFAn corresponda), si cumple el umbral en la direcci\xF3n indicada, la tendencia de 3 d\xEDas, y cu\xE1ntos d\xEDas seguidos lo viene cumpliendo (contando pulsos_previos). Si el indicador es conv_rate_grupo, el valor sale de grupos_ayer para ese grupo.
 
+SOBRE LO QUE YA EXISTE: en estado_cuenta.accionables_abiertos est\xE1 lo que ya se propuso y sigue abierto, con su entidad. Si tu hallazgo es sobre la misma entidad, decilo en evidencia_texto ("ya hay un accionable abierto para X desde el d\xEDa Y; sigue vigente porque...") y pon\xE9 confianza baja: no hace falta crear otro. En estado_cuenta.operator_log_14d y cambios_google_7d est\xE1 lo que Andr\xE9s o Google ya cambiaron: un movimiento que coincide con un cambio registrado no es hallazgo, es efecto.
+
 SOBRE HALLAZGOS: report\xE1 todo lo que encontr\xE1s, incluidos los de confianza baja o severidad baja. No decidas qu\xE9 importa: un filtro posterior lo hace con umbrales. Tu trabajo es cobertura. Cada hallazgo con entidad nombrada exacta y los n\xFAmeros que lo sostienen. Severidad critica solo si: cambio autom\xE1tico de Google, primaria sin datos con gasto normal, o gasto sin conversi\xF3n sobre el CPA m\xE1ximo en un grupo que antes convert\xEDa.
 
 SOBRE NIVEL: critico si hay un hallazgo critica con confianza \u2265 0,8. atencion si alguna condici\xF3n del plan lleva 2+ d\xEDas cumpli\xE9ndose o hay un hallazgo alta con confianza \u2265 0,7. normal en cualquier otro caso.
@@ -1516,6 +1518,11 @@ function createApp() {
           naturaleza: props.Naturaleza?.select?.name || "Observacion",
           que_lo_confirmaria: props["Que lo confirmaria"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           como_hacerlo: props["Como hacerlo"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
+          origen: props["Origen"]?.select?.name || "",
+          entidad: props["Entidad"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
+          vence: props["Vence"]?.date?.start || null,
+          reemplazado_por: props["Reemplazado por"]?.relation?.[0]?.id || null,
+          last_edited: page.last_edited_time,
           causa_raiz: props["Causa raiz"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           relacionado_con: props["Relacionado con"]?.relation?.map((rel) => rel.id) || [],
           semanas_pendiente: props["Semanas pendiente"]?.number ?? (props["Semanas pendiente"]?.formula?.number ?? 0),
@@ -1524,7 +1531,30 @@ function createApp() {
           url: page.url
         };
       }));
-      res.json({ data });
+      const visibles = data.filter((a) => !a.reemplazado_por);
+      res.json({ data: visibles });
+      if (supabase) supabase.from("accionables_espejo").upsert(data.map((a) => ({
+        notion_id: a.id,
+        account: a.client,
+        titulo: a.title,
+        estado: a.status,
+        prioridad: a.priority,
+        naturaleza: a.naturaleza,
+        origen: a.origen || null,
+        entidad: a.entidad || null,
+        causa_raiz: a.causa_raiz || null,
+        por_que: (a.why || "").slice(0, 1e3),
+        detectado: a.detected || null,
+        ejecutado_el: a.ejecutado_el || null,
+        vence: a.vence,
+        reemplazado_por: a.reemplazado_por,
+        semanas_pendiente: a.weeks_pending ?? null,
+        revision_ia: a.revision_ia || null,
+        ultima_edicion: a.last_edited,
+        sincronizado: (/* @__PURE__ */ new Date()).toISOString()
+      })), { onConflict: "notion_id" }).then(({ error }) => {
+        if (error) console.error("[espejo] " + error.message);
+      });
     } catch (e) {
       console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
@@ -2648,6 +2678,11 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       res.status(500).json({ error: e.message });
     }
   });
+  app2.get("/api/coherencia", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const [e, r] = await Promise.all([supabase.from("escritores").select("*").order("entidad"), supabase.from("reconciliaciones").select("*").order("corrida", { ascending: false }).limit(40)]);
+    res.json({ escritores: e.data || [], reconciliaciones: r.data || [] });
+  });
   app2.post("/api/tickets", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { tipo = "bug", titulo, descripcion, pagina, cuenta, contexto } = req.body || {};
@@ -2677,6 +2712,84 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const { error } = await supabase.from("alertas").update(upd).eq("id", req.params.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
+  });
+  async function sincronizarEspejo() {
+    if (!supabase || !notion || !NOTION_BASES.ACCIONABLES) return 0;
+    let cursor;
+    const filas = [];
+    do {
+      const r = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100, start_cursor: cursor });
+      for (const page of r.results) {
+        const p = page.properties;
+        const txt = (k) => p[k]?.rich_text?.map((t) => t.plain_text).join("") || "";
+        const cliente = await resolveNotionClient(notion, p.Cliente);
+        filas.push({
+          notion_id: page.id,
+          account: cliente,
+          titulo: p.Accion?.title?.map((t) => t.plain_text).join("") || "",
+          estado: p.Estado?.select?.name || "",
+          prioridad: p.Prioridad?.select?.name || "",
+          naturaleza: p.Naturaleza?.select?.name || "",
+          origen: p.Origen?.select?.name || null,
+          entidad: txt("Entidad") || null,
+          causa_raiz: txt("Causa raiz") || null,
+          por_que: txt("Por que").slice(0, 1e3),
+          detectado: p.Detectado?.date?.start || null,
+          ejecutado_el: p["Ejecutado el"]?.date?.start || null,
+          vence: p.Vence?.date?.start || null,
+          reemplazado_por: p["Reemplazado por"]?.relation?.[0]?.id || null,
+          semanas_pendiente: p["Semanas pendiente"]?.number ?? null,
+          revision_ia: p["Revision IA"]?.select?.name || null,
+          ultima_edicion: page.last_edited_time,
+          sincronizado: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      cursor = r.has_more ? r.next_cursor : void 0;
+    } while (cursor);
+    if (filas.length) {
+      const { error } = await supabase.from("accionables_espejo").upsert(filas, { onConflict: "notion_id" });
+      if (error) throw new Error(error.message);
+    }
+    return filas.length;
+  }
+  app2.all("/api/cron/espejo", async (req, res) => {
+    try {
+      const n = await sincronizarEspejo();
+      res.json({ ok: true, sincronizados: n });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.all("/api/cron/reconciliar", async (req, res) => {
+    if (!supabase || !notion) return res.status(503).json({ error: "Supabase o Notion no configurados" });
+    try {
+      await sincronizarEspejo();
+    } catch (e) {
+      console.error("[espejo] " + e.message);
+    }
+    const { data: resumen } = await supabase.rpc("reconciliar");
+    const { data: pendientes } = await supabase.from("reconciliaciones").select("*").eq("aplicada", false).order("corrida").limit(50);
+    let aplicadas = 0;
+    const errores = [];
+    for (const r of pendientes || []) {
+      try {
+        const [tipo, id] = String(r.objeto).split(":");
+        if (tipo !== "accionable") continue;
+        if (r.accion === "vencer") {
+          await notion.pages.update({ page_id: id, properties: { Estado: { select: { name: NOTION_STATES.DESCARTADO } }, "Decision final": { rich_text: [{ text: { content: `[RECONCILIADOR ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] ${r.detalle}` } }] } } });
+        } else if (r.accion === "duplicado") {
+          const viejo = (String(r.detalle).match(/Misma entidad que ([0-9a-f-]{32,36})/) || [])[1];
+          if (viejo) await notion.pages.update({ page_id: id, properties: { "Reemplazado por": { relation: [{ id: viejo }] } } });
+        } else if (r.accion === "ya_hecho") {
+          await notion.comments.create({ parent: { page_id: id }, rich_text: [{ text: { content: `[RECONCILIADOR] ${r.detalle} Si es as\xED, marcalo Hecho con la fecha.` } }] });
+        }
+        await supabase.from("reconciliaciones").update({ aplicada: true, aplicada_el: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", r.id);
+        aplicadas++;
+      } catch (e) {
+        errores.push(`${r.objeto}: ${e.message}`);
+      }
+    }
+    res.json({ ok: true, resumen, aplicadas, errores });
   });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -2720,6 +2833,11 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
       const { data: input, error } = await supabase.rpc("get_pulso_input", { p_account: cuenta, p_fecha: fecha2 });
       if (error) throw new Error(`get_pulso_input: ${error.message}`);
+      const { data: estado } = await supabase.rpc("get_estado_cuenta", { p_account: cuenta });
+      if (estado) {
+        input.estado_cuenta = estado;
+        input.foto_tomada = estado.foto_tomada;
+      }
       const { data: cta } = await supabase.from("cuentas").select("reglas_dominio").eq("account", cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || "";
       const r = await correrPulso(cuenta, fecha2, input, reglas);
@@ -2740,13 +2858,23 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         tokens_in: r.tokens_in,
         tokens_out: r.tokens_out,
         costo_usd: r.costo_usd,
-        modelo: "claude-sonnet-5"
+        modelo: "claude-sonnet-5",
+        foto_leida: input?.foto_tomada || null
       }, { onConflict: "account,fecha" });
       const { data: filtrados } = await supabase.rpc("filtrar_hallazgos_a_accionables", { p_account: cuenta, p_fecha: fecha2 });
       let creados = 0;
       for (const h of filtrados || []) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
         const title = `${h.titulo} \xB7 ${cuenta}`.slice(0, 200);
+        const entidadClave = String(h.donde || h.entidad || "").slice(0, 200);
+        const { data: existenteId } = await supabase.rpc("accionable_existente", { p_account: cuenta, p_entidad: entidadClave, p_causa: h.causa_raiz || null });
+        if (existenteId) {
+          try {
+            await notion.comments.create({ parent: { page_id: existenteId }, rich_text: [{ text: { content: `[PULSO ${fecha2}] Sigue vigente. ${String(h.evidencia_texto || "").slice(0, 600)}` } }] });
+          } catch {
+          }
+          continue;
+        }
         const ex = await notion.databases.query({ database_id: actionablesDbSafe(), filter: { property: "Accion", title: { equals: title } } });
         const activo = ex.results.find((pg) => {
           const st = pg?.properties?.Estado?.select?.name;
@@ -2755,9 +2883,14 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         if (activo) continue;
         const clienteId = await findNotionClientId(notion, cuenta);
         const nat = h.naturaleza === "observacion" ? "Observacion" : h.naturaleza === "inferencia" ? "Inferencia" : "Hipotesis";
+        const vence = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
         const props = {
           Accion: { title: [{ text: { content: title } }] },
-          Estado: { select: { name: nat === "Observacion" ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
+          // Un solo escritor: el pulso PROPONE. Nace Bloqueado; el semanal lo confirma el lunes. Vence en 7 dias si nadie lo toca.
+          Estado: { select: { name: NOTION_STATES.BLOQUEADO } },
+          Origen: { select: { name: "Pulso diario" } },
+          Entidad: { rich_text: [{ text: { content: entidadClave } }] },
+          Vence: { date: { start: vence } },
           Prioridad: { select: { name: h.severidad === "critica" ? "Urgente" : h.severidad === "alta" ? "Alta" : "Media" } },
           Naturaleza: { select: { name: nat } },
           "Por que": { rich_text: [{ text: { content: String(h.evidencia_texto || "").slice(0, 1900) } }] },
@@ -2767,7 +2900,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
           Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
           "Semanas pendiente": { number: 0 }
         };
-        if (nat !== "Observacion") props["Que lo confirmaria"] = { rich_text: [{ text: { content: `Confianza ${h.confianza}. Verificar en la tarea semanal con 7 d\xEDas de evidencia.` } }] };
+        props["Que lo confirmaria"] = { rich_text: [{ text: { content: `Propuesto por el an\xE1lisis diario con confianza ${h.confianza}. La tarea del lunes lo confirma con 7 d\xEDas de evidencia, o lo descarta. Vence el ${vence} si nadie lo toca.` } }] };
         if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
         await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
         creados++;
@@ -2870,12 +3003,23 @@ async function runAnomalyWorker() {
       if (activo) continue;
       const explicado = /Cambio (propio|automático)|registró/.test(a.explicacion || "");
       const naturaleza = explicado ? "Observacion" : "Hipotesis";
-      const estado = explicado ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO;
       const clienteId = await findNotionClientId(notion, cuenta);
       const why = `Desv\xEDo estad\xEDstico el ${fecha2}: severidad ${a.severidad}. ` + (a.gasto_z != null ? `Gasto z=${Number(a.gasto_z).toFixed(1)} (${a.gasto} vs baseline ${a.gasto_baseline}). ` : "") + (a.cpa_z != null ? `CPA z=${Number(a.cpa_z).toFixed(1)} (${a.cpa} vs baseline ${a.cpa_baseline}). ` : "") + (a.campana_principal ? `Campa\xF1a principal: ${a.campana_principal}. ` : "") + `Explicaci\xF3n de la vista: ${a.explicacion}`;
+      const entidadClaveA = a.campana_principal ? String(a.campana_principal) : `${cuenta}|anomalia`;
+      const { data: existenteA } = await supabase.rpc("accionable_existente", { p_account: cuenta, p_entidad: entidadClaveA, p_causa: null });
+      if (existenteA) {
+        try {
+          await notion.comments.create({ parent: { page_id: existenteA }, rich_text: [{ text: { content: `[ANOMALIAS ${fecha2}] Otro desv\xEDo en la misma entidad. ${why}`.slice(0, 600) } }] });
+        } catch {
+        }
+        continue;
+      }
       const props = {
         Accion: { title: [{ text: { content: title } }] },
-        Estado: { select: { name: estado } },
+        Estado: { select: { name: NOTION_STATES.BLOQUEADO } },
+        Origen: { select: { name: "Anomalias" } },
+        Entidad: { rich_text: [{ text: { content: entidadClaveA } }] },
+        Vence: { date: { start: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) } },
         Prioridad: { select: { name: a.severidad === "critica" ? "Urgente" : "Alta" } },
         Naturaleza: { select: { name: naturaleza } },
         "Por que": { rich_text: [{ text: { content: why.slice(0, 1900) } }] },

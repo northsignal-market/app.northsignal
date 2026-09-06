@@ -18,12 +18,14 @@ export function Sistema() {
   const [loading, setLoading] = useState(false);
 
   // Tab: 'salud' | 'integridad' | 'scorecard' | 'cambios' | 'bitacora' | 'ajustes'
-  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets'>('salud');
+  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia'>('salud');
+  const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   useEffect(() => {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch('/api/coherencia', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCoherencia(d)).catch(() => {});
   }, [activeTab]);
   const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
 
@@ -142,6 +144,7 @@ export function Sistema() {
         {[
           { id: 'alertas', label: `Alertas${alertas.length ? ` (${alertas.length})` : ''}` },
           { id: 'tickets', label: `Tickets${tickets.filter((t: any) => t.estado === 'abierto').length ? ` (${tickets.filter((t: any) => t.estado === 'abierto').length})` : ''}` },
+          { id: 'coherencia', label: 'Quién escribe qué' },
           { id: 'salud', label: 'Datos por cuenta' },
           { id: 'integridad', label: 'Integridad' },
           { id: 'scorecard', label: 'Calidad del análisis' },
@@ -164,6 +167,46 @@ export function Sistema() {
         ))}
       </div>
 
+
+
+      {/* TAB: COHERENCIA */}
+      {activeTab === 'coherencia' && (
+        <div className="space-y-4">
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Quién es dueño de qué</h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.</p>
+            </div>
+            <div className="space-y-1">
+              {(coherencia.escritores || []).map((e: any) => (
+                <div key={e.entidad} className="grid grid-cols-[160px_110px_1fr] gap-3 items-start px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[#FFFFFF] font-medium">{e.entidad.replace(/_/g, ' ')}</span>
+                  <span className="text-[#F5F7FA] opacity-80">{e.dueno}{e.proponen?.length ? <span className="opacity-50"> · proponen: {e.proponen.join(', ')}</span> : ''}</span>
+                  <span className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{e.regla}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que el reconciliador corrigió</h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.</p>
+            </div>
+            {(coherencia.reconciliaciones || []).length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Nada que corregir todavía. Corre por primera vez mañana.</p> : (
+              <div className="space-y-1">
+                {coherencia.reconciliaciones.map((r: any) => (
+                  <div key={r.id} className="flex items-start gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(r.corrida).slice(5, 16).replace('T', ' ')}</span>
+                    <span className="text-[10px] uppercase tracking-wider shrink-0 w-24 text-[#F5F7FA] opacity-70">{r.accion.replace('_', ' ')}</span>
+                    <span className="text-[#F5F7FA] opacity-80 flex-1">{r.account ? <span className="text-[#FFFFFF]">{r.account} · </span> : ''}{r.detalle}</span>
+                    <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#0062CC]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* TAB: ALERTAS */}
       {activeTab === 'alertas' && (

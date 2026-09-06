@@ -849,6 +849,11 @@ export function createApp() {
           naturaleza: props.Naturaleza?.select?.name || 'Observacion',
           que_lo_confirmaria: props['Que lo confirmaria']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           como_hacerlo: props['Como hacerlo']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
+          origen: props['Origen']?.select?.name || '',
+          entidad: props['Entidad']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
+          vence: props['Vence']?.date?.start || null,
+          reemplazado_por: props['Reemplazado por']?.relation?.[0]?.id || null,
+          last_edited: page.last_edited_time,
           causa_raiz: props['Causa raiz']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           relacionado_con: props['Relacionado con']?.relation?.map((rel: any) => rel.id) || [],
           semanas_pendiente: props['Semanas pendiente']?.number ?? (props['Semanas pendiente']?.formula?.number ?? 0),
@@ -857,7 +862,15 @@ export function createApp() {
           url: page.url
         };
       }));
-      res.json({ data });
+      // La app oculta los reemplazados; el resto los ve
+      const visibles = data.filter((a: any) => !a.reemplazado_por);
+      res.json({ data: visibles });
+      // Espejo en Supabase: permite dedupe por entidad y reconciliacion en SQL. Fire-and-forget.
+      if (supabase) supabase.from('accionables_espejo').upsert(data.map((a: any) => ({
+        notion_id: a.id, account: a.client, titulo: a.title, estado: a.status, prioridad: a.priority, naturaleza: a.naturaleza, origen: a.origen || null,
+        entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detected || null, ejecutado_el: a.ejecutado_el || null,
+        vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString()
+      })), { onConflict: 'notion_id' }).then(({ error }: any) => { if (error) console.error('[espejo] ' + error.message); });
     } catch (e: any) {
       console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
         res.status(500).json({ error: e.message });
@@ -2097,6 +2110,12 @@ Las descripciones no deben superar los 90 caracteres.`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.get("/api/coherencia", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const [e, r] = await Promise.all([supabase.from('escritores').select('*').order('entidad'), supabase.from('reconciliaciones').select('*').order('corrida', { ascending: false }).limit(40)]);
+    res.json({ escritores: e.data || [], reconciliaciones: r.data || [] });
+  });
+
   // Tickets: Andres los crea desde cualquier pagina; Claude los lee en Supabase
   app.post("/api/tickets", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -2131,6 +2150,55 @@ Las descripciones no deben superar los 90 caracteres.`;
     const { error } = await supabase.from('alertas').update(upd).eq('id', req.params.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
+  });
+
+
+  // Sincronizar el espejo de accionables desde Notion (todas las paginas, no solo 50)
+  async function sincronizarEspejo(): Promise<number> {
+    if (!supabase || !notion || !NOTION_BASES.ACCIONABLES) return 0;
+    let cursor: string | undefined; const filas: any[] = [];
+    do {
+      const r: any = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100, start_cursor: cursor });
+      for (const page of r.results) {
+        const p = page.properties; const txt = (k: string) => p[k]?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        const cliente = await resolveNotionClient(notion, p.Cliente);
+        filas.push({ notion_id: page.id, account: cliente, titulo: p.Accion?.title?.map((t: any) => t.plain_text).join('') || '', estado: p.Estado?.select?.name || '', prioridad: p.Prioridad?.select?.name || '',
+          naturaleza: p.Naturaleza?.select?.name || '', origen: p.Origen?.select?.name || null, entidad: txt('Entidad') || null, causa_raiz: txt('Causa raiz') || null, por_que: txt('Por que').slice(0, 1000),
+          detectado: p.Detectado?.date?.start || null, ejecutado_el: p['Ejecutado el']?.date?.start || null, vence: p.Vence?.date?.start || null, reemplazado_por: p['Reemplazado por']?.relation?.[0]?.id || null,
+          semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: p['Revision IA']?.select?.name || null, ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString() });
+      }
+      cursor = r.has_more ? r.next_cursor : undefined;
+    } while (cursor);
+    if (filas.length) { const { error } = await supabase.from('accionables_espejo').upsert(filas, { onConflict: 'notion_id' }); if (error) throw new Error(error.message); }
+    return filas.length;
+  }
+  app.all("/api/cron/espejo", async (req, res) => {
+    try { const n = await sincronizarEspejo(); res.json({ ok: true, sincronizados: n }); } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Reconciliacion: sincroniza el espejo, SQL detecta, esto aplica en Notion. Diario 09:40 UTC.
+  app.all("/api/cron/reconciliar", async (req, res) => {
+    if (!supabase || !notion) return res.status(503).json({ error: 'Supabase o Notion no configurados' });
+    try { await sincronizarEspejo(); } catch (e: any) { console.error('[espejo] ' + e.message); }
+    const { data: resumen } = await supabase.rpc('reconciliar');
+    const { data: pendientes } = await supabase.from('reconciliaciones').select('*').eq('aplicada', false).order('corrida').limit(50);
+    let aplicadas = 0; const errores: string[] = [];
+    for (const r of pendientes || []) {
+      try {
+        const [tipo, id] = String(r.objeto).split(':');
+        if (tipo !== 'accionable') continue;
+        if (r.accion === 'vencer') {
+          await notion.pages.update({ page_id: id, properties: { Estado: { select: { name: NOTION_STATES.DESCARTADO } }, 'Decision final': { rich_text: [{ text: { content: `[RECONCILIADOR ${new Date().toISOString().slice(0, 10)}] ${r.detalle}` } }] } } });
+        } else if (r.accion === 'duplicado') {
+          const viejo = (String(r.detalle).match(/Misma entidad que ([0-9a-f-]{32,36})/) || [])[1];
+          if (viejo) await notion.pages.update({ page_id: id, properties: { 'Reemplazado por': { relation: [{ id: viejo }] } } });
+        } else if (r.accion === 'ya_hecho') {
+          await notion.comments.create({ parent: { page_id: id }, rich_text: [{ text: { content: `[RECONCILIADOR] ${r.detalle} Si es así, marcalo Hecho con la fecha.` } }] });
+        }
+        await supabase.from('reconciliaciones').update({ aplicada: true, aplicada_el: new Date().toISOString() }).eq('id', r.id); aplicadas++;
+      } catch (e: any) { errores.push(`${r.objeto}: ${e.message}`); }
+    }
+    res.json({ ok: true, resumen, aplicadas, errores });
   });
 
   // ---- Doc maestro ensamblado ----
@@ -2196,6 +2264,9 @@ Las descripciones no deben superar los 90 caracteres.`;
     const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
       const { data: input, error } = await supabase!.rpc('get_pulso_input', { p_account: cuenta, p_fecha: fecha });
       if (error) throw new Error(`get_pulso_input: ${error.message}`);
+      // La foto unica: lo que todos los agentes leen. Incluye accionables abiertos (para no repetirlos), alertas, cambios del operador.
+      const { data: estado } = await supabase!.rpc('get_estado_cuenta', { p_account: cuenta });
+      if (estado) { input.estado_cuenta = estado; input.foto_tomada = estado.foto_tomada; }
       const { data: cta } = await supabase!.from('cuentas').select('reglas_dominio').eq('account', cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || '';
       const r = await correrPulso(cuenta, fecha, input, reglas);
@@ -2206,7 +2277,7 @@ Las descripciones no deben superar los 90 caracteres.`;
       await supabase!.from('pulso_diario').upsert({
         account: cuenta, fecha, nivel: p.nivel, resumen: p.resumen, hallazgo_principal: p.hallazgo_principal,
         conecta_con: p.conecta_con, plan_id: planId, evidencia: p.evidencia, hallazgos: p.hallazgos, hipotesis_movidas: p.hipotesis_movidas,
-        tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: r.costo_usd, modelo: 'claude-sonnet-5'
+        tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: r.costo_usd, modelo: 'claude-sonnet-5', foto_leida: input?.foto_tomada || null
       }, { onConflict: 'account,fecha' });
 
       // Filtro determinista: qué hallazgos pasan a accionable
@@ -2215,14 +2286,26 @@ Las descripciones no deben superar los 90 caracteres.`;
       for (const h of (filtrados || []) as any[]) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
         const title = `${h.titulo} · ${cuenta}`.slice(0, 200);
+        // LEER ANTES DE ESCRIBIR: si hay uno abierto para la misma entidad o causa, comentar en vez de crear
+        const entidadClave = String(h.donde || h.entidad || '').slice(0, 200);
+        const { data: existenteId } = await supabase!.rpc('accionable_existente', { p_account: cuenta, p_entidad: entidadClave, p_causa: h.causa_raiz || null });
+        if (existenteId) {
+          try { await notion.comments.create({ parent: { page_id: existenteId }, rich_text: [{ text: { content: `[PULSO ${fecha}] Sigue vigente. ${String(h.evidencia_texto || '').slice(0, 600)}` } }] }); } catch {}
+          continue;
+        }
         const ex: any = await notion.databases.query({ database_id: actionablesDbSafe(), filter: { property: 'Accion', title: { equals: title } } });
         const activo = ex.results.find((pg: any) => { const st = pg?.properties?.Estado?.select?.name; return st !== NOTION_STATES.HECHO && st !== NOTION_STATES.DESCARTADO; });
         if (activo) continue;
         const clienteId = await findNotionClientId(notion, cuenta);
         const nat = h.naturaleza === 'observacion' ? 'Observacion' : h.naturaleza === 'inferencia' ? 'Inferencia' : 'Hipotesis';
+        const vence = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
         const props: any = {
           Accion: { title: [{ text: { content: title } }] },
-          Estado: { select: { name: nat === 'Observacion' ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
+          // Un solo escritor: el pulso PROPONE. Nace Bloqueado; el semanal lo confirma el lunes. Vence en 7 dias si nadie lo toca.
+          Estado: { select: { name: NOTION_STATES.BLOQUEADO } },
+          Origen: { select: { name: 'Pulso diario' } },
+          Entidad: { rich_text: [{ text: { content: entidadClave } }] },
+          Vence: { date: { start: vence } },
           Prioridad: { select: { name: h.severidad === 'critica' ? 'Urgente' : h.severidad === 'alta' ? 'Alta' : 'Media' } },
           Naturaleza: { select: { name: nat } },
           'Por que': { rich_text: [{ text: { content: String(h.evidencia_texto || '').slice(0, 1900) } }] },
@@ -2232,7 +2315,7 @@ Las descripciones no deben superar los 90 caracteres.`;
           Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
           'Semanas pendiente': { number: 0 }
         };
-        if (nat !== 'Observacion') props['Que lo confirmaria'] = { rich_text: [{ text: { content: `Confianza ${h.confianza}. Verificar en la tarea semanal con 7 días de evidencia.` } }] };
+        props['Que lo confirmaria'] = { rich_text: [{ text: { content: `Propuesto por el análisis diario con confianza ${h.confianza}. La tarea del lunes lo confirma con 7 días de evidencia, o lo descarta. Vence el ${vence} si nadie lo toca.` } }] };
         if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
         await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
         creados++;
@@ -2356,7 +2439,6 @@ async function runAnomalyWorker() {
       // Naturaleza: Observacion si la vista encontro un cambio que lo explica; Hipotesis si no
       const explicado = /Cambio (propio|automático)|registró/.test(a.explicacion || '');
       const naturaleza = explicado ? 'Observacion' : 'Hipotesis';
-      const estado = explicado ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO;
       const clienteId = await findNotionClientId(notion, cuenta);
 
       const why = `Desvío estadístico el ${fecha}: severidad ${a.severidad}. ` +
@@ -2365,9 +2447,17 @@ async function runAnomalyWorker() {
         (a.campana_principal ? `Campaña principal: ${a.campana_principal}. ` : '') +
         `Explicación de la vista: ${a.explicacion}`;
 
+      // LEER ANTES DE ESCRIBIR: si ya hay uno abierto para la misma campaña, comentar en vez de crear
+      const entidadClaveA = a.campana_principal ? String(a.campana_principal) : `${cuenta}|anomalia`;
+      const { data: existenteA } = await supabase!.rpc('accionable_existente', { p_account: cuenta, p_entidad: entidadClaveA, p_causa: null });
+      if (existenteA) { try { await notion.comments.create({ parent: { page_id: existenteA }, rich_text: [{ text: { content: `[ANOMALIAS ${fecha}] Otro desvío en la misma entidad. ${why}`.slice(0, 600) } }] }); } catch {} continue; }
+      // Un solo escritor: anomalias PROPONE. Nace Bloqueado con vencimiento; el semanal decide.
       const props: any = {
         Accion: { title: [{ text: { content: title } }] },
-        Estado: { select: { name: estado } },
+        Estado: { select: { name: NOTION_STATES.BLOQUEADO } },
+        Origen: { select: { name: 'Anomalias' } },
+        Entidad: { rich_text: [{ text: { content: entidadClaveA } }] },
+        Vence: { date: { start: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) } },
         Prioridad: { select: { name: a.severidad === 'critica' ? 'Urgente' : 'Alta' } },
         Naturaleza: { select: { name: naturaleza } },
         'Por que': { rich_text: [{ text: { content: why.slice(0, 1900) } }] },

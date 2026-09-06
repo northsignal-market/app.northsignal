@@ -363,6 +363,12 @@ export function ActionableDrawerContent({
           <span className="px-2 py-0.5 rounded text-[11px]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
             Prioridad: <strong className="text-[#FFFFFF]">{action.priority}</strong>
           </span>
+          {action.origen && action.origen !== 'Semanal' && (
+            <span className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] opacity-80" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }} title="Lo propuso un proceso automático; la tarea del lunes lo confirma o descarta">
+              Propuesto por {action.origen === 'Pulso diario' ? 'el análisis diario' : action.origen === 'Anomalias' ? 'el detector de anomalías' : action.origen}
+              {action.vence ? ` · vence ${action.vence.slice(5)}` : ''}
+            </span>
+          )}
           <span className={`px-2 py-0.5 rounded text-[11px] ${
             isEnDisputa ? 'border-l-2 border-[#0062CC] font-semibold text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'
           }`} style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>

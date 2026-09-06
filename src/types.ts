@@ -35,6 +35,10 @@ export interface Actionable {
   naturaleza?: 'Observacion' | 'Inferencia' | 'Hipotesis' | 'Dato';
   que_lo_confirmaria?: string;
   como_hacerlo?: string;
+  origen?: string;
+  entidad?: string;
+  vence?: string | null;
+  reemplazado_por?: string | null;
   causa_raiz?: string;
   relacionado_con?: string[];
   relacionados_details?: { id: string; title: string; status: string; client?: string }[];

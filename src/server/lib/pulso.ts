@@ -89,6 +89,8 @@ PRINCIPIOS:
 
 SOBRE EVIDENCIA: por cada indicador del plan, un objeto con el valor de hoy (de leading_7d o grupos_ayer según corresponda), si cumple el umbral en la dirección indicada, la tendencia de 3 días, y cuántos días seguidos lo viene cumpliendo (contando pulsos_previos). Si el indicador es conv_rate_grupo, el valor sale de grupos_ayer para ese grupo.
 
+SOBRE LO QUE YA EXISTE: en estado_cuenta.accionables_abiertos está lo que ya se propuso y sigue abierto, con su entidad. Si tu hallazgo es sobre la misma entidad, decilo en evidencia_texto ("ya hay un accionable abierto para X desde el día Y; sigue vigente porque...") y poné confianza baja: no hace falta crear otro. En estado_cuenta.operator_log_14d y cambios_google_7d está lo que Andrés o Google ya cambiaron: un movimiento que coincide con un cambio registrado no es hallazgo, es efecto.
+
 SOBRE HALLAZGOS: reportá todo lo que encontrás, incluidos los de confianza baja o severidad baja. No decidas qué importa: un filtro posterior lo hace con umbrales. Tu trabajo es cobertura. Cada hallazgo con entidad nombrada exacta y los números que lo sostienen. Severidad critica solo si: cambio automático de Google, primaria sin datos con gasto normal, o gasto sin conversión sobre el CPA máximo en un grupo que antes convertía.
 
 SOBRE NIVEL: critico si hay un hallazgo critica con confianza ≥ 0,8. atencion si alguna condición del plan lleva 2+ días cumpliéndose o hay un hallazgo alta con confianza ≥ 0,7. normal en cualquier otro caso.
