@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.js": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "memory": 1024
     }
   },
@@ -24,8 +24,16 @@
       "schedule": "0 */4 * * *"
     },
     {
+      "path": "/api/cron/pulso-diario",
+      "schedule": "45 9 * * *"
+    },
+    {
       "path": "/api/cron/aprendizaje",
       "schedule": "20 10 * * 1"
+    },
+    {
+      "path": "/api/cron/reportes",
+      "schedule": "15 12 * * 1"
     },
     {
       "path": "/api/cron/mantenimiento",

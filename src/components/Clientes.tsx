@@ -21,6 +21,46 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
   const [escalera, setEscalera] = useState<any>({ etapas: [], recomendada: null });
   const [docMaestro, setDocMaestro] = useState<{ markdown: string; secciones: any[] } | null>(null);
   const [estrategia, setEstrategia] = useState<any>({ decisiones: [], cpa_marginal: [] });
+  const [reportes, setReportes] = useState<any[]>([]);
+  const [reporteAbierto, setReporteAbierto] = useState<any>(null);
+  const [editandoReporte, setEditandoReporte] = useState(false);
+  const [textoReporte, setTextoReporte] = useState({ resumen_ejecutivo: '', que_cambiamos: '', que_sigue: '' });
+  const [trabajandoReporte, setTrabajandoReporte] = useState<string | null>(null);
+  const [generandoDesde, setGenerandoDesde] = useState(false);
+  const [formGenerar, setFormGenerar] = useState({ desde: '', hasta: '', brief_id: '' });
+
+  const cargarReportes = () => {
+    fetch(`/api/reportes?client=${activeClient}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : []).then(d => setReportes(Array.isArray(d) ? d : [])).catch(() => {});
+  };
+  useEffect(() => { cargarReportes(); }, [activeClient]);
+
+  const accionReporte = async (id: number, accion: 'pdf' | 'aprobar' | 'descartar') => {
+    setTrabajandoReporte(`${id}-${accion}`);
+    try {
+      if (accion === 'pdf') { window.open(`/api/reportes/${id}/pdf?download=1`, '_blank'); await fetch(`/api/reportes/${id}/pdf`, { method: 'POST', credentials: 'include' }); }
+      else await fetch(`/api/reportes/${id}/${accion}`, { method: 'POST', credentials: 'include' });
+      cargarReportes();
+      if (accion !== 'pdf') setReporteAbierto(null);
+    } finally { setTrabajandoReporte(null); }
+  };
+  const guardarTextoReporte = async () => {
+    if (!reporteAbierto) return;
+    setTrabajandoReporte('guardar');
+    try {
+      const r = await fetch(`/api/reportes/${reporteAbierto.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(textoReporte) });
+      if (r.ok) { const d = await r.json(); setReporteAbierto(d); setEditandoReporte(false); cargarReportes(); }
+    } finally { setTrabajandoReporte(null); }
+  };
+  const generarReporte = async () => {
+    setTrabajandoReporte('generar');
+    try {
+      const r = await fetch('/api/reportes/generar', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: activeClient, desde: formGenerar.desde, hasta: formGenerar.hasta, brief_id: formGenerar.brief_id || undefined }) });
+      const d = await r.json();
+      if (!r.ok) alert(d.error || 'Error'); else { setGenerandoDesde(false); cargarReportes(); }
+    } finally { setTrabajandoReporte(null); }
+  };
   useEffect(() => {
     fetch(`/api/estrategia?client=${activeClient}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(d => d && setEstrategia(d)).catch(() => {});
@@ -559,6 +599,72 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
           </div>
         );
       })()}
+
+
+      {/* Reportes al cliente */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Borrador desde el brief → revisás → aprobás. Un minuto por período.</p>
+          </div>
+          <button onClick={() => setGenerandoDesde(v => !v)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>{generandoDesde ? 'Cancelar' : 'Nuevo borrador'}</button>
+        </div>
+        {generandoDesde && (
+          <div className="flex flex-wrap items-end gap-2 p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+            <label className="text-[11px] text-[#F5F7FA] opacity-70 flex-1 min-w-[220px]">ID del brief en Notion (con la sección de reporte)<br /><input value={formGenerar.brief_id} onChange={e => setFormGenerar(f => ({ ...f, brief_id: e.target.value }))} placeholder="3d03b1f6de28817e…" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" /></label>
+            <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Generando…' : 'Crear borrador'}</button>
+          </div>
+        )}
+        {reportes.length === 0 ? (
+          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin reportes para {activeClient}. El lunes, tras la tarea semanal, aparece el borrador de la semana.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {reportes.map(r => (
+              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)', border: reporteAbierto?.id === r.id ? '1px solid var(--primary)' : '1px solid transparent' }}
+                onClick={() => { setReporteAbierto(r); setEditandoReporte(false); setTextoReporte({ resumen_ejecutivo: r.resumen_ejecutivo, que_cambiamos: r.que_cambiamos || '', que_sigue: r.que_sigue || '' }); }}>
+                <span className={`text-[10px] uppercase tracking-wider font-bold w-20 shrink-0 ${r.estado === 'borrador' ? 'text-[#0062CC]' : r.estado === 'enviado' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{r.estado}</span>
+                <span className="text-xs text-[#FFFFFF] tabular">{r.periodo_desde} → {r.periodo_hasta}</span>
+                <span className="text-[11px] text-[#F5F7FA] opacity-60">{r.tipo} · {r.idioma.toUpperCase()}{r.editado ? ' · editado' : ''}</span>
+                <span className="ml-auto text-[11px] text-[#F5F7FA] opacity-50 tabular">
+                  {r.metricas?.cpa?.actual != null ? `CPA ${fmtMoney(r.metricas.cpa.actual)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {reporteAbierto && (
+          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{reporteAbierto.periodo_desde} → {reporteAbierto.periodo_hasta} · {reporteAbierto.estado}</span>
+              <div className="flex gap-2">
+                <button onClick={() => accionReporte(reporteAbierto.id, 'pdf')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Ver PDF</button>
+                {reporteAbierto.estado === 'borrador' && !editandoReporte && <button onClick={() => setEditandoReporte(true)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Editar texto</button>}
+                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'aprobar')} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>}
+                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'descartar')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-60">Descartar</button>}
+              </div>
+            </div>
+            {editandoReporte ? (
+              <div className="space-y-2">
+                {(['resumen_ejecutivo', 'que_cambiamos', 'que_sigue'] as const).map(k => (
+                  <label key={k} className="block text-[11px] text-[#F5F7FA] opacity-70">{k === 'resumen_ejecutivo' ? 'Resumen ejecutivo' : k === 'que_cambiamos' ? 'Qué cambiamos' : 'Qué sigue'}
+                    <textarea value={textoReporte[k]} onChange={e => setTextoReporte(t => ({ ...t, [k]: e.target.value }))} rows={k === 'resumen_ejecutivo' ? 9 : 4}
+                      className="w-full mt-1 text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-2 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC]" style={{ fontFamily: 'inherit' }} />
+                  </label>
+                ))}
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setEditandoReporte(false)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
+                  <button onClick={guardarTextoReporte} disabled={trabajandoReporte === 'guardar'} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Guardar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-[#F5F7FA] leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto custom-scrollbar">{reporteAbierto.resumen_ejecutivo}</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Doc maestro ensamblado */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>

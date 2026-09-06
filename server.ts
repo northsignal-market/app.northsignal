@@ -8,6 +8,8 @@ import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/vi
 
 import { notion } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
+import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
+import { generarReportePDF, descargarLogo, parsearBloques, type ReporteInput } from './src/server/lib/reporte-pdf';
 import { supabase } from './src/server/lib/supabase';
 import { authMiddleware } from './src/server/auth/middleware';
 import { authRouter } from './src/server/auth/routes';
@@ -1742,9 +1744,6 @@ Las descripciones no deben superar los 90 caracteres.`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.all('/api/*', (req, res) => {
-    res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
-  });
 
 
   // ================================================================
@@ -1897,6 +1896,188 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json({ decisiones: dec.data || [], cpa_marginal: marg.data || [] });
   });
 
+
+  // ================================================================
+  // REPORTES AL CLIENTE
+  // ================================================================
+  // Extrae de un brief de Notion las secciones que van al cliente.
+  // El brief es una página con headings; busca los que empiezan con las
+  // etiquetas conocidas y toma los párrafos hasta el siguiente heading.
+  async function extraerSeccionesBrief(pageId: string): Promise<{ resumen: string; cambiamos: string; sigue: string }> {
+    // Lee la seccion "Reporte para el cliente" completa, con sus etiquetas
+    // (Contexto:, Observaciones:, ...) y vinetas, como un solo texto. Los
+    // bloques los parsea parsearBloques() al generar el PDF.
+    if (!notion) return { resumen: '', cambiamos: '', sigue: '' };
+    let cursor: string | undefined; const bloques: any[] = [];
+    do {
+      const r: any = await notion.blocks.children.list({ block_id: pageId, page_size: 100, start_cursor: cursor });
+      bloques.push(...r.results); cursor = r.has_more ? r.next_cursor : undefined;
+    } while (cursor);
+    const texto = (b: any) => (b[b.type]?.rich_text || []).map((t: any) => t.plain_text).join('');
+    let dentro = false; const lineas: string[] = [];
+    for (const b of bloques) {
+      const esHeading = /^heading_/.test(b.type);
+      const t = texto(b).trim();
+      if (esHeading) {
+        if (/reporte (para|al) (el )?cliente|client report/i.test(t)) { dentro = true; continue; }
+        if (dentro) break; // siguiente heading: termina la seccion
+        continue;
+      }
+      if (!dentro || !t) continue;
+      if (b.type === 'bulleted_list_item' || b.type === 'numbered_list_item') lineas.push('- ' + t);
+      else lineas.push(t);
+    }
+    return { resumen: lineas.join('\n'), cambiamos: '', sigue: '' };
+  }
+
+  // Crear borrador de reporte para una cuenta y periodo
+  app.post("/api/reportes/generar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const { account, desde, hasta, tipo = 'semanal', brief_id, resumen_manual } = req.body || {};
+      if (!account || !desde || !hasta) return res.status(400).json({ error: 'account, desde y hasta son obligatorios' });
+      const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', account).single();
+      if (!cuenta) return res.status(404).json({ error: 'cuenta no encontrada' });
+
+      // Texto: del brief de Notion, o manual, o vacío para que Andrés lo escriba
+      let secciones = { resumen: resumen_manual || '', cambiamos: '', sigue: '' };
+      if (brief_id && notion) secciones = await extraerSeccionesBrief(brief_id);
+      if (!secciones.resumen) return res.status(422).json({ error: 'El brief no tiene sección de reporte al cliente. Pasá resumen_manual o un brief_id con la sección.' });
+
+      const { data: datos, error } = await supabase.rpc('get_reporte_datos', { p_account: account, p_desde: desde, p_hasta: hasta });
+      if (error) return res.status(500).json({ error: error.message });
+
+      const { data: fila, error: e2 } = await supabase.from('reportes_cliente').upsert({
+        account, periodo_desde: desde, periodo_hasta: hasta, tipo, idioma: cuenta.idioma_reporte, estado: 'borrador',
+        resumen_ejecutivo: secciones.resumen, que_cambiamos: secciones.cambiamos || null, que_sigue: secciones.sigue || null,
+        metricas: datos.metricas, serie: datos.serie, campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
+        brief_notion_id: brief_id || null
+      }, { onConflict: 'account,periodo_desde,tipo' }).select().single();
+      if (e2) return res.status(500).json({ error: e2.message });
+      res.json({ ok: true, reporte: fila });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Listar reportes
+  app.get("/api/reportes", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    let q = supabase.from('reportes_cliente').select('id, account, periodo_desde, periodo_hasta, tipo, idioma, estado, resumen_ejecutivo, que_cambiamos, que_sigue, metricas, pdf_path, creado, aprobado_el, enviado_el, enviado_a, editado').order('periodo_desde', { ascending: false }).limit(30);
+    if (client) q = q.eq('account', client);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  // Editar texto (antes de aprobar)
+  app.put("/api/reportes/:id", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { resumen_ejecutivo, que_cambiamos, que_sigue } = req.body || {};
+    const { data, error } = await supabase.from('reportes_cliente').update({ resumen_ejecutivo, que_cambiamos, que_sigue, editado: true, pdf_path: null }).eq('id', req.params.id).eq('estado', 'borrador').select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  // Generar el PDF (vista previa o final) y guardarlo en Storage
+  app.post("/api/reportes/:id/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const { data: r } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
+      if (!r) return res.status(404).json({ error: 'no encontrado' });
+      const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', r.account).single();
+      const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
+      const { data: anteriorCount } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', r.account)
+        .gte('date', new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt('date', r.periodo_desde);
+      // El texto del reporte va como bloques con etiqueta (Contexto, Observaciones, ...).
+      // Si el brief trajo secciones separadas, se concatenan con sus etiquetas.
+      const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === 'en' ? 'Changes applied' : 'Cambios aplicados'}:\n${r.que_cambiamos}` : '', r.que_sigue ? `${r.idioma === 'en' ? 'Next steps' : 'Próximos pasos'}:\n${r.que_sigue}` : ''].filter(Boolean).join('\n\n');
+      const input: ReporteInput = {
+        account: r.account, nombre_cliente: cuenta.nombre_cliente, idioma: r.idioma, moneda: cuenta.moneda, locale: cuenta.locale,
+        titulo: (cuenta.encabezado_reporte || '').split('|')[0].trim() || undefined,
+        periodo_desde: r.periodo_desde, periodo_hasta: r.periodo_hasta, tipo: r.tipo,
+        bloques: parsearBloques(textoCompleto),
+        metricas: r.metricas,
+        periodo_anterior_completo: ((anteriorCount as any) ?? 0) >= dias,
+        campanas: r.campanas?.campanas || [], grupos: r.campanas?.grupos || [],
+        logo: await descargarLogo()
+      };
+      const buf = await generarReportePDF(input);
+      const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
+      const { error: up } = await supabase.storage.from('reportes').upload(ruta, buf, { contentType: 'application/pdf', upsert: true });
+      if (up) return res.status(500).json({ error: up.message });
+      await supabase.from('reportes_cliente').update({ pdf_path: ruta, pdf_bytes: buf.length }).eq('id', r.id);
+      if (req.query.download === '1') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
+        return res.send(buf);
+      }
+      res.json({ ok: true, pdf_path: ruta, bytes: buf.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Descargar el PDF guardado
+  app.get("/api/reportes/:id/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data: r } = await supabase.from('reportes_cliente').select('account, periodo_desde, pdf_path').eq('id', req.params.id).single();
+    if (!r?.pdf_path) return res.status(404).json({ error: 'sin PDF; generalo primero' });
+    const { data, error } = await supabase.storage.from('reportes').download(r.pdf_path);
+    if (error || !data) return res.status(500).json({ error: error?.message || 'no se pudo descargar' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
+    res.send(Buffer.from(await data.arrayBuffer()));
+  });
+
+  // Aprobar: el unico human in the loop del entregable
+  app.post("/api/reportes/:id/aprobar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.from('reportes_cliente').update({ estado: 'aprobado', aprobado_el: new Date().toISOString(), aprobado_por: 'andres' }).eq('id', req.params.id).eq('estado', 'borrador').select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  app.post("/api/reportes/:id/descartar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { error } = await supabase.from('reportes_cliente').update({ estado: 'descartado' }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+
+
+  // Cron: lunes 09:15 BA, después de las tareas semanales. Busca el brief de
+  // la semana cerrada en Notion por cuenta con frecuencia semanal, y crea el
+  // borrador del reporte. Si el brief no tiene la sección, lo registra y sigue.
+  app.all("/api/cron/reportes", async (req, res) => {
+    if (!supabase || !notion || !NOTION_BASES.BRIEFS) return res.status(503).json({ error: 'Supabase o Notion no configurados' });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+    const hoy = new Date(); const dow = hoy.getDay(); // 0 dom, 1 lun
+    const lunesPrevio = new Date(hoy); lunesPrevio.setDate(hoy.getDate() - ((dow + 6) % 7) - 7);
+    const desde = lunesPrevio.toISOString().slice(0, 10);
+    const hasta = new Date(lunesPrevio.getTime() + 6 * 864e5).toISOString().slice(0, 10);
+    const { data: cuentas } = await supabase.from('cuentas').select('account, frecuencia_reporte').eq('activa', true).in('frecuencia_reporte', ['semanal', 'ninguna']);
+    const out: any[] = [];
+    for (const c of cuentas || []) {
+      try {
+        const { data: existe } = await supabase.from('reportes_cliente').select('id').eq('account', c.account).eq('periodo_desde', desde).eq('tipo', 'semanal').maybeSingle();
+        if (existe) { out.push({ cuenta: c.account, nota: 'ya existe' }); continue; }
+        const q: any = await notion.databases.query({ database_id: NOTION_BASES.BRIEFS, filter: { and: [ { property: 'Semana', date: { equals: desde } }, { property: 'Cliente', relation: { contains: (await findNotionClientId(notion, c.account)) || '' } } ] }, page_size: 1 });
+        const brief = q.results[0];
+        if (!brief) { out.push({ cuenta: c.account, nota: `sin brief para ${desde}` }); continue; }
+        const secciones = await extraerSeccionesBrief(brief.id);
+        if (!secciones.resumen) { out.push({ cuenta: c.account, nota: 'brief sin sección de reporte' }); continue; }
+        const { data: datos } = await supabase.rpc('get_reporte_datos', { p_account: c.account, p_desde: desde, p_hasta: hasta });
+        const { data: cta } = await supabase.from('cuentas').select('idioma_reporte').eq('account', c.account).single();
+        await supabase.from('reportes_cliente').insert({
+          account: c.account, periodo_desde: desde, periodo_hasta: hasta, tipo: 'semanal', idioma: cta?.idioma_reporte || 'es', estado: 'borrador',
+          resumen_ejecutivo: secciones.resumen, que_cambiamos: secciones.cambiamos || null, que_sigue: secciones.sigue || null,
+          metricas: datos.metricas, serie: datos.serie, campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados }, brief_notion_id: brief.id
+        });
+        out.push({ cuenta: c.account, creado: true, periodo: `${desde} → ${hasta}` });
+      } catch (e: any) { out.push({ cuenta: c.account, error: e.message }); }
+    }
+    res.json({ ok: true, semana: desde, resultados: out });
+  });
+
   // ---- Doc maestro ensamblado ----
   app.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -1930,6 +2111,113 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json(data || []);
   });
 
+
+  // ================================================================
+  // PULSO DIARIO: Gemini interpreta ayer, por cuenta
+  // ================================================================
+  // Vercel Cron, 09:45 UTC (06:45 BA): despues del script diario (06:00) y
+  // del recuento de escalera (06:30). Una llamada por cuenta con paquete de
+  // tamano constante. Solo escala a Notion y mail si es critico.
+  app.all("/api/cron/pulso-diario", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!pulsoDisponible()) return res.status(503).json({ error: 'ANTHROPIC_API_KEY no configurada' });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+
+    const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
+    const fecha = (req.query.fecha as string) || ayer.toISOString().slice(0, 10);
+    const cuentas = (req.query.client as string) ? [req.query.client as string] : ['KAREDO', 'BHI', '360'];
+    const forzar = req.query.forzar === '1';
+
+    // Idempotencia: si ya hay pulso para (cuenta, fecha) y no se fuerza, no se llama al modelo.
+    // Permite que Vercel Cron y pg_net disparen ambos sin producir dos pulsos.
+    const { data: existentes } = await supabase.from('pulso_diario').select('account').eq('fecha', fecha).in('account', cuentas);
+    const yaHechas = new Set((existentes || []).map((e: any) => e.account));
+    const pendientes = forzar ? cuentas : cuentas.filter(c => !yaHechas.has(c));
+    if (!pendientes.length) return res.json({ ok: true, fecha, resultados: [], nota: 'ya existía pulso para todas las cuentas' });
+
+    // Las cuentas en paralelo: el cron termina en el tiempo de la más lenta,
+    // y evita el headersTimeout de Node que aparece con llamadas en serie.
+    const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
+      const { data: input, error } = await supabase!.rpc('get_pulso_input', { p_account: cuenta, p_fecha: fecha });
+      if (error) throw new Error(`get_pulso_input: ${error.message}`);
+      const r = await correrPulso(cuenta, fecha, input, getClientContext(cuenta) || '');
+      if (r.error || !r.parsed) throw new Error(r.error || 'sin salida');
+      const p = r.parsed;
+      const planId = input?.plan?.id || null;
+
+      await supabase!.from('pulso_diario').upsert({
+        account: cuenta, fecha, nivel: p.nivel, resumen: p.resumen, hallazgo_principal: p.hallazgo_principal,
+        conecta_con: p.conecta_con, plan_id: planId, evidencia: p.evidencia, hallazgos: p.hallazgos, hipotesis_movidas: p.hipotesis_movidas,
+        tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: r.costo_usd, modelo: 'claude-sonnet-5'
+      }, { onConflict: 'account,fecha' });
+
+      // Filtro determinista: qué hallazgos pasan a accionable
+      const { data: filtrados } = await supabase!.rpc('filtrar_hallazgos_a_accionables', { p_account: cuenta, p_fecha: fecha });
+      let creados = 0;
+      for (const h of (filtrados || []) as any[]) {
+        if (!notion || !NOTION_BASES.ACCIONABLES) break;
+        const title = `${h.titulo} · ${cuenta}`.slice(0, 200);
+        const ex: any = await notion.databases.query({ database_id: actionablesDbSafe(), filter: { property: 'Accion', title: { equals: title } } });
+        const activo = ex.results.find((pg: any) => { const st = pg?.properties?.Estado?.select?.name; return st !== NOTION_STATES.HECHO && st !== NOTION_STATES.DESCARTADO; });
+        if (activo) continue;
+        const clienteId = await findNotionClientId(notion, cuenta);
+        const nat = h.naturaleza === 'observacion' ? 'Observacion' : h.naturaleza === 'inferencia' ? 'Inferencia' : 'Hipotesis';
+        const props: any = {
+          Accion: { title: [{ text: { content: title } }] },
+          Estado: { select: { name: nat === 'Observacion' ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
+          Prioridad: { select: { name: h.severidad === 'critica' ? 'Urgente' : h.severidad === 'alta' ? 'Alta' : 'Media' } },
+          Naturaleza: { select: { name: nat } },
+          'Por que': { rich_text: [{ text: { content: `[Pulso diario ${fecha}] ${h.evidencia_texto}`.slice(0, 1900) } }] },
+          'Causa raiz': { rich_text: [{ text: { content: p.conecta_con || 'Detectado por el pulso diario' } }] },
+          Donde: { rich_text: [{ text: { content: `${h.entidad} · pulso_diario ${fecha}` } }] },
+          Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
+          'Semanas pendiente': { number: 0 }
+        };
+        if (nat !== 'Observacion') props['Que lo confirmaria'] = { rich_text: [{ text: { content: `Confianza ${h.confianza}. Verificar en la tarea semanal con 7 días de evidencia.` } }] };
+        if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
+        await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
+        creados++;
+      }
+      return { cuenta, nivel: p.nivel, hallazgo: p.hallazgo_principal, hallazgos_detectados: p.hallazgos.length, accionables_creados: creados, tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: Number(r.costo_usd.toFixed(5)) };
+    }));
+
+    const out = resultados.map((r, i) => r.status === 'fulfilled' ? r.value : { cuenta: pendientes[i], error: (r.reason as Error).message });
+    out.filter((r: any) => r.error).forEach((r: any) => console.error(`[pulso] ${r.cuenta}: ${r.error}`));
+    res.json({ ok: true, fecha, modelo: 'claude-sonnet-5', resultados: out, costo_total_usd: Number(out.reduce((a: number, r: any) => a + (r.costo_usd || 0), 0).toFixed(5)) });
+  });
+
+
+  // Plan de la semana y evidencia acumulada del diario contra él
+  app.get("/api/plan", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'client requerido' });
+    const { data: plan } = await supabase.from('plan_semanal').select('*').eq('account', client).order('semana', { ascending: false }).limit(1).maybeSingle();
+    if (!plan) return res.json({ plan: null, pulsos: [] });
+    const { data: pulsos } = await supabase.from('pulso_diario').select('fecha, nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos, costo_usd')
+      .eq('account', client).gte('fecha', plan.semana).order('fecha');
+    // Por indicador: serie de la semana (valor y cumple por día)
+    const ind = (plan.indicadores as any[]).map((i: any, idx: number) => ({
+      ...i,
+      serie: (pulsos || []).map((p: any) => { const e = (p.evidencia || [])[idx]; return { fecha: p.fecha, valor: e?.valor ?? null, cumple: e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 }; })
+    }));
+    res.json({ plan: { ...plan, indicadores: ind }, pulsos: pulsos || [] });
+  });
+
+  // Lectura para la app
+  app.get("/api/pulso", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    const days = Number(req.query.days) || 7;
+    let q = supabase.from('pulso_diario').select('*').order('fecha', { ascending: false }).limit(days * 3);
+    if (client) q = q.eq('account', client);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    const costoMes = (data || []).filter((p: any) => new Date(p.fecha) >= new Date(Date.now() - 30 * 864e5)).reduce((a: number, p: any) => a + Number(p.costo_usd || 0), 0);
+    res.json({ pulsos: data || [], costo_ultimos_30d_usd: Number(costoMes.toFixed(4)) });
+  });
+
   // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
   app.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -1951,8 +2239,15 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json(data || []);
   });
 
+  // Catch-all SIEMPRE al final: cualquier ruta agregada después de esto no existe.
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
+  });
+
   return app;
 }
+
+function actionablesDbSafe(): string { return NOTION_BASES.ACCIONABLES as string; }
 
 async function findNotionClientId(notionClient: any, account: string): Promise<string | null> {
   if (!NOTION_BASES.CLIENTES) return null;

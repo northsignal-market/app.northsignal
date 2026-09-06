@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { TerminoProvider } from './components/Termino';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { Inicio } from './components/Inicio';
@@ -107,6 +108,7 @@ function App() {
   }
 
   return (
+    <TerminoProvider>
     <div className="flex min-h-screen overflow-hidden select-none">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
       
@@ -294,6 +296,7 @@ function App() {
         )}
       </Drawer>
     </div>
+    </TerminoProvider>
   );
 }
 

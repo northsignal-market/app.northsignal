@@ -4,6 +4,7 @@ import {
   Search, ChevronDown, ChevronUp, Download, AlertCircle, AlertTriangle,
   Settings2, X, Filter, Activity, Database, Layers, FileText, TrendingUp
 } from 'lucide-react';
+import { Termino } from './Termino';
 import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import jsPDF from 'jspdf';
@@ -60,6 +61,12 @@ const DEFAULT_COLS: Record<string, string[]> = {
   'v_keyword_tendencia': ['keyword','campaign','ad_group','dias_con_actividad','gasto_total','conversiones_total','cpa_periodo','qs_promedio']
 };
 
+const COL_TERMINO: Record<string, string> = {
+  cost_per_conv: 'CPA', cpa: 'CPA', avg_cpc: 'CPC', ctr: 'CTR', conv_rate: 'Conv. rate', impressions: 'Impresiones', cost: 'Gasto',
+  impr_share: 'IS', lost_is_budget: 'Lost IS budget', lost_is_rank: 'Lost IS rank', limitada_por: 'Limitada por',
+  quality_score: 'QS', madurez: 'Madurez', dias_con_datos: 'Días con datos', match_type: 'Concordancia',
+  triggered_keyword: 'Keyword disparadora', keyword_disparadora: 'Keyword disparadora', clasificacion: 'Término nuevo'
+};
 const COL_LABELS: Record<string, string> = {
   dias_con_datos: 'Días',
   date: 'Fecha',
@@ -922,9 +929,11 @@ export function Datos() {
                         }`} 
                       >
                         <div className={`flex items-center gap-2 ${idx > 0 ? 'justify-end' : ''}`}>
-                          {COL_LABELS[col] || col.replace(/_/g, ' ')}
+                          {COL_TERMINO[col]
+                            ? <Termino t={COL_TERMINO[col]}>{COL_LABELS[col] || col.replace(/_/g, ' ')}</Termino>
+                            : (COL_LABELS[col] || col.replace(/_/g, ' '))}
                           {isSorted ? (
-                            <span className="text-indigo-400">
+                            <span className="text-[#0062CC]">
                               {orderDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </span>
                           ) : (

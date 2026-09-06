@@ -7,6 +7,7 @@ import {
   Calendar, Clock, Plus, Check, RefreshCw, FileText, 
   AlertCircle, History, ArrowRight, ExternalLink 
 } from 'lucide-react';
+import { Termino } from './Termino';
 import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 
@@ -426,7 +427,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           <div>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Cuándo convierte: hora y día</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">
-              Última semana cerrada{horaDia.semana ? ` · desde ${horaDia.semana}` : ''} · intensidad = gasto · punto = conversión
+              Última semana cerrada{horaDia.semana ? ` · desde ${horaDia.semana}` : ''} · intensidad = <Termino t="Gasto">gasto</Termino> · punto = conversión
             </p>
           </div>
           {(horaDia.mejor || horaDia.peor_sin_conv) && (

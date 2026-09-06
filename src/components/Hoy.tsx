@@ -3,6 +3,7 @@ import {
   AlertCircle, ShieldAlert, Check, Clock, ArrowRight, 
   HelpCircle, ExternalLink, RefreshCw 
 } from 'lucide-react';
+import { Termino } from './Termino';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable, PulseData } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
@@ -27,6 +28,17 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   const [loadingPulse, setLoadingPulse] = useState(false);
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [headroomAll, setHeadroomAll] = useState<any[]>([]);
+  const [pulsoDiario, setPulsoDiario] = useState<any[]>([]);
+  const [plan, setPlan] = useState<any>(null);
+  useEffect(() => {
+    if (!selectedClient) return;
+    fetch(`/api/plan?client=${selectedClient}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setPlan(d)).catch(() => {});
+  }, [selectedClient]);
+  useEffect(() => {
+    fetch('/api/pulso?days=1', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setPulsoDiario(d.pulsos || [])).catch(() => {});
+  }, []);
 
   // Veredictos de escalamiento de las tres cuentas: si alguna tiene HEADROOM
   // o TECHO, es una decisión del lunes
@@ -250,6 +262,94 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
           ))}
         </div>
       )}
+
+
+      {/* BLOQUE 1C: PULSO DIARIO DE GEMINI, lo que pasó ayer en cada cuenta */}
+      {pulsoDiario.length > 0 && (() => {
+        const ultimoPorCuenta: Record<string, any> = {};
+        pulsoDiario.forEach(p => { if (!ultimoPorCuenta[p.account] || p.fecha > ultimoPorCuenta[p.account].fecha) ultimoPorCuenta[p.account] = p; });
+        const lista = ['KAREDO', 'BHI', '360'].map(a => ultimoPorCuenta[a]).filter(Boolean);
+        const hayCritico = lista.some(p => p.nivel === 'critico');
+        return (
+          <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: hayCritico ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[13px] font-medium text-[#FFFFFF]">Ayer, según el pulso diario</h2>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{lista[0]?.fecha} · Gemini</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+              {lista.map(p => (
+                <div key={p.account} className="p-2.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid transparent' }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold text-[#FFFFFF] uppercase tracking-wider">{p.account}</span>
+                    <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#0062CC] font-bold' : p.nivel === 'atencion' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel}</span>
+                  </div>
+                  {p.hallazgo_principal && <p className="text-xs text-[#FFFFFF] font-medium mb-1">{p.hallazgo_principal}</p>}
+                  <p className="text-[11px] text-[#F5F7FA] opacity-80 leading-relaxed">{p.resumen}</p>
+                  {p.conecta_con && <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">↳ {p.conecta_con}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+
+      {/* BLOQUE 1D: EL PLAN DE LA SEMANA Y LA EVIDENCIA ACUMULADA */}
+      {plan?.plan && (() => {
+        const p = plan.plan;
+        const dias = plan.pulsos.length;
+        const nombres: Record<string, string> = { clics: 'Clics', conv_rate: 'Conv. rate', impresiones: 'Impresiones', cpc: 'CPC', ctr: 'CTR', lost_is_budget: 'Lost IS budget', lost_is_rank: 'Lost IS rank', pct_terminos_nuevos: 'Término nuevo', cpa_marginal: 'CPA marginal', conversiones: 'Conversiones', gasto: 'Gasto', conv_rate_grupo: 'Conv. rate' };
+        return (
+          <div className="p-4 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <h2 className="text-[13px] font-medium text-[#FFFFFF]"><Termino t="Plan semanal">Plan de la semana</Termino> · {selectedClient}</h2>
+                <p className="text-[11px] text-[#F5F7FA] opacity-60">{p.contexto}</p>
+              </div>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">desde {p.semana} · {dias} día{dias !== 1 ? 's' : ''} de evidencia</span>
+            </div>
+            <div className="space-y-1.5">
+              {p.indicadores.map((i: any, idx: number) => {
+                const ultimo = i.serie[i.serie.length - 1];
+                const cumpliendo = ultimo?.dias || 0;
+                return (
+                  <div key={idx} className="grid grid-cols-[minmax(140px,1fr)_auto_auto_minmax(200px,2fr)] items-center gap-3 py-1.5 px-2 rounded-lg" style={{ backgroundColor: cumpliendo >= 2 ? 'var(--primary-faint)' : 'var(--surface-2)' }}>
+                    <div className="text-xs text-[#FFFFFF]">
+                      <Termino t={nombres[i.nombre] || i.nombre}>{nombres[i.nombre] || i.nombre}</Termino>
+                      {i.grupo && <span className="text-[#F5F7FA] opacity-60"> · {i.grupo}</span>}
+                    </div>
+                    <div className="text-[11px] tabular text-[#F5F7FA] opacity-70">{i.direccion === 'sube' ? '≥' : i.direccion === 'baja' ? '≤' : '⇄'} {i.umbral}</div>
+                    <div className="flex gap-0.5">
+                      {i.serie.map((s: any, k: number) => (
+                        <span key={k} title={`${s.fecha}: ${s.valor ?? '—'}`} className="w-3 h-3 rounded-sm" style={{ backgroundColor: s.cumple === true ? '#0062CC' : s.cumple === false ? 'var(--surface-1)' : 'transparent', border: '1px solid var(--border)' }} />
+                      ))}
+                      {Array.from({ length: Math.max(0, 7 - i.serie.length) }, (_, k) => <span key={'e' + k} className="w-3 h-3 rounded-sm" style={{ border: '1px dashed var(--border)' }} />)}
+                    </div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-70 truncate" title={i.habilita}>
+                      {cumpliendo >= 2 ? <span className="text-[#FFFFFF] font-medium">{cumpliendo} días · </span> : ''}{i.habilita}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {p.hipotesis?.length > 0 && (
+              <div className="pt-2 space-y-1" style={{ borderTop: '1px solid var(--border)' }}>
+                {p.hipotesis.map((h: any) => {
+                  const movs = plan.pulsos.flatMap((pp: any) => (pp.hipotesis_movidas || []).filter((m: any) => m.id === h.id));
+                  const confirma = movs.filter((m: any) => m.movimiento === 'confirma').length, descarta = movs.filter((m: any) => m.movimiento === 'descarta').length;
+                  return (
+                    <div key={h.id} className="text-[11px] text-[#F5F7FA] opacity-80 flex gap-2">
+                      <span className="font-bold text-[#FFFFFF] shrink-0">{h.id}</span>
+                      <span className="flex-1">{h.texto}</span>
+                      <span className="tabular shrink-0 opacity-60">{confirma > 0 ? `+${confirma}` : ''}{descarta > 0 ? ` −${descarta}` : ''}{!confirma && !descarta ? 'sin mov.' : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* BLOQUE 2: REQUIERE TU CRITERIO (MAX 8 TARJETAS) */}
       <div 

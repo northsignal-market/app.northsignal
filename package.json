@@ -12,11 +12,15 @@
     "lint": "tsc --noEmit",
     "build:client": "vite build",
     "build:server": "esbuild api/_entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
-    "vercel-build": "npm run build"
+    "vercel-build": "npm run build",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "@google/genai": "^2.4.0",
     "@notionhq/client": "^2.2.15",
+    "@radix-ui/react-tooltip": "^1.2.16",
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.115.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/cookie-parser": "^1.4.10",
@@ -29,6 +33,7 @@
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "p-queue": "^9.3.3",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",

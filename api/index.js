@@ -190,7 +190,7 @@ webhooksRouter.post("/gohighlevel", async (req, res) => {
 // src/server/domain/notionSchema.ts
 var NOTION_BASES = {
   CLIENTES: "e5f736fe-b4e5-4e3c-b827-fabc5db8a0c8",
-  BRIEFS: process.env.NOTION_BRIEFS_DB_ID || "1aedbb2d-d6e8-42a8-aca7-630cf97c4965",
+  BRIEFS: process.env.NOTION_BRIEFS_DB_ID || "24cb7596-2bdf-460d-8d74-a8d042f55512",
   ACCIONABLES: process.env.NOTION_ACCIONABLES_DB_ID || "373cde2b-d8c2-47e3-bc89-56c7d7c7e568",
   PIPELINE: "6dcfb06b-c2fc-444c-b10d-f3cc8f485059"
 };
@@ -211,13 +211,326 @@ var NOTION_REVISION_IA = {
 
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
+import PQueue from "p-queue";
 var notionKey = process.env.NOTION_API_KEY;
-var notion = notionKey ? new Client({ auth: notionKey }) : null;
+var raw = notionKey ? new Client({ auth: notionKey }) : null;
+var queue = new PQueue({ intervalCap: 3, interval: 1e3, carryoverConcurrencyCount: true, concurrency: 3 });
+var MAX_RETRIES = 4;
+async function conReintentos(fn, idempotente, etiqueta) {
+  let intento = 0;
+  while (true) {
+    try {
+      return await queue.add(fn);
+    } catch (e) {
+      const status = e?.status ?? e?.response?.status;
+      const code = e?.code;
+      const retryAfter = Number(e?.headers?.["retry-after"] ?? e?.response?.headers?.["retry-after"] ?? 0);
+      const esRateLimit = status === 429 || status === 529 || code === "rate_limited" || code === "service_overload";
+      const esServidor = status !== void 0 && status >= 500 && status <= 504;
+      const reintentar = esRateLimit || esServidor && idempotente;
+      intento++;
+      if (!reintentar || intento > MAX_RETRIES) {
+        console.error(`[notion] ${etiqueta} fall\xF3 tras ${intento} intento(s): ${status ?? code ?? e?.message}`);
+        throw e;
+      }
+      const base = retryAfter > 0 ? retryAfter * 1e3 : Math.min(1e3 * 2 ** intento, 16e3);
+      await new Promise((r) => setTimeout(r, base + Math.random() * 300));
+    }
+  }
+}
+function envolver(cliente) {
+  const idempotentes = /* @__PURE__ */ new Set(["retrieve", "list", "query", "search"]);
+  const wrap = (obj, ruta) => new Proxy(obj, {
+    get(target, prop) {
+      const v = target[prop];
+      if (typeof v === "function") {
+        return (...args) => conReintentos(() => v.apply(target, args), idempotentes.has(prop), [...ruta, prop].join("."));
+      }
+      if (v && typeof v === "object" && !Array.isArray(v)) return wrap(v, [...ruta, prop]);
+      return v;
+    }
+  });
+  return wrap(cliente, ["notion"]);
+}
+var notion = raw ? envolver(raw) : null;
 
 // src/server/lib/gemini.ts
 import { GoogleGenAI } from "@google/genai";
 var geminiKey = process.env.GEMINI_API_KEY;
 var ai = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
+
+// src/server/lib/pulso.ts
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z as z2 } from "zod";
+var anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+var PRECIO_IN = 2 / 1e6;
+var PRECIO_OUT = 10 / 1e6;
+var PulsoSchema = z2.object({
+  nivel: z2.enum(["normal", "atencion", "critico"]),
+  resumen: z2.string().describe("3 a 5 l\xEDneas en espa\xF1ol. La primera dice qu\xE9 pas\xF3."),
+  hallazgo_principal: z2.string().nullable(),
+  conecta_con: z2.string().nullable().describe("Patr\xF3n anterior al que se parece, o null"),
+  evidencia: z2.array(z2.object({
+    nombre: z2.string(),
+    grupo: z2.string().nullable(),
+    valor: z2.number().nullable(),
+    umbral: z2.number(),
+    direccion: z2.enum(["sube", "baja", "cruza"]),
+    cumple: z2.boolean(),
+    tendencia_3d: z2.enum(["sube", "baja", "plana", "sin_datos"]),
+    dias_seguidos_cumpliendo: z2.number().int().min(0),
+    nota: z2.string().nullable().describe("Una l\xEDnea si hay algo que decir sobre este indicador hoy")
+  })).describe("Un objeto por cada indicador del plan, en el mismo orden"),
+  hipotesis_movidas: z2.array(z2.object({
+    id: z2.string(),
+    movimiento: z2.enum(["confirma", "descarta", "sin_cambio"]),
+    evidencia_texto: z2.string()
+  })),
+  hallazgos: z2.array(z2.object({
+    titulo: z2.string().describe('Como acci\xF3n: "Pausar X", "Revisar Y", no como problema'),
+    severidad: z2.enum(["baja", "media", "alta", "critica"]),
+    confianza: z2.number().min(0).max(1),
+    entidad: z2.string().describe("Campa\xF1a, grupo, keyword o t\xE9rmino con nombre exacto"),
+    evidencia_texto: z2.string().describe("Los n\xFAmeros que lo sostienen, con fechas"),
+    naturaleza: z2.enum(["observacion", "inferencia", "hipotesis"])
+  })).describe("Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.")
+});
+function pulsoDisponible() {
+  return !!anthropic;
+}
+async function correrPulso(cuenta, fecha2, input, reglasCuenta) {
+  if (!anthropic) return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: "ANTHROPIC_API_KEY no configurada" };
+  const plan = input?.plan;
+  const sinPlan = !plan;
+  const system = `Sos el analista diario de la cuenta de Google Ads ${cuenta}. Sos el ciclo r\xE1pido de un sistema de dos ciclos: el lunes, un analista semanal escribi\xF3 un PLAN con indicadores a vigilar, umbrales, hip\xF3tesis y condiciones de escalamiento. Tu trabajo es reportar EVIDENCIA contra ese plan para el d\xEDa ${fecha2}, no reinterpretar la estrategia.
+
+REGLAS DE LA CUENTA (no negociables):
+${reglasCuenta}
+
+PRINCIPIOS:
+- Lo observado se escribe como hecho; lo inferido como hip\xF3tesis con qu\xE9 lo confirmar\xEDa.
+- Una discrepancia no es hallazgo hasta descartar operador, reloj y configuraci\xF3n. Si operator_log o cambios_google explican el movimiento, decilo.
+- Los d\xEDas provisionales (madurez \u2260 consolidado) no sostienen conclusiones sobre conversiones.
+- Ante un deterioro, mir\xE1 primero conv_por_grupo: \xBFes un grupo o toda la cuenta?
+- Una ca\xEDda de volumen (impresiones, clics) y una ca\xEDda de tasa (conv_rate) son dos preguntas con dos causas posibles.
+- Si pulsos_previos ya se\xF1alaron lo mismo, dec\xED que contin\xFAa y cont\xE1 los d\xEDas; no lo presentes como nuevo.
+- Con 1 conversi\xF3n/d\xEDa de promedio, un d\xEDa en cero es normal. Lo dice el plan.
+- Fechas expl\xEDcitas siempre.
+- Con lo leading se dirige; con lo lagging se califica. No alertes por CPA de un d\xEDa.
+
+SOBRE EVIDENCIA: por cada indicador del plan, un objeto con el valor de hoy (de leading_7d o grupos_ayer seg\xFAn corresponda), si cumple el umbral en la direcci\xF3n indicada, la tendencia de 3 d\xEDas, y cu\xE1ntos d\xEDas seguidos lo viene cumpliendo (contando pulsos_previos). Si el indicador es conv_rate_grupo, el valor sale de grupos_ayer para ese grupo.
+
+SOBRE HALLAZGOS: report\xE1 todo lo que encontr\xE1s, incluidos los de confianza baja o severidad baja. No decidas qu\xE9 importa: un filtro posterior lo hace con umbrales. Tu trabajo es cobertura. Cada hallazgo con entidad nombrada exacta y los n\xFAmeros que lo sostienen. Severidad critica solo si: cambio autom\xE1tico de Google, primaria sin datos con gasto normal, o gasto sin conversi\xF3n sobre el CPA m\xE1ximo en un grupo que antes convert\xEDa.
+
+SOBRE NIVEL: critico si hay un hallazgo critica con confianza \u2265 0,8. atencion si alguna condici\xF3n del plan lleva 2+ d\xEDas cumpli\xE9ndose o hay un hallazgo alta con confianza \u2265 0,7. normal en cualquier otro caso.
+${sinPlan ? "\nNO HAY PLAN para esta semana. Report\xE1 evidencia sobre los cuatro indicadores base (clics, conv_rate, cpc, lost_is_budget) con umbrales de la mediana de los 7 d\xEDas, y marc\xE1 en el resumen que falta el plan." : ""}`;
+  const user = `DATOS DEL ${fecha2}:
+${JSON.stringify(input)}`;
+  try {
+    const msg = await anthropic.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 8e3,
+      system,
+      messages: [{ role: "user", content: user }],
+      output_config: { effort: "medium", format: zodOutputFormat(PulsoSchema) }
+    });
+    const parsed = msg.parsed_output;
+    if (!parsed) throw new Error("Sin parsed_output: " + (msg.stop_reason || "desconocido"));
+    const tin = msg.usage.input_tokens || 0;
+    const tout = msg.usage.output_tokens || 0;
+    return { cuenta, fecha: fecha2, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed };
+  } catch (e) {
+    return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
+  }
+}
+
+// src/server/lib/reporte-pdf.tsx
+import { Document, Page, Text, View, StyleSheet, Font, Image, renderToBuffer } from "@react-pdf/renderer";
+import { jsx, jsxs } from "react/jsx-runtime";
+Font.registerHyphenationCallback((w) => [w]);
+var AZUL = "#0062CC";
+var NAVY = "#1A1F36";
+var GRIS_FILA = "#F5F7FA";
+var TEXTO = "#323232";
+var SUAVE = "#646464";
+var PIE = "#969696";
+var LOGO_URL = "https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png";
+var s = StyleSheet.create({
+  page: { fontFamily: "Helvetica", fontSize: 10, color: TEXTO, paddingTop: 36, paddingBottom: 42, paddingHorizontal: 42 },
+  cab: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
+  logo: { width: 40, height: 40, marginRight: 14 },
+  titulo: { fontSize: 20, color: NAVY, marginTop: 2, lineHeight: 1.15 },
+  sub: { fontSize: 10, color: SUAVE, marginTop: 5, lineHeight: 1.3 },
+  totales: { fontSize: 10, color: TEXTO, marginBottom: 16, lineHeight: 1.45 },
+  bloque: { marginBottom: 10 },
+  etiqueta: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginBottom: 3 },
+  p: { fontSize: 10, marginBottom: 4, lineHeight: 1.45 },
+  vineta: { flexDirection: "row", marginBottom: 3, paddingLeft: 4 },
+  guion: { width: 12, fontSize: 10 },
+  vinetaTxt: { flex: 1, fontSize: 10, lineHeight: 1.45 },
+  tablaTitulo: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginTop: 14, marginBottom: 5 },
+  th: { flexDirection: "row", backgroundColor: AZUL, paddingVertical: 5, paddingHorizontal: 8 },
+  thT: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#FFFFFF" },
+  tr: { flexDirection: "row", paddingVertical: 4.5, paddingHorizontal: 8 },
+  trAlt: { backgroundColor: GRIS_FILA },
+  td: { fontSize: 8.5, color: TEXTO },
+  n: { textAlign: "right" },
+  cNombre: { flex: 4 },
+  cNum: { flex: 1 },
+  nota: { fontSize: 8, color: SUAVE, marginTop: 6 },
+  pie: { position: "absolute", bottom: 18, left: 42, fontSize: 8, color: PIE }
+});
+var T = {
+  es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo." },
+  en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown." }
+};
+var money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
+var num = (v, l, d = 1) => v == null ? "-" : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
+var fecha = (iso, idioma) => (/* @__PURE__ */ new Date(iso + "T12:00:00")).toLocaleDateString(idioma === "en" ? "en-GB" : "es-CL");
+var delta = (a, b) => a == null || b == null || b === 0 ? "" : `${a - b >= 0 ? "+" : ""}${((a - b) / b * 100).toFixed(1)}%`;
+function Reporte({ r }) {
+  const t = T[r.idioma];
+  const m = r.metricas;
+  const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, 2)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
+  const lbl = { cost: t.inv, clicks: t.clics, impressions: t.impr, conversions: t.conv, cpa: t.cpa, ctr: t.ctr };
+  const orden = ["cost", "clicks", "impressions", "conversions", "cpa", "ctr"].filter((k) => m[k]?.actual != null);
+  const totales = orden.map((k) => `${lbl[k]}: ${kpi(k)}`).join("  |  ");
+  const deltas = r.periodo_anterior_completo ? ["cost", "conversions", "cpa"].map((k) => {
+    const d = delta(m[k]?.actual ?? null, m[k]?.anterior ?? null);
+    return d ? `${lbl[k]} ${d}` : "";
+  }).filter(Boolean).join("  |  ") : "";
+  const hoy = fecha((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), r.idioma);
+  const Pie = () => /* @__PURE__ */ jsx(Text, { style: s.pie, fixed: true, render: ({ pageNumber, totalPages }) => `${t.pag} ${pageNumber} ${t.de} ${totalPages} - NorthSignal` });
+  return /* @__PURE__ */ jsx(Document, { title: `${r.titulo || t.titulo} - ${r.nombre_cliente}`, author: "NorthSignal", children: /* @__PURE__ */ jsxs(Page, { size: "A4", orientation: "landscape", style: s.page, wrap: true, children: [
+    /* @__PURE__ */ jsx(Pie, {}),
+    /* @__PURE__ */ jsxs(View, { style: s.cab, children: [
+      r.logo ? /* @__PURE__ */ jsx(Image, { src: { data: r.logo, format: "png" }, style: s.logo }) : null,
+      /* @__PURE__ */ jsxs(View, { children: [
+        /* @__PURE__ */ jsxs(Text, { style: s.titulo, children: [
+          r.titulo || t.titulo,
+          " - NorthSignal"
+        ] }),
+        /* @__PURE__ */ jsxs(Text, { style: s.sub, children: [
+          t.cliente,
+          ": ",
+          r.nombre_cliente,
+          " | ",
+          t.periodo,
+          ": ",
+          fecha(r.periodo_desde, r.idioma),
+          " - ",
+          fecha(r.periodo_hasta, r.idioma),
+          " | ",
+          t.fecha,
+          ": ",
+          hoy
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs(Text, { style: s.totales, children: [
+      totales,
+      deltas ? `
+${deltas} ${t.vs}` : ""
+    ] }),
+    r.bloques.map((b, i) => /* @__PURE__ */ jsxs(View, { style: s.bloque, wrap: false, children: [
+      /* @__PURE__ */ jsx(Text, { style: s.etiqueta, children: b.etiqueta }),
+      b.texto ? b.texto.split(/\n\s*\n/).map((p, j) => /* @__PURE__ */ jsx(Text, { style: s.p, children: p.trim() }, j)) : null,
+      (b.vinetas || []).map((v, j) => /* @__PURE__ */ jsxs(View, { style: s.vineta, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.guion, children: "-" }),
+        /* @__PURE__ */ jsx(Text, { style: s.vinetaTxt, children: v })
+      ] }, j))
+    ] }, i)),
+    r.campanas.length > 0 && /* @__PURE__ */ jsxs(View, { children: [
+      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.campanas }),
+        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.campana }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.ctr })
+        ] }),
+        r.campanas.slice(0, 1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
+        ] }, i))
+      ] }),
+      r.campanas.slice(1).map((c, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: c.nombre }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.gasto, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(c.conv, r.locale, 2) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(c.cpa, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
+      ] }, i))
+    ] }),
+    r.grupos.length > 1 && /* @__PURE__ */ jsxs(View, { children: [
+      /* @__PURE__ */ jsxs(View, { wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.grupos }),
+        /* @__PURE__ */ jsxs(View, { style: s.th, children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNombre], children: t.grupo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.costo }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.conversiones }),
+          /* @__PURE__ */ jsx(Text, { style: [s.thT, s.cNum, s.n], children: t.cpa })
+        ] }),
+        r.grupos.slice(0, 1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr], children: [
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
+          /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
+        ] }, i))
+      ] }),
+      r.grupos.slice(1).map((g, i) => /* @__PURE__ */ jsxs(View, { style: [s.tr, i % 2 === 0 ? s.trAlt : {}], wrap: false, children: [
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNombre], children: g.nombre }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.gasto, r.moneda, r.locale) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: num(g.conv, r.locale, 2) }),
+        /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: money(g.cpa, r.moneda, r.locale) })
+      ] }, i)),
+      /* @__PURE__ */ jsx(Text, { style: s.nota, children: t.nota })
+    ] })
+  ] }) });
+}
+function parsearBloques(texto) {
+  const lineas = texto.split("\n");
+  const bloques = [];
+  let actual = null;
+  const esEtiqueta = (l) => /^[A-ZÁÉÍÓÚÑ][^:\n]{2,40}:\s*$/.test(l.trim()) || /^(Contexto|Métricas|Metricas|Observaciones|Cambios aplicados|Cambios|Puntos de atención|Puntos de atencion|Próximos pasos|Proximos pasos|Context|Metrics|Observations|Changes applied|Changes|Points of attention|Attention|Next steps):/i.test(l.trim());
+  for (const raw2 of lineas) {
+    const l = raw2.trim();
+    if (!l) continue;
+    if (esEtiqueta(l)) {
+      const [etq, ...resto] = l.split(":");
+      actual = { etiqueta: etq.trim(), texto: resto.join(":").trim() || void 0, vinetas: [] };
+      bloques.push(actual);
+      continue;
+    }
+    if (!actual) {
+      actual = { etiqueta: "", texto: "", vinetas: [] };
+      bloques.push(actual);
+    }
+    if (/^[-•*]\s+/.test(l)) actual.vinetas.push(l.replace(/^[-•*]\s+/, ""));
+    else actual.texto = (actual.texto ? actual.texto + "\n\n" : "") + l;
+  }
+  return bloques.map((b) => ({ ...b, vinetas: b.vinetas?.length ? b.vinetas : void 0 })).filter((b) => b.etiqueta || b.texto || b.vinetas);
+}
+var logoCache = null;
+async function descargarLogo() {
+  if (logoCache) return logoCache;
+  try {
+    const res = await fetch(LOGO_URL);
+    if (!res.ok) return null;
+    logoCache = Buffer.from(await res.arrayBuffer());
+    return logoCache;
+  } catch {
+    return null;
+  }
+}
+async function generarReportePDF(r) {
+  return renderToBuffer(/* @__PURE__ */ jsx(Reporte, { r }));
+}
 
 // src/server/auth/session.ts
 import * as crypto2 from "crypto";
@@ -390,7 +703,7 @@ function getClientContext(client) {
 // server.ts
 import express from "express";
 import path from "path";
-import { z as z2 } from "zod";
+import { z as z3 } from "zod";
 import cookieParser from "cookie-parser";
 import { Client as NotionClient } from "@notionhq/client";
 var notionClientCache = {};
@@ -920,10 +1233,10 @@ function createApp() {
   });
   app2.post("/api/annotations", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
-    const { account, fecha, titulo, tipo, detalle } = req.body;
+    const { account, fecha: fecha2, titulo, tipo, detalle } = req.body;
     const { data, error } = await supabase.from("annotations").insert([{
       account,
-      fecha,
+      fecha: fecha2,
       titulo,
       tipo,
       detalle,
@@ -1505,9 +1818,9 @@ Las descripciones no deben superar los 90 caracteres.`;
         }
       });
       if (!response.text) throw new Error("No response text");
-      const rsaZodSchema = z2.object({
-        headlines: z2.array(z2.string()),
-        descriptions: z2.array(z2.string())
+      const rsaZodSchema = z3.object({
+        headlines: z3.array(z3.string()),
+        descriptions: z3.array(z3.string())
       });
       const parsedData = rsaZodSchema.parse(JSON.parse(response.text));
       const result = {
@@ -1807,9 +2120,6 @@ Las descripciones no deben superar los 90 caracteres.`;
       res.status(500).json({ error: e.message });
     }
   });
-  app2.all("/api/*", (req, res) => {
-    res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
-  });
   app2.all("/api/cron/aprendizaje", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const secret = process.env.CRON_SECRET;
@@ -1940,6 +2250,203 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (dec.error) return res.status(500).json({ error: dec.error.message });
     res.json({ decisiones: dec.data || [], cpa_marginal: marg.data || [] });
   });
+  async function extraerSeccionesBrief(pageId) {
+    if (!notion) return { resumen: "", cambiamos: "", sigue: "" };
+    let cursor;
+    const bloques = [];
+    do {
+      const r = await notion.blocks.children.list({ block_id: pageId, page_size: 100, start_cursor: cursor });
+      bloques.push(...r.results);
+      cursor = r.has_more ? r.next_cursor : void 0;
+    } while (cursor);
+    const texto = (b) => (b[b.type]?.rich_text || []).map((t) => t.plain_text).join("");
+    let dentro = false;
+    const lineas = [];
+    for (const b of bloques) {
+      const esHeading = /^heading_/.test(b.type);
+      const t = texto(b).trim();
+      if (esHeading) {
+        if (/reporte (para|al) (el )?cliente|client report/i.test(t)) {
+          dentro = true;
+          continue;
+        }
+        if (dentro) break;
+        continue;
+      }
+      if (!dentro || !t) continue;
+      if (b.type === "bulleted_list_item" || b.type === "numbered_list_item") lineas.push("- " + t);
+      else lineas.push(t);
+    }
+    return { resumen: lineas.join("\n"), cambiamos: "", sigue: "" };
+  }
+  app2.post("/api/reportes/generar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const { account, desde, hasta, tipo = "semanal", brief_id, resumen_manual } = req.body || {};
+      if (!account || !desde || !hasta) return res.status(400).json({ error: "account, desde y hasta son obligatorios" });
+      const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", account).single();
+      if (!cuenta) return res.status(404).json({ error: "cuenta no encontrada" });
+      let secciones = { resumen: resumen_manual || "", cambiamos: "", sigue: "" };
+      if (brief_id && notion) secciones = await extraerSeccionesBrief(brief_id);
+      if (!secciones.resumen) return res.status(422).json({ error: "El brief no tiene secci\xF3n de reporte al cliente. Pas\xE1 resumen_manual o un brief_id con la secci\xF3n." });
+      const { data: datos, error } = await supabase.rpc("get_reporte_datos", { p_account: account, p_desde: desde, p_hasta: hasta });
+      if (error) return res.status(500).json({ error: error.message });
+      const { data: fila, error: e2 } = await supabase.from("reportes_cliente").upsert({
+        account,
+        periodo_desde: desde,
+        periodo_hasta: hasta,
+        tipo,
+        idioma: cuenta.idioma_reporte,
+        estado: "borrador",
+        resumen_ejecutivo: secciones.resumen,
+        que_cambiamos: secciones.cambiamos || null,
+        que_sigue: secciones.sigue || null,
+        metricas: datos.metricas,
+        serie: datos.serie,
+        campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
+        brief_notion_id: brief_id || null
+      }, { onConflict: "account,periodo_desde,tipo" }).select().single();
+      if (e2) return res.status(500).json({ error: e2.message });
+      res.json({ ok: true, reporte: fila });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/reportes", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    let q = supabase.from("reportes_cliente").select("id, account, periodo_desde, periodo_hasta, tipo, idioma, estado, resumen_ejecutivo, que_cambiamos, que_sigue, metricas, pdf_path, creado, aprobado_el, enviado_el, enviado_a, editado").order("periodo_desde", { ascending: false }).limit(30);
+    if (client) q = q.eq("account", client);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app2.put("/api/reportes/:id", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { resumen_ejecutivo, que_cambiamos, que_sigue } = req.body || {};
+    const { data, error } = await supabase.from("reportes_cliente").update({ resumen_ejecutivo, que_cambiamos, que_sigue, editado: true, pdf_path: null }).eq("id", req.params.id).eq("estado", "borrador").select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  app2.post("/api/reportes/:id/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
+      if (!r) return res.status(404).json({ error: "no encontrado" });
+      const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
+      const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
+      const { data: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
+      const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === "en" ? "Changes applied" : "Cambios aplicados"}:
+${r.que_cambiamos}` : "", r.que_sigue ? `${r.idioma === "en" ? "Next steps" : "Pr\xF3ximos pasos"}:
+${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
+      const input = {
+        account: r.account,
+        nombre_cliente: cuenta.nombre_cliente,
+        idioma: r.idioma,
+        moneda: cuenta.moneda,
+        locale: cuenta.locale,
+        titulo: (cuenta.encabezado_reporte || "").split("|")[0].trim() || void 0,
+        periodo_desde: r.periodo_desde,
+        periodo_hasta: r.periodo_hasta,
+        tipo: r.tipo,
+        bloques: parsearBloques(textoCompleto),
+        metricas: r.metricas,
+        periodo_anterior_completo: (anteriorCount ?? 0) >= dias,
+        campanas: r.campanas?.campanas || [],
+        grupos: r.campanas?.grupos || [],
+        logo: await descargarLogo()
+      };
+      const buf = await generarReportePDF(input);
+      const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
+      const { error: up } = await supabase.storage.from("reportes").upload(ruta, buf, { contentType: "application/pdf", upsert: true });
+      if (up) return res.status(500).json({ error: up.message });
+      await supabase.from("reportes_cliente").update({ pdf_path: ruta, pdf_bytes: buf.length }).eq("id", r.id);
+      if (req.query.download === "1") {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
+        return res.send(buf);
+      }
+      res.json({ ok: true, pdf_path: ruta, bytes: buf.length });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/reportes/:id/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data: r } = await supabase.from("reportes_cliente").select("account, periodo_desde, pdf_path").eq("id", req.params.id).single();
+    if (!r?.pdf_path) return res.status(404).json({ error: "sin PDF; generalo primero" });
+    const { data, error } = await supabase.storage.from("reportes").download(r.pdf_path);
+    if (error || !data) return res.status(500).json({ error: error?.message || "no se pudo descargar" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
+    res.send(Buffer.from(await data.arrayBuffer()));
+  });
+  app2.post("/api/reportes/:id/aprobar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.from("reportes_cliente").update({ estado: "aprobado", aprobado_el: (/* @__PURE__ */ new Date()).toISOString(), aprobado_por: "andres" }).eq("id", req.params.id).eq("estado", "borrador").select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  app2.post("/api/reportes/:id/descartar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { error } = await supabase.from("reportes_cliente").update({ estado: "descartado" }).eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+  app2.all("/api/cron/reportes", async (req, res) => {
+    if (!supabase || !notion || !NOTION_BASES.BRIEFS) return res.status(503).json({ error: "Supabase o Notion no configurados" });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
+    const hoy = /* @__PURE__ */ new Date();
+    const dow = hoy.getDay();
+    const lunesPrevio = new Date(hoy);
+    lunesPrevio.setDate(hoy.getDate() - (dow + 6) % 7 - 7);
+    const desde = lunesPrevio.toISOString().slice(0, 10);
+    const hasta = new Date(lunesPrevio.getTime() + 6 * 864e5).toISOString().slice(0, 10);
+    const { data: cuentas } = await supabase.from("cuentas").select("account, frecuencia_reporte").eq("activa", true).in("frecuencia_reporte", ["semanal", "ninguna"]);
+    const out = [];
+    for (const c of cuentas || []) {
+      try {
+        const { data: existe } = await supabase.from("reportes_cliente").select("id").eq("account", c.account).eq("periodo_desde", desde).eq("tipo", "semanal").maybeSingle();
+        if (existe) {
+          out.push({ cuenta: c.account, nota: "ya existe" });
+          continue;
+        }
+        const q = await notion.databases.query({ database_id: NOTION_BASES.BRIEFS, filter: { and: [{ property: "Semana", date: { equals: desde } }, { property: "Cliente", relation: { contains: await findNotionClientId(notion, c.account) || "" } }] }, page_size: 1 });
+        const brief = q.results[0];
+        if (!brief) {
+          out.push({ cuenta: c.account, nota: `sin brief para ${desde}` });
+          continue;
+        }
+        const secciones = await extraerSeccionesBrief(brief.id);
+        if (!secciones.resumen) {
+          out.push({ cuenta: c.account, nota: "brief sin secci\xF3n de reporte" });
+          continue;
+        }
+        const { data: datos } = await supabase.rpc("get_reporte_datos", { p_account: c.account, p_desde: desde, p_hasta: hasta });
+        const { data: cta } = await supabase.from("cuentas").select("idioma_reporte").eq("account", c.account).single();
+        await supabase.from("reportes_cliente").insert({
+          account: c.account,
+          periodo_desde: desde,
+          periodo_hasta: hasta,
+          tipo: "semanal",
+          idioma: cta?.idioma_reporte || "es",
+          estado: "borrador",
+          resumen_ejecutivo: secciones.resumen,
+          que_cambiamos: secciones.cambiamos || null,
+          que_sigue: secciones.sigue || null,
+          metricas: datos.metricas,
+          serie: datos.serie,
+          campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
+          brief_notion_id: brief.id
+        });
+        out.push({ cuenta: c.account, creado: true, periodo: `${desde} \u2192 ${hasta}` });
+      } catch (e) {
+        out.push({ cuenta: c.account, error: e.message });
+      }
+    }
+    res.json({ ok: true, semana: desde, resultados: out });
+  });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { account } = req.params;
@@ -1967,6 +2474,105 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
+  app2.all("/api/cron/pulso-diario", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!pulsoDisponible()) return res.status(503).json({ error: "ANTHROPIC_API_KEY no configurada" });
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: "Unauthorized" });
+    const ayer = /* @__PURE__ */ new Date();
+    ayer.setDate(ayer.getDate() - 1);
+    const fecha2 = req.query.fecha || ayer.toISOString().slice(0, 10);
+    const cuentas = req.query.client ? [req.query.client] : ["KAREDO", "BHI", "360"];
+    const forzar = req.query.forzar === "1";
+    const { data: existentes } = await supabase.from("pulso_diario").select("account").eq("fecha", fecha2).in("account", cuentas);
+    const yaHechas = new Set((existentes || []).map((e) => e.account));
+    const pendientes = forzar ? cuentas : cuentas.filter((c) => !yaHechas.has(c));
+    if (!pendientes.length) return res.json({ ok: true, fecha: fecha2, resultados: [], nota: "ya exist\xEDa pulso para todas las cuentas" });
+    const resultados = await Promise.allSettled(pendientes.map(async (cuenta) => {
+      const { data: input, error } = await supabase.rpc("get_pulso_input", { p_account: cuenta, p_fecha: fecha2 });
+      if (error) throw new Error(`get_pulso_input: ${error.message}`);
+      const r = await correrPulso(cuenta, fecha2, input, getClientContext(cuenta) || "");
+      if (r.error || !r.parsed) throw new Error(r.error || "sin salida");
+      const p = r.parsed;
+      const planId = input?.plan?.id || null;
+      await supabase.from("pulso_diario").upsert({
+        account: cuenta,
+        fecha: fecha2,
+        nivel: p.nivel,
+        resumen: p.resumen,
+        hallazgo_principal: p.hallazgo_principal,
+        conecta_con: p.conecta_con,
+        plan_id: planId,
+        evidencia: p.evidencia,
+        hallazgos: p.hallazgos,
+        hipotesis_movidas: p.hipotesis_movidas,
+        tokens_in: r.tokens_in,
+        tokens_out: r.tokens_out,
+        costo_usd: r.costo_usd,
+        modelo: "claude-sonnet-5"
+      }, { onConflict: "account,fecha" });
+      const { data: filtrados } = await supabase.rpc("filtrar_hallazgos_a_accionables", { p_account: cuenta, p_fecha: fecha2 });
+      let creados = 0;
+      for (const h of filtrados || []) {
+        if (!notion || !NOTION_BASES.ACCIONABLES) break;
+        const title = `${h.titulo} \xB7 ${cuenta}`.slice(0, 200);
+        const ex = await notion.databases.query({ database_id: actionablesDbSafe(), filter: { property: "Accion", title: { equals: title } } });
+        const activo = ex.results.find((pg) => {
+          const st = pg?.properties?.Estado?.select?.name;
+          return st !== NOTION_STATES.HECHO && st !== NOTION_STATES.DESCARTADO;
+        });
+        if (activo) continue;
+        const clienteId = await findNotionClientId(notion, cuenta);
+        const nat = h.naturaleza === "observacion" ? "Observacion" : h.naturaleza === "inferencia" ? "Inferencia" : "Hipotesis";
+        const props = {
+          Accion: { title: [{ text: { content: title } }] },
+          Estado: { select: { name: nat === "Observacion" ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO } },
+          Prioridad: { select: { name: h.severidad === "critica" ? "Urgente" : h.severidad === "alta" ? "Alta" : "Media" } },
+          Naturaleza: { select: { name: nat } },
+          "Por que": { rich_text: [{ text: { content: `[Pulso diario ${fecha2}] ${h.evidencia_texto}`.slice(0, 1900) } }] },
+          "Causa raiz": { rich_text: [{ text: { content: p.conecta_con || "Detectado por el pulso diario" } }] },
+          Donde: { rich_text: [{ text: { content: `${h.entidad} \xB7 pulso_diario ${fecha2}` } }] },
+          Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
+          "Semanas pendiente": { number: 0 }
+        };
+        if (nat !== "Observacion") props["Que lo confirmaria"] = { rich_text: [{ text: { content: `Confianza ${h.confianza}. Verificar en la tarea semanal con 7 d\xEDas de evidencia.` } }] };
+        if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
+        await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
+        creados++;
+      }
+      return { cuenta, nivel: p.nivel, hallazgo: p.hallazgo_principal, hallazgos_detectados: p.hallazgos.length, accionables_creados: creados, tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: Number(r.costo_usd.toFixed(5)) };
+    }));
+    const out = resultados.map((r, i) => r.status === "fulfilled" ? r.value : { cuenta: pendientes[i], error: r.reason.message });
+    out.filter((r) => r.error).forEach((r) => console.error(`[pulso] ${r.cuenta}: ${r.error}`));
+    res.json({ ok: true, fecha: fecha2, modelo: "claude-sonnet-5", resultados: out, costo_total_usd: Number(out.reduce((a, r) => a + (r.costo_usd || 0), 0).toFixed(5)) });
+  });
+  app2.get("/api/plan", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "client requerido" });
+    const { data: plan } = await supabase.from("plan_semanal").select("*").eq("account", client).order("semana", { ascending: false }).limit(1).maybeSingle();
+    if (!plan) return res.json({ plan: null, pulsos: [] });
+    const { data: pulsos } = await supabase.from("pulso_diario").select("fecha, nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos, costo_usd").eq("account", client).gte("fecha", plan.semana).order("fecha");
+    const ind = plan.indicadores.map((i, idx) => ({
+      ...i,
+      serie: (pulsos || []).map((p) => {
+        const e = (p.evidencia || [])[idx];
+        return { fecha: p.fecha, valor: e?.valor ?? null, cumple: e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 };
+      })
+    }));
+    res.json({ plan: { ...plan, indicadores: ind }, pulsos: pulsos || [] });
+  });
+  app2.get("/api/pulso", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    const days = Number(req.query.days) || 7;
+    let q = supabase.from("pulso_diario").select("*").order("fecha", { ascending: false }).limit(days * 3);
+    if (client) q = q.eq("account", client);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    const costoMes = (data || []).filter((p) => new Date(p.fecha) >= new Date(Date.now() - 30 * 864e5)).reduce((a, p) => a + Number(p.costo_usd || 0), 0);
+    res.json({ pulsos: data || [], costo_ultimos_30d_usd: Number(costoMes.toFixed(4)) });
+  });
   app2.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const secret = process.env.CRON_SECRET;
@@ -1986,7 +2592,13 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
+  app2.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
+  });
   return app2;
+}
+function actionablesDbSafe() {
+  return NOTION_BASES.ACCIONABLES;
 }
 async function findNotionClientId(notionClient, account) {
   if (!NOTION_BASES.CLIENTES) return null;
@@ -2013,9 +2625,9 @@ async function runAnomalyWorker() {
   let creados = 0, comentados = 0;
   for (const a of anomalias || []) {
     const cuenta = a.account;
-    const fecha = a.date;
+    const fecha2 = a.date;
     const metrica = a.metrica_anomala || (a.gasto_direccion ? "gasto" : "cpa");
-    const title = `[Anomal\xEDa] ${cuenta} \xB7 ${metrica} ${a.gasto_direccion || a.cpa_direccion || ""} el ${fecha}`;
+    const title = `[Anomal\xEDa] ${cuenta} \xB7 ${metrica} ${a.gasto_direccion || a.cpa_direccion || ""} el ${fecha2}`;
     try {
       const existing = await notion.databases.query({
         database_id: actionablesDbId,
@@ -2030,7 +2642,7 @@ async function runAnomalyWorker() {
       const naturaleza = explicado ? "Observacion" : "Hipotesis";
       const estado = explicado ? NOTION_STATES.PROPUESTO : NOTION_STATES.BLOQUEADO;
       const clienteId = await findNotionClientId(notion, cuenta);
-      const why = `Desv\xEDo estad\xEDstico el ${fecha}: severidad ${a.severidad}. ` + (a.gasto_z != null ? `Gasto z=${Number(a.gasto_z).toFixed(1)} (${a.gasto} vs baseline ${a.gasto_baseline}). ` : "") + (a.cpa_z != null ? `CPA z=${Number(a.cpa_z).toFixed(1)} (${a.cpa} vs baseline ${a.cpa_baseline}). ` : "") + (a.campana_principal ? `Campa\xF1a principal: ${a.campana_principal}. ` : "") + `Explicaci\xF3n de la vista: ${a.explicacion}`;
+      const why = `Desv\xEDo estad\xEDstico el ${fecha2}: severidad ${a.severidad}. ` + (a.gasto_z != null ? `Gasto z=${Number(a.gasto_z).toFixed(1)} (${a.gasto} vs baseline ${a.gasto_baseline}). ` : "") + (a.cpa_z != null ? `CPA z=${Number(a.cpa_z).toFixed(1)} (${a.cpa} vs baseline ${a.cpa_baseline}). ` : "") + (a.campana_principal ? `Campa\xF1a principal: ${a.campana_principal}. ` : "") + `Explicaci\xF3n de la vista: ${a.explicacion}`;
       const props = {
         Accion: { title: [{ text: { content: title } }] },
         Estado: { select: { name: estado } },
@@ -2038,7 +2650,7 @@ async function runAnomalyWorker() {
         Naturaleza: { select: { name: naturaleza } },
         "Por que": { rich_text: [{ text: { content: why.slice(0, 1900) } }] },
         "Causa raiz": { rich_text: [{ text: { content: explicado ? "Cambio registrado ese d\xEDa" : "Desv\xEDo sin cambio registrado: verificar operador, reloj y configuraci\xF3n" } }] },
-        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada \xB7 ${cuenta} \xB7 ${fecha}` } }] },
+        Donde: { rich_text: [{ text: { content: `v_anomalia_explicada \xB7 ${cuenta} \xB7 ${fecha2}` } }] },
         Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
         "Semanas pendiente": { number: 0 }
       };
