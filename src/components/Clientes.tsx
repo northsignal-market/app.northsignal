@@ -14,14 +14,73 @@ interface ClientesProps {
 
 export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps) {
   const { selectedClient, setSelectedClient, actionables, notionBriefs } = useAppStore();
+  const activeClient = selectedClient || '360';
   const [clientsInfo, setClientsInfo] = useState<NotionClientInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [objetivos, setObjetivos] = useState<any>({ targets: [], headroom: [], proyeccion: [] });
   const [escalera, setEscalera] = useState<any>({ etapas: [], recomendada: null });
+  const [docMaestro, setDocMaestro] = useState<{ markdown: string; secciones: any[] } | null>(null);
+  const [editandoSeccion, setEditandoSeccion] = useState<string | null>(null);
+  const [textoEdicion, setTextoEdicion] = useState('');
+  const [guardandoDoc, setGuardandoDoc] = useState(false);
+  const [vistaDoc, setVistaDoc] = useState<'ensamblado' | 'editar'>('ensamblado');
+
+  const cargarDoc = () => {
+    fetch(`/api/doc-maestro/${activeClient}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setDocMaestro(d)).catch(() => {});
+  };
+  useEffect(() => { cargarDoc(); }, [activeClient]);
+
+  const guardarSeccion = async (seccion: string) => {
+    setGuardandoDoc(true);
+    try {
+      const r = await fetch(`/api/doc-maestro/${activeClient}/${seccion}`, {
+        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contenido: textoEdicion })
+      });
+      if (r.ok) { setEditandoSeccion(null); cargarDoc(); }
+    } finally { setGuardandoDoc(false); }
+  };
+
+  const descargarDoc = () => {
+    if (!docMaestro) return;
+    const blob = new Blob([docMaestro.markdown], { type: 'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `DOC_MAESTRO_${activeClient}_${new Date().toISOString().slice(0,10)}.md`; a.click();
+  };
+
+  // Render markdown mínimo: encabezados, negrita, código, tablas, listas
+  const md = (t: string) => {
+    const esc = (x: string) => x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const inline = (x: string) => esc(x)
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-[#FFFFFF]">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code class="px-1 rounded text-[11px]" style="background:var(--surface-2)">$1</code>');
+    const lines = t.split('\n'); const out: string[] = []; let i = 0;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (/^\|/.test(l)) {
+        const rows: string[][] = [];
+        while (i < lines.length && /^\|/.test(lines[i])) { if (!/^\|[-| ]+\|$/.test(lines[i])) rows.push(lines[i].split('|').slice(1,-1).map(c => c.trim())); i++; }
+        if (rows.length) {
+          out.push('<table class="w-full text-xs my-2"><thead><tr>' + rows[0].map(c => `<th class="text-left py-1 px-2 text-[#F5F7FA] opacity-60 font-medium" style="border-bottom:1px solid var(--border)">${inline(c)}</th>`).join('') + '</tr></thead><tbody>' +
+            rows.slice(1).map(r => '<tr>' + r.map(c => `<td class="py-1 px-2 align-top text-[#F5F7FA]" style="border-bottom:1px solid var(--border)">${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+        }
+        continue;
+      }
+      if (/^### /.test(l)) out.push(`<h4 class="text-sm font-semibold text-[#FFFFFF] mt-3 mb-1">${inline(l.slice(4))}</h4>`);
+      else if (/^## /.test(l)) out.push(`<h3 class="text-[15px] font-medium text-[#FFFFFF] mt-5 mb-2 pb-1" style="border-bottom:1px solid var(--border)">${inline(l.slice(3))}</h3>`);
+      else if (/^# /.test(l)) out.push(`<h2 class="text-lg font-semibold text-[#FFFFFF] mb-2">${inline(l.slice(2))}</h2>`);
+      else if (/^---$/.test(l)) out.push('');
+      else if (/^[-*] /.test(l) || /^\d+\. /.test(l)) out.push(`<div class="text-xs text-[#F5F7FA] pl-4 py-0.5">${inline(l.replace(/^[-*] /, '• ').replace(/^(\d+)\. /, '$1. '))}</div>`);
+      else if (l.trim()) out.push(`<p class="text-xs text-[#F5F7FA] py-0.5 leading-relaxed">${inline(l)}</p>`);
+      i++;
+    }
+    return out.join('');
+  };
   const [editTargets, setEditTargets] = useState<any>(null);
   const [savingTargets, setSavingTargets] = useState(false);
 
-  const activeClient = selectedClient || '360';
 
   // Objetivos, headroom y escalera de valor
   useEffect(() => {
@@ -440,6 +499,54 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         )}
       </div>
 
+
+      {/* Doc maestro ensamblado */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Doc maestro</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setVistaDoc('ensamblado')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'ensamblado' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Ensamblado</button>
+            <button onClick={() => setVistaDoc('editar')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'editar' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Editar capa humana</button>
+            <button onClick={descargarDoc} disabled={!docMaestro} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70 hover:opacity-100 disabled:opacity-30" style={{ border: '1px solid var(--border)' }}>Descargar .md</button>
+          </div>
+        </div>
+
+        {!docMaestro ? (
+          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
+        ) : vistaDoc === 'ensamblado' ? (
+          <div className="max-h-[70vh] overflow-y-auto custom-scrollbar pr-2" dangerouslySetInnerHTML={{ __html: md(docMaestro.markdown) }} />
+        ) : (
+          <div className="space-y-3">
+            {docMaestro.secciones.map(sec => (
+              <div key={sec.seccion} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: editandoSeccion === sec.seccion ? '1px solid var(--primary)' : '1px solid transparent' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{sec.seccion}</span>
+                  <span className="text-[11px] text-[#F5F7FA] opacity-50 tabular">v{sec.version} · {new Date(sec.editado_el).toLocaleDateString('es-CL')} · {sec.editado_por}</span>
+                </div>
+                {editandoSeccion === sec.seccion ? (
+                  <div className="space-y-2">
+                    <textarea value={textoEdicion} onChange={e => setTextoEdicion(e.target.value)} rows={14}
+                      className="w-full text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-3 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC] tabular" style={{ fontFamily: 'inherit' }} />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditandoSeccion(null)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
+                      <button onClick={() => guardarSeccion(sec.seccion)} disabled={guardandoDoc} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-50">{guardandoDoc ? 'Guardando…' : 'Guardar como nueva versión'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs text-[#F5F7FA] opacity-80 line-clamp-3 flex-1">{sec.contenido.replace(/[#*`|]/g, '').slice(0, 240)}…</div>
+                    <button onClick={() => { setEditandoSeccion(sec.seccion); setTextoEdicion(sec.contenido); }} className="px-3 py-1 rounded-lg text-xs shrink-0" style={{ border: '1px solid var(--border)', color: '#F5F7FA' }}>Editar</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="text-[11px] text-[#F5F7FA] opacity-50">Cada edición crea una versión nueva; nada se borra. Las secciones calculadas y las de Notion no se editan acá: se corrigen en su fuente.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

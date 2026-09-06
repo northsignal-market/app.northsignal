@@ -1876,6 +1876,34 @@ Las descripciones no deben superar los 90 caracteres.`;
         }
       }
       resultado.resultados_escritos_en_notion = escritos;
+      if (notion && NOTION_BASES.CLIENTES) {
+        const fichas = await notion.databases.query({ database_id: NOTION_BASES.CLIENTES });
+        let sincronizados = 0;
+        for (const f of fichas.results) {
+          const nombre = f.properties?.Cliente?.title?.map((t) => t.plain_text).join("") || f.properties?.Name?.title?.map((t) => t.plain_text).join("") || "";
+          const acct = /karedo/i.test(nombre) ? "KAREDO" : /bhi|best health/i.test(nombre) ? "BHI" : /360/.test(nombre) ? "360" : null;
+          if (!acct) continue;
+          const aprendizajes = f.properties["Aprendizajes consolidados"]?.rich_text?.map((t) => t.plain_text).join("") || null;
+          const hipotesis = f.properties["Hipotesis abiertas"]?.rich_text?.map((t) => t.plain_text).join("") || null;
+          let pendientes = null;
+          if (NOTION_BASES.ACCIONABLES) {
+            const bl = await notion.databases.query({
+              database_id: NOTION_BASES.ACCIONABLES,
+              filter: { and: [{ property: "Estado", select: { equals: NOTION_STATES.BLOQUEADO } }, { property: "Cliente", relation: { contains: f.id } }] },
+              page_size: 20
+            });
+            const lineas = bl.results.map((a) => {
+              const t = a.properties.Accion?.title?.map((x) => x.plain_text).join("") || "";
+              const q = a.properties["Que lo confirmaria"]?.rich_text?.map((x) => x.plain_text).join("") || "";
+              return `- **${t}**${q ? ` \u2014 lo confirmar\xEDa: ${q}` : ""}`;
+            });
+            pendientes = lineas.length ? lineas.join("\n") : null;
+          }
+          await supabase.from("doc_maestro_consolidado").upsert({ account: acct, aprendizajes, hipotesis_abiertas: hipotesis, pendientes, sincronizado_el: (/* @__PURE__ */ new Date()).toISOString() });
+          sincronizados++;
+        }
+        resultado.doc_maestro_consolidado = sincronizados;
+      }
       const { data: wr } = await supabase.rpc("actualizar_win_rates");
       resultado.win_rates_actualizados = wr || [];
       await supabase.rpc("actualizar_eventos_escalera");
@@ -1907,6 +1935,33 @@ Las descripciones no deben superar los 90 caracteres.`;
     const { data, error } = await supabase.from("reflexiones").insert({ account, tipo, que_paso, que_haria_distinto, regla_del_prompt, confianza: confianza || "media" }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
+  });
+  app2.get("/api/doc-maestro/:account", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account } = req.params;
+    const [doc, secciones] = await Promise.all([
+      supabase.rpc("get_doc_maestro", { p_account: account }),
+      supabase.from("doc_maestro_humano").select("seccion, orden, contenido, version, editado_el, editado_por").eq("account", account).eq("vigente", true).order("orden")
+    ]);
+    if (doc.error) return res.status(500).json({ error: doc.error.message });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ markdown: doc.data, secciones: secciones.data || [] });
+  });
+  app2.put("/api/doc-maestro/:account/:seccion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account, seccion } = req.params;
+    const { contenido } = req.body;
+    if (!contenido || typeof contenido !== "string") return res.status(400).json({ error: "contenido requerido" });
+    const { data, error } = await supabase.rpc("doc_maestro_editar", { p_account: account, p_seccion: seccion, p_contenido: contenido, p_editado_por: "andres" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ version: data });
+  });
+  app2.get("/api/doc-maestro/:account/:seccion/versiones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account, seccion } = req.params;
+    const { data, error } = await supabase.from("doc_maestro_humano").select("version, editado_el, editado_por, vigente, contenido").eq("account", account).eq("seccion", seccion).order("version", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
   });
   app2.post("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

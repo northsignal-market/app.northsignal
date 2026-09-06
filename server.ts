@@ -1813,6 +1813,37 @@ Las descripciones no deben superar los 90 caracteres.`;
       }
       resultado.resultados_escritos_en_notion = escritos;
 
+      // 2b. Doc maestro: capa consolidada desde Notion (ficha + accionables Bloqueados)
+      if (notion && NOTION_BASES.CLIENTES) {
+        const fichas: any = await notion.databases.query({ database_id: NOTION_BASES.CLIENTES });
+        let sincronizados = 0;
+        for (const f of fichas.results) {
+          const nombre = f.properties?.Cliente?.title?.map((t: any) => t.plain_text).join('') || f.properties?.Name?.title?.map((t: any) => t.plain_text).join('') || '';
+          const acct = /karedo/i.test(nombre) ? 'KAREDO' : /bhi|best health/i.test(nombre) ? 'BHI' : /360/.test(nombre) ? '360' : null;
+          if (!acct) continue;
+          const aprendizajes = f.properties['Aprendizajes consolidados']?.rich_text?.map((t: any) => t.plain_text).join('') || null;
+          const hipotesis = f.properties['Hipotesis abiertas']?.rich_text?.map((t: any) => t.plain_text).join('') || null;
+          // Accionables Bloqueados: titulo + que lo confirmaria
+          let pendientes: string | null = null;
+          if (NOTION_BASES.ACCIONABLES) {
+            const bl: any = await notion.databases.query({
+              database_id: NOTION_BASES.ACCIONABLES,
+              filter: { and: [ { property: 'Estado', select: { equals: NOTION_STATES.BLOQUEADO } }, { property: 'Cliente', relation: { contains: f.id } } ] },
+              page_size: 20
+            });
+            const lineas = bl.results.map((a: any) => {
+              const t = a.properties.Accion?.title?.map((x: any) => x.plain_text).join('') || '';
+              const q = a.properties['Que lo confirmaria']?.rich_text?.map((x: any) => x.plain_text).join('') || '';
+              return `- **${t}**${q ? ` — lo confirmaría: ${q}` : ''}`;
+            });
+            pendientes = lineas.length ? lineas.join('\n') : null;
+          }
+          await supabase.from('doc_maestro_consolidado').upsert({ account: acct, aprendizajes, hipotesis_abiertas: hipotesis, pendientes, sincronizado_el: new Date().toISOString() });
+          sincronizados++;
+        }
+        resultado.doc_maestro_consolidado = sincronizados;
+      }
+
       // 3. Actualizar parametros estimados con reales
       const { data: wr } = await supabase.rpc('actualizar_win_rates');
       resultado.win_rates_actualizados = wr || [];
@@ -1850,6 +1881,40 @@ Las descripciones no deben superar los 90 caracteres.`;
     const { data, error } = await supabase.from('reflexiones').insert({ account, tipo, que_paso, que_haria_distinto, regla_del_prompt, confianza: confianza || 'media' }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
+  });
+
+
+  // ---- Doc maestro ensamblado ----
+  app.get("/api/doc-maestro/:account", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account } = req.params;
+    const [doc, secciones] = await Promise.all([
+      supabase.rpc('get_doc_maestro', { p_account: account }),
+      supabase.from('doc_maestro_humano').select('seccion, orden, contenido, version, editado_el, editado_por').eq('account', account).eq('vigente', true).order('orden')
+    ]);
+    if (doc.error) return res.status(500).json({ error: doc.error.message });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ markdown: doc.data, secciones: secciones.data || [] });
+  });
+
+  // Editar una seccion de la capa humana: crea version nueva
+  app.put("/api/doc-maestro/:account/:seccion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, seccion } = req.params;
+    const { contenido } = req.body;
+    if (!contenido || typeof contenido !== 'string') return res.status(400).json({ error: 'contenido requerido' });
+    const { data, error } = await supabase.rpc('doc_maestro_editar', { p_account: account, p_seccion: seccion, p_contenido: contenido, p_editado_por: 'andres' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ version: data });
+  });
+
+  // Historial de versiones de una seccion
+  app.get("/api/doc-maestro/:account/:seccion/versiones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, seccion } = req.params;
+    const { data, error } = await supabase.from('doc_maestro_humano').select('version, editado_el, editado_por, vigente, contenido').eq('account', account).eq('seccion', seccion).order('version', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
   });
 
   // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
