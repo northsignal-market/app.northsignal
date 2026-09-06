@@ -29,6 +29,7 @@ export function Sistema() {
   const enGrupo = (tab: string) => (GRUPOS.find(g => g.id === grupo)?.tabs || []).includes(tab);
   const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia' | 'ejecuciones'>('salud');
   const [ejecuciones, setEjecuciones] = useState<any[]>([]);
+  const [aprendido, setAprendido] = useState<any>(null);
   const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
@@ -36,6 +37,7 @@ export function Sistema() {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/coherencia', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCoherencia(d)).catch(() => {});
+    fetch('/api/aprendido', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {});
     fetch('/api/acciones-aprobadas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setEjecuciones(Array.isArray(d) ? d : [])).catch(() => {});
   }, [grupo]);
   const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
@@ -161,6 +163,65 @@ export function Sistema() {
           );
         })}
       </div>
+
+
+      {/* TAB: LO QUE APRENDIÓ (lecciones + conocimiento externo + acierto por tipo) */}
+      {enGrupo('aprendizaje') && aprendido && (
+        <div className="space-y-4">
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lecciones</h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.</p>
+            </div>
+            {aprendido.lecciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía ninguna. La tarea del lunes escribe al menos una por cuenta.</p> : (
+              <div className="space-y-1.5">
+                {aprendido.lecciones.map((l: any) => (
+                  <div key={l.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: l.tipo === 'error' ? '2px solid var(--primary)' : '2px solid transparent' }}>
+                    <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{l.tipo}</span><span>{l.account || 'general'} · {l.fecha}</span><span className="ml-auto tabular">confianza {Math.round(l.confianza * 100)}%{l.veces_confirmada > 1 ? ` · vista ${l.veces_confirmada} veces` : ''}</span></div>
+                    <div className="text-xs text-[#FFFFFF] mt-0.5">{l.leccion}</div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{l.contexto} → {l.decision} → {l.resultado}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprendió afuera</h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
+            </div>
+            <div className="space-y-1.5">
+              {aprendido.conocimiento.map((k: any) => (
+                <div key={k.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{k.tema}</span><span>{k.fecha}</span>{k.vigente_hasta && <span>· hasta {k.vigente_hasta}</span>}<span className="ml-auto">{(k.aplica_a || []).join(', ')} · {String(k.fuente_tipo).replace(/_/g, ' ')}{k.verificado ? ' · verificado' : ''}</span></div>
+                  <div className="text-xs text-[#FFFFFF] mt-0.5">{k.titulo}</div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-70 mt-0.5">{k.resumen}</div>
+                  {k.accion_derivada && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-50">Qué hacer:</span> {k.accion_derivada}</div>}
+                  <a href={String(k.fuente).split(' ')[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#0062CC] opacity-70 hover:opacity-100">{String(k.fuente).split(' ')[0].slice(0, 70)}</a>
+                </div>
+              ))}
+            </div>
+          </div>
+          {aprendido.acierto_por_tipo.length > 0 && (
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué tipo de cambio funciona en cada cuenta</h2>
+                <p className="text-xs text-[#F5F7FA] opacity-60">Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que "suele empeorar" sin decir por qué esta vez es distinto.</p>
+              </div>
+              <div className="space-y-1">
+                {aprendido.acierto_por_tipo.map((t: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className="text-[#FFFFFF] w-16 shrink-0">{t.account}</span><span className="text-[#F5F7FA] w-28 shrink-0">{t.tipo}</span>
+                    <span className="tabular text-[#F5F7FA] opacity-70 w-24 shrink-0">{t.mejoraron}/{t.n} mejoraron</span>
+                    <span className="text-[#F5F7FA] opacity-80 flex-1">{t.veredicto}</span>
+                    {t.variacion_promedio_pct != null && <span className="tabular text-[#F5F7FA] opacity-60">{t.variacion_promedio_pct > 0 ? '+' : ''}{t.variacion_promedio_pct}%</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB: EJECUCIONES */}
       {enGrupo('ejecuciones') && (

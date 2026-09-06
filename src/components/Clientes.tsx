@@ -26,6 +26,11 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const [estrategia, setEstrategia] = useState<any>({ decisiones: [], cpa_marginal: [] });
   const [reportes, setReportes] = useState<any[]>([]);
   const [limitada, setLimitada] = useState<any>(null);
+  const [propuestas, setPropuestas] = useState<any[]>([]);
+  const [aprendido, setAprendido] = useState<any>(null);
+  const cargarPropuestas = () => fetch(`/api/propuestas?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setPropuestas(Array.isArray(d) ? d : [])).catch(() => {});
+  useEffect(() => { cargarPropuestas(); fetch(`/api/aprendido?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {}); }, [activeClient]);
+  const decidirPropuesta = async (id: number, accion: string) => { const nota = accion === 'descartar' ? prompt('¿Por qué la descartás? (el sistema aprende de esto)') : null; if (accion === 'descartar' && nota === null) return; await fetch(`/api/propuestas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nota }) }); cargarPropuestas(); };
   useEffect(() => { fetch(`/api/limitada?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setLimitada(d)).catch(() => {}); }, [activeClient]);
   const [reporteAbierto, setReporteAbierto] = useState<any>(null);
   const [editandoReporte, setEditandoReporte] = useState(false);
@@ -342,6 +347,59 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
       </>)}
       {ver('diagnostico') && (<>
+
+      {/* Brecha y propuestas estratégicas: la ambición con lógica */}
+      {ver('diagnostico') && (<>
+      {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
+        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#FFFFFF]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
+          <div className="text-[#F5F7FA] opacity-30">→</div>
+          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#FFFFFF]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
+          <div className="flex-1 min-w-[200px] text-xs text-[#F5F7FA] opacity-80">{br.lectura}{br.dias_restantes != null ? <span className="opacity-50"> · {br.dias_restantes} días</span> : ''}</div>
+        </div>
+      ) : null; })()}
+      {propuestas.length > 0 && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Propuestas estratégicas</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
+          </div>
+          <div className="space-y-2">
+            {propuestas.map((p: any) => (
+              <div key={p.id} className={`p-3.5 rounded-xl space-y-2 ${p.estado === 'descartada' ? 'opacity-50' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.estado === 'propuesta' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{String(p.tipo).replace(/_/g, ' ')}</span><span className="text-[10px] text-[#F5F7FA] opacity-40">{p.fecha}</span><span className={`text-[10px] uppercase tracking-wider ${p.estado === 'propuesta' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{p.estado.replace('_', ' ')}</span></div>
+                    <div className="text-sm text-[#FFFFFF] font-medium mt-0.5">{p.titulo}</div>
+                  </div>
+                  {p.estado === 'propuesta' && (
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => decidirPropuesta(p.id, 'aprobar')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>
+                      <button onClick={() => decidirPropuesta(p.id, 'descartar')} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] opacity-70" style={{ border: '1px solid var(--border)' }}>Descartar</button>
+                    </div>
+                  )}
+                  {p.estado === 'aprobada' && <button onClick={() => decidirPropuesta(p.id, 'test')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] shrink-0">Arrancó el test</button>}
+                  {p.estado === 'en_test' && <button onClick={() => decidirPropuesta(p.id, 'adoptar')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] shrink-0">Adoptar</button>}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-[#F5F7FA]">
+                  <div><span className="opacity-50">Hipótesis:</span> {p.hipotesis}</div>
+                  <div><span className="opacity-50">Espera:</span> <span className="text-[#FFFFFF]">{p.resultado_esperado}</span></div>
+                  {p.costo_estimado && <div><span className="opacity-50">Cuesta:</span> {p.costo_estimado}</div>}
+                  {p.riesgo && <div><span className="opacity-50">Riesgo:</span> {p.riesgo}</div>}
+                  {p.como_probar_barato && <div><span className="opacity-50">Test barato:</span> {p.como_probar_barato}</div>}
+                  <div><span className="opacity-50">La mata:</span> {p.que_la_mata}</div>
+                  {p.fundamento_datos && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Dato:</span> {p.fundamento_datos}</div>}
+                  {p.fundamento_externo && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Afuera:</span> {p.fundamento_externo}</div>}
+                  {p.decision_andres && <div className="md:col-span-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}><span className="opacity-50">Tu decisión ({p.decidida_el}):</span> {p.decision_andres}</div>}
+                  {p.resultado_real && <div className="md:col-span-2"><span className="opacity-50">Resultado:</span> {p.resultado_real}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </>)}
+
       {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
       <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>

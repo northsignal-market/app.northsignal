@@ -24,6 +24,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const [alertas, setAlertas] = useState<any[]>([]);
   const [pulsos, setPulsos] = useState<any[]>([]);
   const [ciclo, setCiclo] = useState<any>(null);
+  const [propuestas, setPropuestas] = useState<any[]>([]);
   const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false });
   const [filtroCuenta, setFiltroCuenta] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/pulso?days=2', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPulsos(d.pulsos || [])).catch(() => {});
     fetch('/api/ciclo', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCiclo(d)).catch(() => {});
+    fetch('/api/propuestas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setPropuestas(Array.isArray(d) ? d : [])).catch(() => {});
   };
   useEffect(() => { cargar(); const t = setInterval(cargar, 3 * 60 * 1000); return () => clearInterval(t); }, []);
 
@@ -43,7 +45,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const listos = actionables.filter(a => a.status === NOTION_STATES.PROPUESTO && !a.reemplazado_por && enCuenta(a.client));
   const confirmar = actionables.filter(a => a.status === NOTION_STATES.BLOQUEADO && !a.reemplazado_por && enCuenta(a.client));
   const reportes = (briefing?.reportes_por_aprobar || []).filter((r: any) => enCuenta(r.cuenta));
-  const total = hoy.length + listos.length + confirmar.length + reportes.length;
+  const propPend = propuestas.filter(p => p.estado === 'propuesta' && enCuenta(p.account));
+  const total = hoy.length + listos.length + confirmar.length + reportes.length + propPend.length;
   const ultimoPulso = useMemo(() => { const m: Record<string, any> = {}; pulsos.forEach(p => { if (!m[p.account] || p.fecha > m[p.account].fecha) m[p.account] = p; }); return m; }, [pulsos]);
 
   const abrir = (a: Actionable) => { setSelectedClient(a.client); onOpenActionable(a); };
@@ -95,6 +98,13 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="Esperan tu confirmación" n={confirmar.length}>
               {confirmar.map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${String(a.vence).slice(5)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
+              ))}
+            </Grupo>
+          )}
+          {propPend.length > 0 && (
+            <Grupo titulo="Propuestas estratégicas para decidir" n={propPend.length}>
+              {propPend.map((p: any) => (
+                <Fila key={'prop' + p.id} cuenta={p.account} titulo={p.titulo} sub={`${p.resultado_esperado} · el sistema propone algo más grande que un accionable`} onClick={() => onGoTo('cuenta', p.account, 'diagnostico')} />
               ))}
             </Grupo>
           )}

@@ -2276,6 +2276,36 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json({ calibracion: cal.data || [], global: calg.data, impactos: imp.data || [], tasa_acierto: tasa.data || [], predicciones: pred.data || [] });
   });
 
+
+  // Propuestas estrategicas: las apuestas grandes. Andres aprueba, descarta, marca en test o adoptada.
+  app.get("/api/propuestas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    let q = supabase.from('propuestas_estrategicas').select('*').order('fecha', { ascending: false }).limit(40);
+    if (req.query.client) q = q.eq('account', req.query.client as string);
+    const { data } = await q; res.json(data || []);
+  });
+  app.post("/api/propuestas/:id/:accion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { accion } = req.params; const { nota } = req.body || {};
+    const estado: any = { aprobar: 'aprobada', descartar: 'descartada', test: 'en_test', adoptar: 'adoptada', pausar: 'pausada' }[accion];
+    if (!estado) return res.status(400).json({ error: 'accion invalida' });
+    const { error } = await supabase.from('propuestas_estrategicas').update({ estado, decision_andres: nota || null, decidida_el: new Date().toISOString().slice(0, 10) }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+  // Lo aprendido: lecciones, conocimiento externo, acierto por tipo
+  app.get("/api/aprendido", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string | undefined;
+    const [lec, con, tipo, brecha] = await Promise.all([
+      client ? supabase.from('lecciones').select('*').or(`account.eq.${client},account.is.null`).order('confianza', { ascending: false }).limit(30) : supabase.from('lecciones').select('*').order('confianza', { ascending: false }).limit(40),
+      supabase.from('conocimiento_externo').select('*').order('fecha', { ascending: false }).limit(30),
+      client ? supabase.from('v_acierto_por_tipo').select('*').eq('account', client) : supabase.from('v_acierto_por_tipo').select('*'),
+      supabase.from('v_brecha_objetivo').select('*'),
+    ]);
+    res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [] });
+  });
+
   // ---- Doc maestro ensamblado ----
   app.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
