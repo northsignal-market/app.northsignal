@@ -1936,6 +1936,16 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
+  app2.get("/api/estrategia", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    const [dec, marg] = await Promise.all([
+      client ? supabase.from("v_decision_estructural").select("*").eq("account", client) : supabase.from("v_decision_estructural").select("*"),
+      client ? supabase.from("v_cpa_marginal").select("*").eq("account", client).order("campaign").order("escalon") : supabase.from("v_cpa_marginal").select("*").order("account").order("campaign").order("escalon")
+    ]);
+    if (dec.error) return res.status(500).json({ error: dec.error.message });
+    res.json({ decisiones: dec.data || [], cpa_marginal: marg.data || [] });
+  });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { account } = req.params;

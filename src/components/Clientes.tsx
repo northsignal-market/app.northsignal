@@ -20,6 +20,11 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
   const [objetivos, setObjetivos] = useState<any>({ targets: [], headroom: [], proyeccion: [] });
   const [escalera, setEscalera] = useState<any>({ etapas: [], recomendada: null });
   const [docMaestro, setDocMaestro] = useState<{ markdown: string; secciones: any[] } | null>(null);
+  const [estrategia, setEstrategia] = useState<any>({ decisiones: [], cpa_marginal: [] });
+  useEffect(() => {
+    fetch(`/api/estrategia?client=${activeClient}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setEstrategia(d)).catch(() => {});
+  }, [activeClient]);
   const [editandoSeccion, setEditandoSeccion] = useState<string | null>(null);
   const [textoEdicion, setTextoEdicion] = useState('');
   const [guardandoDoc, setGuardandoDoc] = useState(false);
@@ -499,6 +504,61 @@ export function Clientes({ onOpenActionable, onNavigateToBrief }: ClientesProps)
         )}
       </div>
 
+
+
+      {/* Decisiones estructurales */}
+      {estrategia.decisiones.length > 0 && (() => {
+        const d = estrategia.decisiones[0];
+        const zona = (t: string) => t?.startsWith('PROPONER') ? 'proponer' : t?.startsWith('REVISAR') ? 'revisar' : 'no';
+        const decs = [
+          ['Separar marca', d.separar_marca], ['Consolidar', d.consolidar], ['Crear campaña', d.crear_campana],
+          ['Pausar', d.pausar], ['Escalar', d.escalar], ['Test de incrementalidad', d.test_incrementalidad_marca]
+        ];
+        const activas = decs.filter(([, t]) => zona(t) !== 'no');
+        return (
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: activas.length ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+            <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+                {activas.length === 0 ? 'Estructura: sin decisiones que proponer' : `${activas.length} decisión${activas.length > 1 ? 'es' : ''} estructural${activas.length > 1 ? 'es' : ''} en evaluación`}
+              </h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60 tabular">
+                {d.conv_28d} conv en {d.dias_28d} días consolidados · {d.n_campanas} campaña{d.n_campanas > 1 ? 's' : ''} · {d.grupo_dominante} {d.pct_grupo_dominante}% · MDE a 4 semanas {d.mde_4_semanas_pct}%
+              </p>
+            </div>
+            <div className="space-y-2">
+              {decs.map(([nombre, texto]) => {
+                const z = zona(texto);
+                return (
+                  <div key={nombre} className={`flex items-start gap-3 p-2.5 rounded-lg ${z === 'no' ? 'opacity-50' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className={`text-[10px] uppercase tracking-wider font-bold shrink-0 w-20 pt-0.5 ${z === 'proponer' ? 'text-[#FFFFFF]' : z === 'revisar' ? 'text-[#0062CC]' : 'text-[#F5F7FA]'}`}>{nombre}</span>
+                    <span className="text-xs text-[#F5F7FA]">{texto}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-[#F5F7FA] opacity-60">{d.testeabilidad}</p>
+            {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).length > 0 && (
+              <div className="pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                <p className="text-xs font-medium text-[#FFFFFF] mb-1">Dónde produce más el siguiente peso</p>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-[#F5F7FA] opacity-60 text-left"><th className="py-1 px-2">Campaña</th><th className="py-1 px-2 text-right">Escalón/día</th><th className="py-1 px-2 text-right">CPA promedio</th><th className="py-1 px-2 text-right">CPA marginal</th><th className="py-1 px-2">Lectura</th></tr></thead>
+                  <tbody>
+                    {estrategia.cpa_marginal.filter((m: any) => m.escalon > m.presupuesto_actual).slice(0, 6).map((m: any, i: number) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td className="py-1 px-2 text-[#F5F7FA] max-w-[180px] truncate">{m.campaign}</td>
+                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA]">{fmtMoney(m.escalon)}</td>
+                        <td className="py-1 px-2 tabular text-right text-[#F5F7FA] opacity-70">{fmtMoney(m.cpa_promedio_en_escalon)}</td>
+                        <td className={`py-1 px-2 tabular text-right ${m.ratio_marginal_sobre_promedio >= 2 ? 'text-[#0062CC] font-semibold' : 'text-[#FFFFFF]'}`}>{fmtMoney(m.cpa_marginal_desde_anterior)}{m.ratio_marginal_sobre_promedio ? ` (${m.ratio_marginal_sobre_promedio}×)` : ''}</td>
+                        <td className="py-1 px-2 text-[#F5F7FA] opacity-70 text-[11px]">{String(m.lectura).split(':')[0]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Doc maestro ensamblado */}
       <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
