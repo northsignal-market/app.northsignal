@@ -8,6 +8,7 @@
  * La insignia se gana: cuenta solo lo sin ver.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, Check, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { ACTORES, VERBOS_HUMANOS, actorDe, haceCuanto } from '../lib/actores';
 
@@ -24,6 +25,7 @@ export function Campana({ onAbrir }: Props) {
   const [expandido, setExpandido] = useState<Record<string, boolean>>({});
   const vistos = useRef<Set<number>>(new Set()); const primera = useRef(true);
   const panel = useRef<HTMLDivElement>(null);
+  const panelFlotante = useRef<HTMLDivElement>(null);
 
   const cargar = async () => {
     try {
@@ -40,7 +42,7 @@ export function Campana({ onAbrir }: Props) {
   useEffect(() => { if (abierta && pestana === 'todas') cargarTodas(); }, [abierta, pestana]);
   useEffect(() => {
     if (!abierta) return;
-    const f = (e: MouseEvent) => { if (panel.current && !panel.current.contains(e.target as Node)) setAbierta(false); };
+    const f = (e: MouseEvent) => { const t = e.target as Node; if (panel.current?.contains(t) || panelFlotante.current?.contains(t)) return; setAbierta(false); };
     document.addEventListener('mousedown', f); return () => document.removeEventListener('mousedown', f);
   }, [abierta]);
 
@@ -65,8 +67,8 @@ export function Campana({ onAbrir }: Props) {
         {sinVer.length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#0062CC] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center tabular">{sinVer.length > 99 ? '99+' : sinVer.length}</span>}
       </button>
 
-      {toast && !abierta && (
-        <div onClick={() => abrir(toast)} className="fixed top-14 right-5 z-[95] w-[340px] p-3 rounded-xl cursor-pointer shadow-2xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
+      {toast && !abierta && createPortal(
+        <div onClick={() => abrir(toast)} className="fixed top-14 right-5 z-[300] w-[340px] p-3 rounded-xl cursor-pointer shadow-2xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
           <div className="flex items-start gap-2.5">
             <Avatar actor={toast.actor} />
             <div className="min-w-0 flex-1">
@@ -75,11 +77,10 @@ export function Campana({ onAbrir }: Props) {
             </div>
             <button onClick={(e) => { e.stopPropagation(); setToast(null); }} className="text-[#F5F7FA] opacity-40 hover:opacity-100"><X size={12} /></button>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
-      {abierta && (
-        <div className="absolute right-0 top-10 z-[95] w-[420px] max-w-[calc(100vw-24px)] rounded-2xl shadow-2xl flex flex-col" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)', maxHeight: '72vh' }}>
+      {abierta && createPortal(
+        <div ref={panelFlotante} className="fixed right-4 top-12 z-[300] w-[420px] max-w-[calc(100vw-24px)] rounded-2xl shadow-2xl flex flex-col" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)', maxHeight: '72vh' }}>
           <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-1">
               <button onClick={() => setPestana('sinver')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'sinver' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Sin ver{sinVer.length ? ` · ${sinVer.length}` : ''}</button>
@@ -144,8 +145,7 @@ export function Campana({ onAbrir }: Props) {
           <div className="px-4 py-2 text-[10px] text-[#F5F7FA] opacity-40" style={{ borderTop: '1px solid var(--border)' }}>
             Quiénes te avisan: {Object.entries(ACTORES).filter(([k]) => ['semanal', 'pulso', 'mensual', 'reconciliador', 'politica', 'claude'].includes(k)).map(([, a]) => a.inicial + ' ' + a.nombre.toLowerCase()).join(' · ')}
           </div>
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }
