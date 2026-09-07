@@ -30,7 +30,27 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const [aprendido, setAprendido] = useState<any>(null);
   const cargarPropuestas = () => fetch(`/api/propuestas?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setPropuestas(Array.isArray(d) ? d : [])).catch(() => {});
   useEffect(() => { cargarPropuestas(); fetch(`/api/aprendido?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {}); }, [activeClient]);
-  const decidirPropuesta = async (id: number, accion: string) => { const nota = accion === 'descartar' ? prompt('¿Por qué la descartás? (el sistema aprende de esto)') : null; if (accion === 'descartar' && nota === null) return; await fetch(`/api/propuestas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nota }) }); cargarPropuestas(); };
+  const ESTADOS: { id: string; label: string; pregunta?: string; confirmar?: boolean }[] = [
+    { id: 'propuesta', label: 'Propuesta' }, { id: 'aprobada', label: 'Aprobada', pregunta: 'Nota (opcional): por qué la aprobás' },
+    { id: 'en_test', label: 'En test', pregunta: '¿Qué hiciste exactamente en Google Ads? Puede diferir de lo propuesto; el sistema evalúa contra esto.' },
+    { id: 'pausada', label: 'Pausada', pregunta: '¿Por qué la pausás?' },
+    { id: 'adoptada', label: 'Adoptada', pregunta: '¿Qué resultado viste? (queda como resultado real)', confirmar: true },
+    { id: 'descartada', label: 'Descartada', pregunta: '¿Por qué la descartás? (el sistema aprende de esto)', confirmar: true },
+  ];
+  const cambiarEstado = async (p: any, estado: string) => {
+    const def = ESTADOS.find(e => e.id === estado)!;
+    if (def.confirmar && !confirm(`¿Pasar "${p.titulo.slice(0, 60)}" a ${def.label}? Se puede volver atrás, pero queda en el historial.`)) return;
+    let nota: string | null = null, ejecucion: string | null = null;
+    if (def.pregunta) {
+      const r = prompt(def.pregunta, estado === 'en_test' ? (p.ejecucion_real || '') : '');
+      if (r === null) return;
+      if (estado === 'en_test') ejecucion = r; else nota = r;
+    }
+    await fetch(`/api/propuestas/${p.id}/estado`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado, nota, ejecucion_real: ejecucion, resultado_real: estado === 'adoptada' ? nota : undefined }) });
+    if (estado === 'adoptada' && nota) await fetch(`/api/propuestas/${p.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resultado_real: nota }) });
+    cargarPropuestas();
+  };
+  const editarEjecucion = async (p: any) => { const r = prompt('Qué se hizo realmente en Google Ads (esto es lo que el sistema evalúa):', p.ejecucion_real || ''); if (r === null) return; await fetch(`/api/propuestas/${p.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ejecucion_real: r }) }); cargarPropuestas(); };
   useEffect(() => { fetch(`/api/limitada?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setLimitada(d)).catch(() => {}); }, [activeClient]);
   const [reporteAbierto, setReporteAbierto] = useState<any>(null);
   const [editandoReporte, setEditandoReporte] = useState(false);
@@ -382,14 +402,11 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                     <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{String(p.tipo).replace(/_/g, ' ')}</span><span className="text-[10px] text-[#F5F7FA] opacity-40">{p.fecha}</span><span className={`text-[10px] uppercase tracking-wider ${p.estado === 'propuesta' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{p.estado.replace('_', ' ')}</span></div>
                     <div className="text-sm text-[#FFFFFF] font-medium mt-0.5">{p.titulo}</div>
                   </div>
-                  {p.estado === 'propuesta' && (
-                    <div className="flex gap-1 shrink-0">
-                      <button onClick={() => decidirPropuesta(p.id, 'aprobar')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>
-                      <button onClick={() => decidirPropuesta(p.id, 'descartar')} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] opacity-70" style={{ border: '1px solid var(--border)' }}>Descartar</button>
-                    </div>
-                  )}
-                  {p.estado === 'aprobada' && <button onClick={() => decidirPropuesta(p.id, 'test')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] shrink-0">Arrancó el test</button>}
-                  {p.estado === 'en_test' && <button onClick={() => decidirPropuesta(p.id, 'adoptar')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] shrink-0">Adoptar</button>}
+                  <div className="shrink-0">
+                    <select value={p.estado} onChange={e => cambiarEstado(p, e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]" title="Cambiar estado. Se puede volver atrás; todo queda en el historial.">
+                      {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-[#F5F7FA]">
                   <div><span className="opacity-50">Hipótesis:</span> {p.hipotesis}</div>
@@ -400,8 +417,19 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                   <div><span className="opacity-50">La mata:</span> {p.que_la_mata}</div>
                   {p.fundamento_datos && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Dato:</span> {p.fundamento_datos}</div>}
                   {p.fundamento_externo && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Afuera:</span> {p.fundamento_externo}</div>}
-                  {p.decision_andres && <div className="md:col-span-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}><span className="opacity-50">Tu decisión ({p.decidida_el}):</span> {p.decision_andres}</div>}
+                  {(p.estado === 'en_test' || p.estado === 'adoptada' || p.ejecucion_real) && (
+                    <div className="md:col-span-2 flex items-start gap-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+                      <div className="flex-1"><span className="opacity-50">Qué se hizo realmente{p.test_inicio ? ` (desde ${p.test_inicio})` : ''}:</span> {p.ejecucion_real ? <span className="text-[#FFFFFF]">{p.ejecucion_real}</span> : <span className="opacity-50 italic">sin registrar: el sistema no puede evaluar el test</span>}</div>
+                      <button onClick={() => editarEjecucion(p)} className="text-[10px] text-[#0062CC] shrink-0">editar</button>
+                    </div>
+                  )}
+                  {p.decision_andres && <div className="md:col-span-2"><span className="opacity-50">Tu nota ({p.decidida_el}):</span> {p.decision_andres}</div>}
                   {p.resultado_real && <div className="md:col-span-2"><span className="opacity-50">Resultado:</span> {p.resultado_real}</div>}
+                  {Array.isArray(p.historial) && p.historial.length > 0 && (
+                    <div className="md:col-span-2 text-[10px] text-[#F5F7FA] opacity-50">
+                      {p.historial.slice(-4).map((h: any, i: number) => <span key={i}>{String(h.fecha).slice(5, 16).replace('T', ' ')} {h.de} → {h.a}{h.nota ? ` (${String(h.nota).slice(0, 60)}${h.nota.length > 60 ? '…' : ''})` : ''}{i < Math.min(p.historial.length, 4) - 1 ? ' · ' : ''}</span>)}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

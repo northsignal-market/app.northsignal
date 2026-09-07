@@ -3433,15 +3433,32 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const { data } = await q;
     res.json(data || []);
   });
-  app2.post("/api/propuestas/:id/:accion", async (req, res) => {
+  app2.post("/api/propuestas/:id/estado", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { accion } = req.params;
-    const { nota } = req.body || {};
-    const estado = { aprobar: "aprobada", descartar: "descartada", test: "en_test", adoptar: "adoptada", pausar: "pausada" }[accion];
-    if (!estado) return res.status(400).json({ error: "accion invalida" });
-    const { error } = await supabase.from("propuestas_estrategicas").update({ estado, decision_andres: nota || null, decidida_el: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) }).eq("id", req.params.id);
+    const { estado, nota, ejecucion_real } = req.body || {};
+    if (!["propuesta", "aprobada", "en_test", "adoptada", "descartada", "pausada"].includes(estado)) return res.status(400).json({ error: "estado invalido" });
+    const { data, error } = await supabase.rpc("propuesta_cambiar_estado", { p_id: Number(req.params.id), p_estado: estado, p_nota: nota || null, p_ejecucion_real: ejecucion_real || null, p_por: "andres" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  app2.put("/api/propuestas/:id", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { ejecucion_real, resultado_real, decision_andres } = req.body || {};
+    const upd = {};
+    if (ejecucion_real !== void 0) upd.ejecucion_real = ejecucion_real;
+    if (resultado_real !== void 0) upd.resultado_real = resultado_real;
+    if (decision_andres !== void 0) upd.decision_andres = decision_andres;
+    const { error } = await supabase.from("propuestas_estrategicas").update(upd).eq("id", req.params.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
+  });
+  app2.post("/api/propuestas/:id/:accion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const estado = { aprobar: "aprobada", descartar: "descartada", test: "en_test", adoptar: "adoptada", pausar: "pausada" }[req.params.accion];
+    if (!estado) return res.status(400).json({ error: "accion invalida" });
+    const { data, error } = await supabase.rpc("propuesta_cambiar_estado", { p_id: Number(req.params.id), p_estado: estado, p_nota: (req.body || {}).nota || null, p_ejecucion_real: null, p_por: "andres" });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
   app2.get("/api/aprendido", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

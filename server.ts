@@ -2532,14 +2532,32 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (req.query.client) q = q.eq('account', req.query.client as string);
     const { data } = await q; res.json(data || []);
   });
-  app.post("/api/propuestas/:id/:accion", async (req, res) => {
+  // Cambiar estado en cualquier direccion, con nota y con lo que realmente se hizo. Deja historial.
+  app.post("/api/propuestas/:id/estado", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { accion } = req.params; const { nota } = req.body || {};
-    const estado: any = { aprobar: 'aprobada', descartar: 'descartada', test: 'en_test', adoptar: 'adoptada', pausar: 'pausada' }[accion];
-    if (!estado) return res.status(400).json({ error: 'accion invalida' });
-    const { error } = await supabase.from('propuestas_estrategicas').update({ estado, decision_andres: nota || null, decidida_el: new Date().toISOString().slice(0, 10) }).eq('id', req.params.id);
+    const { estado, nota, ejecucion_real } = req.body || {};
+    if (!['propuesta', 'aprobada', 'en_test', 'adoptada', 'descartada', 'pausada'].includes(estado)) return res.status(400).json({ error: 'estado invalido' });
+    const { data, error } = await supabase.rpc('propuesta_cambiar_estado', { p_id: Number(req.params.id), p_estado: estado, p_nota: nota || null, p_ejecucion_real: ejecucion_real || null, p_por: 'andres' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+  // Editar campos de texto (que se hizo realmente, resultado real)
+  app.put("/api/propuestas/:id", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { ejecucion_real, resultado_real, decision_andres } = req.body || {};
+    const upd: any = {}; if (ejecucion_real !== undefined) upd.ejecucion_real = ejecucion_real; if (resultado_real !== undefined) upd.resultado_real = resultado_real; if (decision_andres !== undefined) upd.decision_andres = decision_andres;
+    const { error } = await supabase.from('propuestas_estrategicas').update(upd).eq('id', req.params.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
+  });
+  // Compatibilidad con los botones viejos
+  app.post("/api/propuestas/:id/:accion", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const estado: any = { aprobar: 'aprobada', descartar: 'descartada', test: 'en_test', adoptar: 'adoptada', pausar: 'pausada' }[req.params.accion];
+    if (!estado) return res.status(400).json({ error: 'accion invalida' });
+    const { data, error } = await supabase.rpc('propuesta_cambiar_estado', { p_id: Number(req.params.id), p_estado: estado, p_nota: (req.body || {}).nota || null, p_ejecucion_real: null, p_por: 'andres' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
   // Lo aprendido: lecciones, conocimiento externo, acierto por tipo
   app.get("/api/aprendido", async (req, res) => {
