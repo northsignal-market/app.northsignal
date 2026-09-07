@@ -34,6 +34,8 @@ function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
   return [
   { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
+  { name: 'buscar_accionable', description: 'Busca accionables de una cuenta por palabras del título o del "por qué", en cualquier estado. Usar cuando pregunten por un accionable puntual ("la propuesta de agrupar campañas", "el de las negativas") y haga falta el detalle completo.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM }, texto: { type: 'string', description: 'Palabras a buscar, por ejemplo "agrupar campañas" o "negativas competidores"' } }, required: ['cuenta', 'texto'] } },
+  { name: 'propuestas_estrategicas', description: 'Propuestas estratégicas de una cuenta con su estado, qué se propuso, qué se hizo realmente y el resultado esperado. Usar cuando pregunten por una propuesta o una estrategia, que NO son accionables.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'salud_datos', description: 'Estado de los datos: última extracción, semana disponible, integridad, crons. Usar cuando pregunten si los datos están al día o por qué falta algo.', input_schema: { type: 'object', properties: {} } },
   { name: 'doc_maestro', description: 'Devuelve una sección del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM }, seccion: { type: 'string', enum: ['identidad', 'objetivos', 'restricciones', 'descartado', 'reporte', 'riesgos', 'vacios'] } }, required: ['cuenta', 'seccion'] } },
   ];
@@ -80,7 +82,40 @@ Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sal
           const c7 = d.slice(0, 7), c14 = d;
           out = { headroom: h.data, ultimos_7d: { gasto: sum(c7, 'gasto'), conversiones: sum(c7, 'conversiones'), cpa: sum(c7, 'conversiones') ? sum(c7, 'gasto') / sum(c7, 'conversiones') : null }, ultimos_14d: { gasto: sum(c14, 'gasto'), conversiones: sum(c14, 'conversiones'), cpa: sum(c14, 'conversiones') ? sum(c14, 'gasto') / sum(c14, 'conversiones') : null }, plan: plan.data, ultimo_pulso: pulso.data };
         } else if (tu.name === 'accionables_abiertos') {
-          out = { nota: 'Los accionables viven en Notion; la app los muestra en Accionables. Filtrá por cuenta ahí.', cuenta: inp.cuenta };
+          // El espejo tiene el contenido real, sincronizado cada 30 minutos.
+          // Antes esta herramienta devolvia un texto que mandaba a buscar a mano.
+          const { data: acc } = await supabase.from('accionables_espejo')
+            .select('titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, url')
+            .eq('account', inp.cuenta).in('estado', ['Propuesto', 'Bloqueado', 'Aprobado', 'En curso'])
+            .order('prioridad', { ascending: true }).limit(30);
+          out = {
+            cuenta: inp.cuenta,
+            cuantos: (acc || []).length,
+            accionables: (acc || []).map((x: any) => ({
+              titulo: x.titulo, estado: x.estado, prioridad: x.prioridad, naturaleza: x.naturaleza,
+              origen: x.origen, entidad: x.entidad,
+              por_que: (x.por_que || '').slice(0, 700),
+              detectado: x.detectado, vence: x.vence,
+              se_puede_ejecutar: !!x.accion_valida,
+              verbo: x.accion?.verbo || null,
+              por_que_manual: x.accion_valida ? null : (x.accion_error || 'sin acción estructurada'),
+              url: x.url
+            })),
+            nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Podés citar títulos y el "por qué" textual.' : 'Esta cuenta no tiene accionables abiertos ahora mismo.'
+          };
+        } else if (tu.name === 'buscar_accionable') {
+          const q = String(inp.texto || '').trim();
+          const { data: acc } = await supabase.from('accionables_espejo')
+            .select('titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, ejecutado_el, url')
+            .eq('account', inp.cuenta).or(`titulo.ilike.%${q}%,por_que.ilike.%${q}%,entidad.ilike.%${q}%`).limit(10);
+          out = (acc || []).length
+            ? { cuenta: inp.cuenta, encontrados: acc!.length, accionables: acc!.map((x: any) => ({ ...x, por_que: (x.por_que || '').slice(0, 1500), se_puede_ejecutar: !!x.accion_valida })) }
+            : { cuenta: inp.cuenta, encontrados: 0, nota: `No hay accionables de ${inp.cuenta} que mencionen "${q}". Puede estar escrito distinto: probá con una palabra sola.` };
+        } else if (tu.name === 'propuestas_estrategicas') {
+          const { data: pr } = await supabase.from('propuestas_estrategicas')
+            .select('id, tipo, titulo, estado, hipotesis, que_se_propuso, ejecucion_real, resultado_esperado, creada_el, decidida_el')
+            .eq('account', inp.cuenta).order('creada_el', { ascending: false }).limit(10);
+          out = (pr || []).length ? { cuenta: inp.cuenta, propuestas: pr } : { cuenta: inp.cuenta, nota: 'Esta cuenta no tiene propuestas estratégicas cargadas.' };
         } else if (tu.name === 'salud_datos') {
           const [dh, integ, snaps] = await Promise.all([supabase.from('v_data_health').select('*'), supabase.from('v_integridad_conversiones').select('*').limit(5), supabase.from('v_snapshots_disponibles').select('*')]);
           out = { data_health: dh.data, descuadres: integ.data, snapshots: snaps.data };

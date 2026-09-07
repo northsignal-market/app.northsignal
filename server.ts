@@ -2906,13 +2906,13 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       const accionJson = txt(p['Accion JSON']);
       const parsed = parsearAccion(accionJson);
       filas.push({
-        notion_id: page.id, account: cuenta, titulo: txt(p.Accionable || p.Name), estado: p.Estado?.select?.name || null,
+        notion_id: page.id, account: cuenta, titulo: txt(p.Accion || p.Accionable || p.Name || p.Title), estado: p.Estado?.select?.name || null,
         prioridad: p.Prioridad?.select?.name || null, naturaleza: p.Naturaleza?.select?.name || null,
-        origen: p.Origen?.select?.name || null, entidad: txt(p.Entidad) || null, causa_raiz: txt(p['Causa raiz']) || null,
-        por_que: txt(p['Por que'] || p['Por qué']).slice(0, 1000), detectado: p.Detectado?.date?.start || null,
+        origen: p.Origen?.select?.name || null, entidad: txt(p.Entidad) || null, causa_raiz: txt(p['Causa raiz']) || null, como_hacerlo: txt(p['Como hacerlo']) || null, donde: txt(p.Donde) || null,
+        por_que: txt(p['Por que'] || p['Por qué']).slice(0, 2000), detectado: p.Detectado?.date?.start || null,
         ejecutado_el: p['Ejecutado el']?.date?.start || null, vence: p.Vence?.date?.start || null,
         semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: txt(p['Revision IA']) || null,
-        ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString(),
+        ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString(), url: page.url,
         accion: parsed.accion || null, accion_valida: !!parsed.accion, accion_error: parsed.error || null
       });
     }

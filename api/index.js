@@ -993,6 +993,8 @@ function construirHerramientas(cuentas) {
   return [
     { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "buscar_accionable", description: 'Busca accionables de una cuenta por palabras del t\xEDtulo o del "por qu\xE9", en cualquier estado. Usar cuando pregunten por un accionable puntual ("la propuesta de agrupar campa\xF1as", "el de las negativas") y haga falta el detalle completo.', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM }, texto: { type: "string", description: 'Palabras a buscar, por ejemplo "agrupar campa\xF1as" o "negativas competidores"' } }, required: ["cuenta", "texto"] } },
+    { name: "propuestas_estrategicas", description: "Propuestas estrat\xE9gicas de una cuenta con su estado, qu\xE9 se propuso, qu\xE9 se hizo realmente y el resultado esperado. Usar cuando pregunten por una propuesta o una estrategia, que NO son accionables.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "salud_datos", description: "Estado de los datos: \xFAltima extracci\xF3n, semana disponible, integridad, crons. Usar cuando pregunten si los datos est\xE1n al d\xEDa o por qu\xE9 falta algo.", input_schema: { type: "object", properties: {} } },
     { name: "doc_maestro", description: "Devuelve una secci\xF3n del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM }, seccion: { type: "string", enum: ["identidad", "objetivos", "restricciones", "descartado", "reporte", "riesgos", "vacios"] } }, required: ["cuenta", "seccion"] } }
   ];
@@ -1046,7 +1048,34 @@ Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sal
           const c7 = d.slice(0, 7), c14 = d;
           out = { headroom: h.data, ultimos_7d: { gasto: sum(c7, "gasto"), conversiones: sum(c7, "conversiones"), cpa: sum(c7, "conversiones") ? sum(c7, "gasto") / sum(c7, "conversiones") : null }, ultimos_14d: { gasto: sum(c14, "gasto"), conversiones: sum(c14, "conversiones"), cpa: sum(c14, "conversiones") ? sum(c14, "gasto") / sum(c14, "conversiones") : null }, plan: plan.data, ultimo_pulso: pulso.data };
         } else if (tu.name === "accionables_abiertos") {
-          out = { nota: "Los accionables viven en Notion; la app los muestra en Accionables. Filtr\xE1 por cuenta ah\xED.", cuenta: inp.cuenta };
+          const { data: acc } = await supabase2.from("accionables_espejo").select("titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, url").eq("account", inp.cuenta).in("estado", ["Propuesto", "Bloqueado", "Aprobado", "En curso"]).order("prioridad", { ascending: true }).limit(30);
+          out = {
+            cuenta: inp.cuenta,
+            cuantos: (acc || []).length,
+            accionables: (acc || []).map((x) => ({
+              titulo: x.titulo,
+              estado: x.estado,
+              prioridad: x.prioridad,
+              naturaleza: x.naturaleza,
+              origen: x.origen,
+              entidad: x.entidad,
+              por_que: (x.por_que || "").slice(0, 700),
+              detectado: x.detectado,
+              vence: x.vence,
+              se_puede_ejecutar: !!x.accion_valida,
+              verbo: x.accion?.verbo || null,
+              por_que_manual: x.accion_valida ? null : x.accion_error || "sin acci\xF3n estructurada",
+              url: x.url
+            })),
+            nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Pod\xE9s citar t\xEDtulos y el "por qu\xE9" textual.' : "Esta cuenta no tiene accionables abiertos ahora mismo."
+          };
+        } else if (tu.name === "buscar_accionable") {
+          const q = String(inp.texto || "").trim();
+          const { data: acc } = await supabase2.from("accionables_espejo").select("titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, ejecutado_el, url").eq("account", inp.cuenta).or(`titulo.ilike.%${q}%,por_que.ilike.%${q}%,entidad.ilike.%${q}%`).limit(10);
+          out = (acc || []).length ? { cuenta: inp.cuenta, encontrados: acc.length, accionables: acc.map((x) => ({ ...x, por_que: (x.por_que || "").slice(0, 1500), se_puede_ejecutar: !!x.accion_valida })) } : { cuenta: inp.cuenta, encontrados: 0, nota: `No hay accionables de ${inp.cuenta} que mencionen "${q}". Puede estar escrito distinto: prob\xE1 con una palabra sola.` };
+        } else if (tu.name === "propuestas_estrategicas") {
+          const { data: pr } = await supabase2.from("propuestas_estrategicas").select("id, tipo, titulo, estado, hipotesis, que_se_propuso, ejecucion_real, resultado_esperado, creada_el, decidida_el").eq("account", inp.cuenta).order("creada_el", { ascending: false }).limit(10);
+          out = (pr || []).length ? { cuenta: inp.cuenta, propuestas: pr } : { cuenta: inp.cuenta, nota: "Esta cuenta no tiene propuestas estrat\xE9gicas cargadas." };
         } else if (tu.name === "salud_datos") {
           const [dh, integ, snaps] = await Promise.all([supabase2.from("v_data_health").select("*"), supabase2.from("v_integridad_conversiones").select("*").limit(5), supabase2.from("v_snapshots_disponibles").select("*")]);
           out = { data_health: dh.data, descuadres: integ.data, snapshots: snaps.data };
@@ -3969,14 +3998,16 @@ Reporte completo: ${url}`;
       filas.push({
         notion_id: page.id,
         account: cuenta,
-        titulo: txt(p.Accionable || p.Name),
+        titulo: txt(p.Accion || p.Accionable || p.Name || p.Title),
         estado: p.Estado?.select?.name || null,
         prioridad: p.Prioridad?.select?.name || null,
         naturaleza: p.Naturaleza?.select?.name || null,
         origen: p.Origen?.select?.name || null,
         entidad: txt(p.Entidad) || null,
         causa_raiz: txt(p["Causa raiz"]) || null,
-        por_que: txt(p["Por que"] || p["Por qu\xE9"]).slice(0, 1e3),
+        como_hacerlo: txt(p["Como hacerlo"]) || null,
+        donde: txt(p.Donde) || null,
+        por_que: txt(p["Por que"] || p["Por qu\xE9"]).slice(0, 2e3),
         detectado: p.Detectado?.date?.start || null,
         ejecutado_el: p["Ejecutado el"]?.date?.start || null,
         vence: p.Vence?.date?.start || null,
@@ -3984,6 +4015,7 @@ Reporte completo: ${url}`;
         revision_ia: txt(p["Revision IA"]) || null,
         ultima_edicion: page.last_edited_time,
         sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
+        url: page.url,
         accion: parsed.accion || null,
         accion_valida: !!parsed.accion,
         accion_error: parsed.error || null
