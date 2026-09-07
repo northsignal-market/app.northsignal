@@ -21,10 +21,16 @@ export function detectarTipoAuto(titulo: string, comoHacerlo?: string | null): T
 export function extraerKeyword(titulo: string, entidad?: string | null): string {
   const m = titulo.match(/["“'‘\[]([^"”'’\]]+)["”'’\]]/);
   if (m) return m[1].trim();
+  // "Cambiar X de concordancia ..." / "Pausar X en ..." / "Agregar X como negativa"
+  const c = titulo.match(/^(?:cambiar|pausar|desactivar|agregar|añadir|excluir)\s+(?:la\s+keyword\s+|la\s+palabra\s+clave\s+|el\s+término\s+|la\s+)?(.+?)\s+(?:de\s+concordancia|en\s+(?:el\s+grupo|la\s+campaña|[A-Z0-9])|como\s+negativa|a\s+nivel|a\s+(?:exacta|frase|amplia)\b)/i);
+  if (c) return c[1].trim();
   const k = titulo.match(/(?:keyword|término|termino|palabra clave|negativa)\s+(?:de\s+)?([a-z0-9äöüß][^,;:()]{2,60}?)(?:\s+(?:en|del|de la|a nivel|como)\b|$)/i);
   if (k) return k[1].trim();
-  const partes = String(entidad || '').split('|').map(x => x.trim());
-  return partes[2] || '';
+  // Entidad con formato ruta (A > B > C > keyword) o campaña|grupo|keyword: el último tramo
+  const e = String(entidad || '');
+  if (e.includes(' > ')) return e.split(' > ').pop()!.trim();
+  const partes = e.split('|').map(x => x.trim());
+  return partes.length >= 3 ? partes[partes.length - 1] : '';
 }
 
 /** Concordancia destino de un título "de X a Y". Devuelve la última mencionada. */
