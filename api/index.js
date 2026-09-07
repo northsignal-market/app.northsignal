@@ -1163,6 +1163,65 @@ function createApp() {
   }));
   app2.use(cookieParser());
   app2.use("/api", authRouter);
+  app2.get("/r/:token", async (req, res) => {
+    if (!supabase) return res.status(503).send("No disponible");
+    const { data: r } = await supabase.from("v_reporte_publico").select("*").eq("token", req.params.token).maybeSingle();
+    if (!r) return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no est\xE1 disponible.</body></html>');
+    await supabase.from("reportes_cliente").update({ vistas: r.vistas ? r.vistas + 1 : 1, visto_el: r.visto_el || (/* @__PURE__ */ new Date()).toISOString() }).eq("token", req.params.token);
+    const en = r.idioma === "en";
+    const t = en ? { titulo: "Performance Report", periodo: "Period", inv: "Spend", conv: "Conversions", cpa: "CPA", clics: "Clicks", ctr: "CTR", vs: "vs previous period", camp: "Campaigns", grp: "Ad groups", pdf: "Download PDF", by: "Prepared by" } : { titulo: "Reporte de rendimiento", periodo: "Per\xEDodo", inv: "Inversi\xF3n", conv: "Conversiones", cpa: "CPA", clics: "Clics", ctr: "CTR", vs: "vs per\xEDodo anterior", camp: "Campa\xF1as", grp: "Grupos de anuncios", pdf: "Descargar PDF", by: "Preparado por" };
+    const { data: cuenta } = await supabase.from("cuentas").select("moneda, locale").eq("account", r.account).single();
+    const fmt = (v, tipo = "num") => v == null ? "\u2014" : tipo === "moneda" ? new Intl.NumberFormat(cuenta?.locale || "es-CL", { style: "currency", currency: cuenta?.moneda || "CLP", maximumFractionDigits: cuenta?.moneda === "EUR" ? 2 : 0 }).format(Number(v)) : tipo === "pct" ? Number(v).toFixed(2) + "%" : new Intl.NumberFormat(cuenta?.locale || "es-CL", { maximumFractionDigits: 1 }).format(Number(v));
+    const delta2 = (k) => {
+      const m = r.metricas?.[k];
+      if (!m || m.anterior == null || m.actual == null || !m.anterior) return "";
+      const d = (m.actual - m.anterior) / m.anterior * 100;
+      const bueno = k === "cpa" ? d < 0 : d > 0;
+      return `<span style="font-size:12px;color:${bueno ? "#1a7f37" : "#b42318"}">${d > 0 ? "+" : ""}${d.toFixed(0)}% ${t.vs}</span>`;
+    };
+    const kpis = r.reporte_plantilla?.kpis || ["gasto", "conversiones", "cpa", "clics"];
+    const kpiNombre = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: en ? "Impression share" : "Cuota de impresiones" };
+    const kpiHtml = kpis.map((k) => `<div style="flex:1;min-width:120px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">${kpiNombre[k] || k}</div><div style="font-size:22px;font-weight:600;color:#111827;margin:4px 0 2px">${fmt(r.metricas?.[k]?.actual, k === "gasto" || k === "cpa" ? "moneda" : k === "ctr" || k === "cuota_impresiones" ? "pct" : "num")}</div>${delta2(k)}</div>`).join("");
+    const esc = (x) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+    const bloques = (r.bloques || []).map((b) => `<section style="margin:22px 0"><h2 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 8px">${esc(b.etiqueta)}</h2>${b.texto ? `<p style="margin:0 0 8px;line-height:1.55">${esc(b.texto).replace(/\n\n/g, '</p><p style="margin:0 0 8px;line-height:1.55">')}</p>` : ""}${b.vinetas?.length ? `<ul style="margin:0;padding-left:18px;line-height:1.55">${b.vinetas.map((v) => `<li style="margin:4px 0">${esc(v)}</li>`).join("")}</ul>` : ""}</section>`).join("");
+    const tabla = (filas, cols) => filas?.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><thead><tr>${cols.map((c) => `<th style="text-align:${c.k === "nombre" || c.k === "campana" ? "left" : "right"};padding:8px;background:#0062CC;color:#fff;font-weight:600">${c.n}</th>`).join("")}</tr></thead><tbody>${filas.map((f, i) => `<tr style="background:${i % 2 ? "#f9fafb" : "#fff"}">${cols.map((c) => `<td style="text-align:${c.k === "nombre" || c.k === "campana" ? "left" : "right"};padding:7px 8px;border-bottom:1px solid #eee">${c.f ? fmt(f[c.k], c.f) : esc(f[c.k])}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "";
+    const camp = tabla(r.campanas?.campanas || [], [{ k: "nombre", n: t.camp }, { k: "gasto", n: t.inv, f: "moneda" }, { k: "conv", n: t.conv, f: "num" }, { k: "cpa", n: t.cpa, f: "moneda" }, { k: "ctr", n: t.ctr, f: "pct" }]);
+    const grp = tabla((r.campanas?.grupos || []).slice(0, 15), [{ k: "nombre", n: t.grp }, { k: "gasto", n: t.inv, f: "moneda" }, { k: "conv", n: t.conv, f: "num" }, { k: "cpa", n: t.cpa, f: "moneda" }]);
+    const titulo = (r.encabezado_reporte || "").split("|")[0].trim() || r.nombre_cliente;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Robots-Tag", "noindex");
+    res.send(`<!doctype html><html lang="${r.idioma}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(titulo)} \xB7 ${t.titulo}</title></head>
+<body style="margin:0;background:#f3f4f6;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1f2937">
+<div style="max-width:860px;margin:0 auto;padding:24px 16px 48px">
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:8px 0 16px;border-bottom:2px solid #0062CC;margin-bottom:20px">
+    <div><div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">NorthSignal</div><h1 style="font-size:22px;margin:4px 0 2px;color:#111827">${esc(titulo)}</h1><div style="font-size:13px;color:#4b5563">${t.titulo} \xB7 ${t.periodo}: ${r.periodo_desde} \u2192 ${r.periodo_hasta}</div></div>
+    <a href="/api/publico/reportes/${esc(r.token)}/pdf" style="font-size:13px;color:#0062CC;text-decoration:none;white-space:nowrap">${t.pdf} \u2193</a>
+  </header>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">${kpiHtml}</div>
+  <main style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:8px 22px 18px;font-size:14px">${bloques}</main>
+  <div style="margin-top:20px">${camp}${grp}</div>
+  <footer style="margin-top:28px;font-size:12px;color:#6b7280">${t.by} ${esc(r.reporte_plantilla?.firma || "NorthSignal")} \xB7 v${r.version}</footer>
+</div></body></html>`);
+  });
+  app2.get("/api/publico/reportes/:token/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).send("No disponible");
+    const { data: r } = await supabase.from("reportes_cliente").select("id, pdf_path, estado, account, periodo_desde").eq("token", req.params.token).in("estado", ["aprobado", "enviado"]).maybeSingle();
+    if (!r) return res.status(404).send("No disponible");
+    let ruta = r.pdf_path;
+    if (!ruta) {
+      try {
+        ruta = (await generarYGuardarPdf(r.id)).pdf_path;
+      } catch {
+      }
+    }
+    if (!ruta) return res.status(404).send("PDF no disponible");
+    const { data: file } = await supabase.storage.from("reportes").download(ruta);
+    if (!file) return res.status(404).send("PDF no disponible");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="reporte_${r.account}_${r.periodo_desde}.pdf"`);
+    res.send(Buffer.from(await file.arrayBuffer()));
+  });
   app2.use("/api", authMiddleware);
   app2.use("/api", (req, res, next) => {
     const t0 = Date.now();
@@ -2757,6 +2816,49 @@ Las descripciones no deben superar los 90 caracteres.`;
     }
     return { resumen: lineas.join("\n"), cambiamos: "", sigue: "" };
   }
+  async function bloquesDe(r) {
+    if (Array.isArray(r.bloques) && r.bloques.length) return r.bloques;
+    const pdf = await cargarPdf();
+    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === "en" ? "Changes applied" : "Cambios aplicados"}:
+${r.que_cambiamos}` : "", r.que_sigue ? `${r.idioma === "en" ? "Next steps" : "Pr\xF3ximos pasos"}:
+${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
+    const b = pdf.parsearBloques(textoCompleto || "");
+    if (b.length && supabase) await supabase.from("reportes_cliente").update({ bloques: b }).eq("id", r.id);
+    return b;
+  }
+  async function guardarVersion(reporteId, bloques, autor, motivo) {
+    if (!supabase) return;
+    const { data: r } = await supabase.from("reportes_cliente").select("version").eq("id", reporteId).single();
+    const v = (r?.version || 1) + 1;
+    await supabase.from("reportes_versiones").insert({ reporte_id: reporteId, version: v, autor, bloques, motivo });
+    await supabase.from("reportes_cliente").update({ version: v, bloques, editado: autor === "andres", pdf_path: null }).eq("id", reporteId);
+    return v;
+  }
+  async function regenerarSeccion(r, cuenta, etiqueta, instruccion) {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("Sin ANTHROPIC_API_KEY");
+    const Anthropic3 = (await import("@anthropic-ai/sdk")).default;
+    const cli = new Anthropic3({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const [pulsos, hechos, estado] = await Promise.all([
+      supabase.from("pulso_diario").select("fecha, hallazgo_principal, resumen").eq("account", r.account).gte("fecha", r.periodo_desde).lte("fecha", r.periodo_hasta).order("fecha"),
+      supabase.from("accionables_espejo").select("titulo, ejecutado_el, por_que").eq("account", r.account).eq("estado", "Hecho").gte("ejecutado_el", r.periodo_desde).lte("ejecutado_el", r.periodo_hasta),
+      supabase.rpc("get_estado_cuenta", { p_account: r.account })
+    ]);
+    const idioma = r.idioma === "en" ? "ingl\xE9s" : "espa\xF1ol";
+    const otras = (r.bloques || []).filter((b) => b.etiqueta !== etiqueta).map((b) => `${b.etiqueta}: ${b.texto || ""} ${(b.vinetas || []).map((v) => "- " + v).join(" ")}`).join("\n");
+    const prompt = `Reescrib\xED SOLO la secci\xF3n "${etiqueta}" del reporte al cliente ${cuenta.nombre_cliente}, per\xEDodo ${r.periodo_desde} a ${r.periodo_hasta}, en ${idioma}, primera persona del singular.
+${instruccion ? "INSTRUCCI\xD3N DE ANDR\xC9S: " + instruccion : ""}
+LAS OTRAS SECCIONES (no las repitas ni las contradigas): ${otras}
+REGLAS: sin guion largo; sin "no es X, es Y"; sin listas de tres forzadas; sin adverbios de intensidad; un n\xFAmero exacto en vez de un adjetivo; prueba del CFO; malas noticias en voz activa y con causa. Entre 1 y 5 vi\xF1etas si la secci\xF3n es de vi\xF1etas (Observaciones, Cambios, Atenci\xF3n, Pr\xF3ximos); un p\xE1rrafo corto si es Contexto.
+REGLAS DE LA CUENTA: ${cuenta.reglas_dominio || ""}
+DATOS: ${JSON.stringify(r.metricas)} SERIE: ${JSON.stringify(r.serie)} CAMPA\xD1AS: ${JSON.stringify(r.campanas)}
+AN\xC1LISIS DIARIO DEL PER\xCDODO: ${JSON.stringify(pulsos.data || [])} CAMBIOS EJECUTADOS: ${JSON.stringify(hechos.data || [])} PLAN Y ABIERTOS: ${JSON.stringify({ plan: estado.data?.plan_vigente?.contexto, abiertos: estado.data?.accionables_abiertos?.map((a) => a.titulo) })}
+Devolv\xE9 SOLO JSON: {"texto": "<p\xE1rrafo o vac\xEDo>", "vinetas": ["...", "..."]}`;
+    const msg = await cli.messages.create({ model: "claude-sonnet-5", max_tokens: 1200, messages: [{ role: "user", content: prompt }], output_config: { effort: "medium" } });
+    const raw2 = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    const i = raw2.indexOf("{"), j = raw2.lastIndexOf("}");
+    const o = JSON.parse(raw2.slice(i, j + 1));
+    return { texto: o.texto || void 0, vinetas: Array.isArray(o.vinetas) && o.vinetas.length ? o.vinetas : void 0 };
+  }
   async function buscarBriefEnRango(account, desde, hasta) {
     if (!notion || !NOTION_BASES.BRIEFS) return null;
     const clienteId = await findNotionClientId(notion, account);
@@ -2823,6 +2925,11 @@ Devolv\xE9 solo el texto del reporte, sin encabezado ni comentarios.`;
         secciones.resumen = await redactarReporte(account, cuenta, desde, hasta, datos);
         origen = "sonnet-5";
       }
+      const pdfLib = await cargarPdf();
+      const textoInicial = [secciones.resumen, secciones.cambiamos ? `${cuenta.idioma_reporte === "en" ? "Changes applied" : "Cambios aplicados"}:
+${secciones.cambiamos}` : "", secciones.sigue ? `${cuenta.idioma_reporte === "en" ? "Next steps" : "Pr\xF3ximos pasos"}:
+${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
+      const bloquesIniciales = pdfLib.parsearBloques(textoInicial);
       const { data: fila, error: e2 } = await supabase.from("reportes_cliente").upsert({
         account,
         periodo_desde: desde,
@@ -2830,6 +2937,8 @@ Devolv\xE9 solo el texto del reporte, sin encabezado ni comentarios.`;
         tipo,
         idioma: cuenta.idioma_reporte,
         estado: "borrador",
+        bloques: bloquesIniciales,
+        version: 1,
         resumen_ejecutivo: secciones.resumen,
         que_cambiamos: secciones.cambiamos || null,
         que_sigue: secciones.sigue || null,
@@ -2840,6 +2949,7 @@ Devolv\xE9 solo el texto del reporte, sin encabezado ni comentarios.`;
         escrito_por: origen === "brief" ? "opus-5-semanal" : origen === "sonnet-5" ? "sonnet-5-desde-datos" : "andres"
       }, { onConflict: "account,periodo_desde,tipo" }).select().single();
       if (e2) return res.status(500).json({ error: e2.message });
+      await supabase.from("reportes_versiones").upsert({ reporte_id: fila.id, version: 1, autor: origen === "brief" ? "opus-5-semanal" : origen === "sonnet-5" ? "sonnet-5" : "andres", bloques: bloquesIniciales, motivo: "borrador inicial" }, { onConflict: "reporte_id,version", ignoreDuplicates: true });
       res.json({ ok: true, reporte: fila, origen, dias_con_datos: nDias });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -2856,51 +2966,85 @@ Devolv\xE9 solo el texto del reporte, sin encabezado ni comentarios.`;
   });
   app2.put("/api/reportes/:id", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { resumen_ejecutivo, que_cambiamos, que_sigue } = req.body || {};
-    const { data, error } = await supabase.from("reportes_cliente").update({ resumen_ejecutivo, que_cambiamos, que_sigue, editado: true, pdf_path: null }).eq("id", req.params.id).eq("estado", "borrador").select().single();
-    if (error) return res.status(500).json({ error: error.message });
+    const { bloques, nota_interna, motivo } = req.body || {};
+    const { data: r } = await supabase.from("reportes_cliente").select("id, estado").eq("id", req.params.id).single();
+    if (!r) return res.status(404).json({ error: "no encontrado" });
+    if (["enviado"].includes(r.estado)) return res.status(409).json({ error: "Ya se envi\xF3; para cambiarlo, cre\xE1 una versi\xF3n nueva del per\xEDodo." });
+    if (Array.isArray(bloques)) await guardarVersion(Number(req.params.id), bloques, "andres", motivo || "edici\xF3n");
+    if (nota_interna !== void 0) await supabase.from("reportes_cliente").update({ nota_interna }).eq("id", req.params.id);
+    const { data } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
     res.json(data);
   });
+  app2.post("/api/reportes/:id/regenerar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const { etiqueta, instruccion } = req.body || {};
+      const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
+      if (!r) return res.status(404).json({ error: "no encontrado" });
+      if (r.estado === "enviado") return res.status(409).json({ error: "Ya se envi\xF3." });
+      const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
+      r.bloques = await bloquesDe(r);
+      const nuevo = await regenerarSeccion(r, cuenta, etiqueta, instruccion);
+      const bloques = r.bloques.map((b) => b.etiqueta === etiqueta ? { ...b, ...nuevo } : b);
+      if (!r.bloques.some((b) => b.etiqueta === etiqueta)) bloques.push({ etiqueta, ...nuevo });
+      const v = await guardarVersion(r.id, bloques, "regenerar", `regener\xF3 "${etiqueta}"${instruccion ? ": " + instruccion : ""}`);
+      res.json({ ok: true, bloques, version: v });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/reportes/:id/versiones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("reportes_versiones").select("id, version, fecha, autor, motivo").eq("reporte_id", req.params.id).order("version", { ascending: false });
+    res.json(data || []);
+  });
+  app2.post("/api/reportes/:id/versiones/:v/restaurar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data: ver } = await supabase.from("reportes_versiones").select("bloques").eq("reporte_id", req.params.id).eq("version", req.params.v).single();
+    if (!ver) return res.status(404).json({ error: "version no encontrada" });
+    const v = await guardarVersion(Number(req.params.id), ver.bloques, "andres", `restaur\xF3 la v${req.params.v}`);
+    res.json({ ok: true, version: v, bloques: ver.bloques });
+  });
+  async function generarYGuardarPdf(id) {
+    const req = { params: { id } };
+    const res = { status: () => ({ json: (j) => {
+      throw new Error(j.error || "error");
+    } }), json: (j) => j };
+    const pdf = await cargarPdf();
+    const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
+    if (!r) return res.status(404).json({ error: "no encontrado" });
+    const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
+    const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
+    const { data: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
+    const bloquesR = await bloquesDe(r);
+    const input = {
+      account: r.account,
+      nombre_cliente: cuenta.nombre_cliente,
+      idioma: r.idioma,
+      moneda: cuenta.moneda,
+      locale: cuenta.locale,
+      titulo: (cuenta.encabezado_reporte || "").split("|")[0].trim() || void 0,
+      periodo_desde: r.periodo_desde,
+      periodo_hasta: r.periodo_hasta,
+      tipo: r.tipo,
+      bloques: bloquesR,
+      metricas: r.metricas,
+      periodo_anterior_completo: (anteriorCount ?? 0) >= dias,
+      campanas: r.campanas?.campanas || [],
+      grupos: r.campanas?.grupos || [],
+      logo: await pdf.descargarLogo()
+    };
+    const buf = await pdf.generarReportePDF(input);
+    const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
+    const { error: up } = await supabase.storage.from("reportes").upload(ruta, buf, { contentType: "application/pdf", upsert: true });
+    if (up) return res.status(500).json({ error: up.message });
+    await supabase.from("reportes_cliente").update({ pdf_path: ruta, pdf_bytes: buf.length }).eq("id", r.id);
+    return { ok: true, pdf_path: ruta, bytes: buf.length };
+  }
   app2.post("/api/reportes/:id/pdf", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
-      const pdf = await cargarPdf();
-      const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
-      if (!r) return res.status(404).json({ error: "no encontrado" });
-      const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
-      const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
-      const { data: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
-      const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === "en" ? "Changes applied" : "Cambios aplicados"}:
-${r.que_cambiamos}` : "", r.que_sigue ? `${r.idioma === "en" ? "Next steps" : "Pr\xF3ximos pasos"}:
-${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
-      const input = {
-        account: r.account,
-        nombre_cliente: cuenta.nombre_cliente,
-        idioma: r.idioma,
-        moneda: cuenta.moneda,
-        locale: cuenta.locale,
-        titulo: (cuenta.encabezado_reporte || "").split("|")[0].trim() || void 0,
-        periodo_desde: r.periodo_desde,
-        periodo_hasta: r.periodo_hasta,
-        tipo: r.tipo,
-        bloques: pdf.parsearBloques(textoCompleto),
-        metricas: r.metricas,
-        periodo_anterior_completo: (anteriorCount ?? 0) >= dias,
-        campanas: r.campanas?.campanas || [],
-        grupos: r.campanas?.grupos || [],
-        logo: await pdf.descargarLogo()
-      };
-      const buf = await pdf.generarReportePDF(input);
-      const ruta = `${r.account}/${r.tipo}_${r.periodo_desde}_${r.id}.pdf`;
-      const { error: up } = await supabase.storage.from("reportes").upload(ruta, buf, { contentType: "application/pdf", upsert: true });
-      if (up) return res.status(500).json({ error: up.message });
-      await supabase.from("reportes_cliente").update({ pdf_path: ruta, pdf_bytes: buf.length }).eq("id", r.id);
-      if (req.query.download === "1") {
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
-        return res.send(buf);
-      }
-      res.json({ ok: true, pdf_path: ruta, bytes: buf.length });
+      res.json(await generarYGuardarPdf(Number(req.params.id)));
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -2914,6 +3058,69 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
     res.send(Buffer.from(await data.arrayBuffer()));
+  });
+  app2.post("/api/reportes/:id/revisado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    await supabase.from("reportes_cliente").update({ estado: "revisado" }).eq("id", req.params.id).eq("estado", "borrador");
+    res.json({ ok: true });
+  });
+  app2.post("/api/reportes/:id/enviar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data: r } = await supabase.from("reportes_cliente").select("*").eq("id", req.params.id).single();
+    if (!r) return res.status(404).json({ error: "no encontrado" });
+    if (r.estado !== "aprobado") return res.status(409).json({ error: "Primero aprobalo." });
+    const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
+    const url = `${process.env.APP_URL || "https://app-northsignal.vercel.app"}/r/${r.token}`;
+    const canal = (req.body || {}).canal || cuenta.canal_reporte;
+    if (canal === "slack") {
+      const hook = process.env[`SLACK_WEBHOOK_${r.account}`] || process.env.SLACK_WEBHOOK_URL;
+      if (!hook) return res.status(422).json({ error: `Falta SLACK_WEBHOOK_${r.account} en Vercel. Mientras tanto, copi\xE1 el link y pegalo en Slack: ${url}` });
+      const bloques = await bloquesDe(r);
+      const resumen = bloques.slice(0, 2).map((b) => `*${b.etiqueta}*
+${b.texto || ""}${(b.vinetas || []).map((v) => "\n\u2022 " + v).join("")}`).join("\n\n");
+      const m = r.metricas || {};
+      const texto = r.idioma === "en" ? `*Weekly report \xB7 ${r.periodo_desde} to ${r.periodo_hasta}*
+Spend ${m.gasto?.actual ?? "-"} \xB7 Conversions ${m.conversiones?.actual ?? "-"} \xB7 CPA ${m.cpa?.actual ?? "-"}
+
+${resumen}
+
+Full report: ${url}` : `*Reporte semanal \xB7 ${r.periodo_desde} al ${r.periodo_hasta}*
+Inversi\xF3n ${m.gasto?.actual ?? "-"} \xB7 Conversiones ${m.conversiones?.actual ?? "-"} \xB7 CPA ${m.cpa?.actual ?? "-"}
+
+${resumen}
+
+Reporte completo: ${url}`;
+      const rs = await fetch(hook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: texto }) });
+      if (!rs.ok) return res.status(500).json({ error: "Slack respondi\xF3 " + rs.status });
+      await supabase.from("reportes_cliente").update({ estado: "enviado", enviado_el: (/* @__PURE__ */ new Date()).toISOString(), enviado_a: "slack" }).eq("id", r.id);
+      return res.json({ ok: true, canal: "slack", url });
+    }
+    if (canal === "email") {
+      await supabase.from("reportes_cliente").update({ enviado_a: "email:pendiente" }).eq("id", r.id);
+      return res.json({ ok: true, canal: "email", pendiente: true, url, nota: "El script lo manda por mail con el PDF adjunto en la pr\xF3xima corrida de las 9:15." });
+    }
+    return res.json({ ok: true, canal: "manual", url, nota: "Canal manual: copi\xE1 el link o descarg\xE1 el PDF." });
+  });
+  app2.get("/api/cron/reportes-por-enviar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("reportes_cliente").select("id, account, periodo_desde, periodo_hasta, idioma, token, pdf_path, metricas, bloques, resumen_ejecutivo").eq("estado", "aprobado").eq("enviado_a", "email:pendiente");
+    const out = [];
+    for (const r of data || []) {
+      const { data: cuenta } = await supabase.from("cuentas").select("nombre_cliente, destinatarios_reporte, nombre_contacto, encabezado_reporte").eq("account", r.account).single();
+      let pdfUrl = null;
+      if (r.pdf_path) {
+        const { data: signed } = await supabase.storage.from("reportes").createSignedUrl(r.pdf_path, 3600);
+        pdfUrl = signed?.signedUrl || null;
+      }
+      out.push({ ...r, cuenta, pdf_url: pdfUrl, link: `${process.env.APP_URL || "https://app-northsignal.vercel.app"}/r/${r.token}` });
+    }
+    res.json(out);
+  });
+  app2.post("/api/cron/reportes-enviado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { id, a } = req.body || {};
+    await supabase.from("reportes_cliente").update({ estado: "enviado", enviado_el: (/* @__PURE__ */ new Date()).toISOString(), enviado_a: "email:" + (a || "") }).eq("id", id);
+    res.json({ ok: true });
   });
   app2.post("/api/reportes/:id/aprobar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

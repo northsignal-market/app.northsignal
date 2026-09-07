@@ -4,6 +4,7 @@ import {
   Building, DollarSign, Calendar, Clock, AlertCircle, 
   Lightbulb, HelpCircle, ArrowRight, ExternalLink, ShieldCheck, Target, TrendingUp, Layers, Save
 } from 'lucide-react';
+import { ReportesEditor } from './ReportesEditor';
 import { useAppStore } from '../store/useAppStore';
 import type { NotionClientInfo, Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
@@ -566,78 +567,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
       </>)}
       {ver('reportes') && (<>
-      {/* Reportes al cliente */}
-      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Elegís el período, el sistema arma el borrador, lo leés, lo aprobás. {origenReporte === 'sonnet-5' ? 'El último se redactó desde los datos porque no había análisis semanal para ese rango.' : origenReporte === 'brief' ? 'El último salió del análisis semanal.' : ''}</p>
-          </div>
-          <button onClick={() => setGenerandoDesde(v => !v)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>{generandoDesde ? 'Cancelar' : 'Nuevo borrador'}</button>
-        </div>
-        {generandoDesde && (
-          <div className="p-3 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-2)' }}>
-            <div className="flex flex-wrap gap-1.5">
-              {([['semana_cerrada', 'Última semana cerrada'], ['dos_semanas', 'Últimas dos semanas'], ['mes_pasado', 'Mes pasado'], ['ultimos_7', 'Últimos 7 días']] as const).map(([k, l]) => (
-                <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#FFFFFF]" style={{ border: '1px solid var(--border)' }}>{l}</button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} max={formGenerar.hasta || undefined} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-              <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} min={formGenerar.desde || undefined} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-              <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Armando el borrador…' : 'Crear borrador'}</button>
-              <span className="text-[10px] text-[#F5F7FA] opacity-50">El sistema busca solo el análisis de esa semana; si no hay, lo redacta desde los datos. Los números salen siempre de Supabase.</span>
-            </div>
-          </div>
-        )}
-        {reportes.length === 0 ? (
-          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin reportes para {activeClient}. El lunes, tras la tarea semanal, aparece el borrador de la semana.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {reportes.map(r => (
-              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)', border: reporteAbierto?.id === r.id ? '1px solid var(--primary)' : '1px solid transparent' }}
-                onClick={() => { setReporteAbierto(r); setEditandoReporte(false); setTextoReporte({ resumen_ejecutivo: r.resumen_ejecutivo, que_cambiamos: r.que_cambiamos || '', que_sigue: r.que_sigue || '' }); }}>
-                <span className={`text-[10px] uppercase tracking-wider font-bold w-20 shrink-0 ${r.estado === 'borrador' ? 'text-[#0062CC]' : r.estado === 'enviado' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{r.estado}</span>
-                <span className="text-xs text-[#FFFFFF] tabular">{r.periodo_desde} → {r.periodo_hasta}</span>
-                <span className="text-[11px] text-[#F5F7FA] opacity-60">{r.tipo} · {r.idioma.toUpperCase()}{r.editado ? ' · editado' : ''}</span>
-                <span className="ml-auto text-[11px] text-[#F5F7FA] opacity-50 tabular">
-                  {r.metricas?.cpa?.actual != null ? `CPA ${fmtMoney(r.metricas.cpa.actual)}` : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {reporteAbierto && (
-          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{reporteAbierto.periodo_desde} → {reporteAbierto.periodo_hasta} · {reporteAbierto.estado}</span>
-              <div className="flex gap-2">
-                <button onClick={() => accionReporte(reporteAbierto.id, 'pdf')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Ver PDF</button>
-                {reporteAbierto.estado === 'borrador' && !editandoReporte && <button onClick={() => setEditandoReporte(true)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Editar texto</button>}
-                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'aprobar')} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Aprobar</button>}
-                {reporteAbierto.estado === 'borrador' && <button onClick={() => accionReporte(reporteAbierto.id, 'descartar')} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-60">Descartar</button>}
-              </div>
-            </div>
-            {editandoReporte ? (
-              <div className="space-y-2">
-                {(['resumen_ejecutivo', 'que_cambiamos', 'que_sigue'] as const).map(k => (
-                  <label key={k} className="block text-[11px] text-[#F5F7FA] opacity-70">{k === 'resumen_ejecutivo' ? 'Resumen ejecutivo' : k === 'que_cambiamos' ? 'Qué cambiamos' : 'Qué sigue'}
-                    <textarea value={textoReporte[k]} onChange={e => setTextoReporte(t => ({ ...t, [k]: e.target.value }))} rows={k === 'resumen_ejecutivo' ? 9 : 4}
-                      className="w-full mt-1 text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-2 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC]" style={{ fontFamily: 'inherit' }} />
-                  </label>
-                ))}
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setEditandoReporte(false)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
-                  <button onClick={guardarTextoReporte} disabled={trabajandoReporte === 'guardar'} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF]">Guardar</button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-xs text-[#F5F7FA] leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto custom-scrollbar">{reporteAbierto.resumen_ejecutivo}</div>
-            )}
-          </div>
-        )}
-      </div>
-
+      {/* Reportes al cliente v2 */}
+      <ReportesEditor activeClient={activeClient} fmtMoney={fmtMoney} />
       </>)}
       {ver('diagnostico') && (<>
       {/* Accionables Abiertos de esta cuenta */}

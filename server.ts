@@ -67,6 +67,58 @@ export function createApp() {
 // Auth routes extracted to auth/routes.ts
 
   // Auth middleware extracted to auth/middleware.ts
+
+  // ================================================================
+  // LINK PUBLICO DEL REPORTE: /r/:token. Sin login. El cliente lo abre en el telefono.
+  // Solo reportes aprobados o enviados. Registra la primera vista.
+  // ================================================================
+  app.get("/r/:token", async (req, res) => {
+    if (!supabase) return res.status(503).send('No disponible');
+    const { data: r } = await supabase.from('v_reporte_publico').select('*').eq('token', req.params.token).maybeSingle();
+    if (!r) return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no está disponible.</body></html>');
+    await supabase.from('reportes_cliente').update({ vistas: (r as any).vistas ? (r as any).vistas + 1 : 1, visto_el: (r as any).visto_el || new Date().toISOString() }).eq('token', req.params.token);
+    const en = r.idioma === 'en';
+    const t = en ? { titulo: 'Performance Report', periodo: 'Period', inv: 'Spend', conv: 'Conversions', cpa: 'CPA', clics: 'Clicks', ctr: 'CTR', vs: 'vs previous period', camp: 'Campaigns', grp: 'Ad groups', pdf: 'Download PDF', by: 'Prepared by' } : { titulo: 'Reporte de rendimiento', periodo: 'Período', inv: 'Inversión', conv: 'Conversiones', cpa: 'CPA', clics: 'Clics', ctr: 'CTR', vs: 'vs período anterior', camp: 'Campañas', grp: 'Grupos de anuncios', pdf: 'Descargar PDF', by: 'Preparado por' };
+    const { data: cuenta } = await supabase.from('cuentas').select('moneda, locale').eq('account', r.account).single();
+    const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' = 'num') => v == null ? '—' : tipo === 'moneda' ? new Intl.NumberFormat(cuenta?.locale || 'es-CL', { style: 'currency', currency: cuenta?.moneda || 'CLP', maximumFractionDigits: cuenta?.moneda === 'EUR' ? 2 : 0 }).format(Number(v)) : tipo === 'pct' ? Number(v).toFixed(2) + '%' : new Intl.NumberFormat(cuenta?.locale || 'es-CL', { maximumFractionDigits: 1 }).format(Number(v));
+    const delta = (k: string) => { const m = r.metricas?.[k]; if (!m || m.anterior == null || m.actual == null || !m.anterior) return ''; const d = (m.actual - m.anterior) / m.anterior * 100; const bueno = k === 'cpa' ? d < 0 : d > 0; return `<span style="font-size:12px;color:${bueno ? '#1a7f37' : '#b42318'}">${d > 0 ? '+' : ''}${d.toFixed(0)}% ${t.vs}</span>`; };
+    const kpis = (r.reporte_plantilla?.kpis || ['gasto', 'conversiones', 'cpa', 'clics']) as string[];
+    const kpiNombre: Record<string, string> = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: en ? 'Impression share' : 'Cuota de impresiones' };
+    const kpiHtml = kpis.map(k => `<div style="flex:1;min-width:120px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">${kpiNombre[k] || k}</div><div style="font-size:22px;font-weight:600;color:#111827;margin:4px 0 2px">${fmt(r.metricas?.[k]?.actual, k === 'gasto' || k === 'cpa' ? 'moneda' : k === 'ctr' || k === 'cuota_impresiones' ? 'pct' : 'num')}</div>${delta(k)}</div>`).join('');
+    const esc = (x: any) => String(x ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
+    const bloques = (r.bloques || []).map((b: any) => `<section style="margin:22px 0"><h2 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 8px">${esc(b.etiqueta)}</h2>${b.texto ? `<p style="margin:0 0 8px;line-height:1.55">${esc(b.texto).replace(/\n\n/g, '</p><p style="margin:0 0 8px;line-height:1.55">')}</p>` : ''}${b.vinetas?.length ? `<ul style="margin:0;padding-left:18px;line-height:1.55">${b.vinetas.map((v: string) => `<li style="margin:4px 0">${esc(v)}</li>`).join('')}</ul>` : ''}</section>`).join('');
+    const tabla = (filas: any[], cols: { k: string; n: string; f?: 'moneda' | 'num' | 'pct' }[]) => filas?.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><thead><tr>${cols.map(c => `<th style="text-align:${c.k === 'nombre' || c.k === 'campana' ? 'left' : 'right'};padding:8px;background:#0062CC;color:#fff;font-weight:600">${c.n}</th>`).join('')}</tr></thead><tbody>${filas.map((f, i) => `<tr style="background:${i % 2 ? '#f9fafb' : '#fff'}">${cols.map(c => `<td style="text-align:${c.k === 'nombre' || c.k === 'campana' ? 'left' : 'right'};padding:7px 8px;border-bottom:1px solid #eee">${c.f ? fmt(f[c.k], c.f) : esc(f[c.k])}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+    const camp = tabla(r.campanas?.campanas || [], [{ k: 'nombre', n: t.camp }, { k: 'gasto', n: t.inv, f: 'moneda' }, { k: 'conv', n: t.conv, f: 'num' }, { k: 'cpa', n: t.cpa, f: 'moneda' }, { k: 'ctr', n: t.ctr, f: 'pct' }]);
+    const grp = tabla((r.campanas?.grupos || []).slice(0, 15), [{ k: 'nombre', n: t.grp }, { k: 'gasto', n: t.inv, f: 'moneda' }, { k: 'conv', n: t.conv, f: 'num' }, { k: 'cpa', n: t.cpa, f: 'moneda' }]);
+    const titulo = (r.encabezado_reporte || '').split('|')[0].trim() || r.nombre_cliente;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(`<!doctype html><html lang="${r.idioma}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(titulo)} · ${t.titulo}</title></head>
+<body style="margin:0;background:#f3f4f6;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1f2937">
+<div style="max-width:860px;margin:0 auto;padding:24px 16px 48px">
+  <header style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:8px 0 16px;border-bottom:2px solid #0062CC;margin-bottom:20px">
+    <div><div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">NorthSignal</div><h1 style="font-size:22px;margin:4px 0 2px;color:#111827">${esc(titulo)}</h1><div style="font-size:13px;color:#4b5563">${t.titulo} · ${t.periodo}: ${r.periodo_desde} → ${r.periodo_hasta}</div></div>
+    <a href="/api/publico/reportes/${esc(r.token)}/pdf" style="font-size:13px;color:#0062CC;text-decoration:none;white-space:nowrap">${t.pdf} ↓</a>
+  </header>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">${kpiHtml}</div>
+  <main style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:8px 22px 18px;font-size:14px">${bloques}</main>
+  <div style="margin-top:20px">${camp}${grp}</div>
+  <footer style="margin-top:28px;font-size:12px;color:#6b7280">${t.by} ${esc(r.reporte_plantilla?.firma || 'NorthSignal')} · v${r.version}</footer>
+</div></body></html>`);
+  });
+  // PDF publico por token (solo aprobados/enviados)
+  app.get("/api/publico/reportes/:token/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).send('No disponible');
+    const { data: r } = await supabase.from('reportes_cliente').select('id, pdf_path, estado, account, periodo_desde').eq('token', req.params.token).in('estado', ['aprobado', 'enviado']).maybeSingle();
+    if (!r) return res.status(404).send('No disponible');
+    let ruta = r.pdf_path;
+    if (!ruta) { try { ruta = (await generarYGuardarPdf(r.id)).pdf_path; } catch {} }
+    if (!ruta) return res.status(404).send('PDF no disponible');
+    const { data: file } = await supabase.storage.from('reportes').download(ruta);
+    if (!file) return res.status(404).send('PDF no disponible');
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `inline; filename="reporte_${r.account}_${r.periodo_desde}.pdf"`);
+    res.send(Buffer.from(await file.arrayBuffer()));
+  });
+
   app.use('/api', authMiddleware);
 
   // Observabilidad: Vercel solo ve el status code, no el cuerpo. Este
@@ -1957,6 +2009,51 @@ Las descripciones no deben superar los 90 caracteres.`;
   }
 
   // Crear borrador de reporte para una cuenta y periodo
+
+  // ---- Reportes v2: bloques como fuente; texto legado se parsea una vez ----
+  async function bloquesDe(r: any): Promise<any[]> {
+    if (Array.isArray(r.bloques) && r.bloques.length) return r.bloques;
+    const pdf = await cargarPdf();
+    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === 'en' ? 'Changes applied' : 'Cambios aplicados'}:\n${r.que_cambiamos}` : '', r.que_sigue ? `${r.idioma === 'en' ? 'Next steps' : 'Próximos pasos'}:\n${r.que_sigue}` : ''].filter(Boolean).join('\n\n');
+    const b = pdf.parsearBloques(textoCompleto || '');
+    if (b.length && supabase) await supabase.from('reportes_cliente').update({ bloques: b }).eq('id', r.id);
+    return b;
+  }
+  async function guardarVersion(reporteId: number, bloques: any[], autor: string, motivo?: string) {
+    if (!supabase) return;
+    const { data: r } = await supabase.from('reportes_cliente').select('version').eq('id', reporteId).single();
+    const v = (r?.version || 1) + 1;
+    await supabase.from('reportes_versiones').insert({ reporte_id: reporteId, version: v, autor, bloques, motivo });
+    await supabase.from('reportes_cliente').update({ version: v, bloques, editado: autor === 'andres', pdf_path: null }).eq('id', reporteId);
+    return v;
+  }
+  // Regenerar UNA seccion con Sonnet 5, con los datos, sin tocar las demas
+  async function regenerarSeccion(r: any, cuenta: any, etiqueta: string, instruccion?: string): Promise<{ texto?: string; vinetas?: string[] }> {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('Sin ANTHROPIC_API_KEY');
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const cli = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const [pulsos, hechos, estado] = await Promise.all([
+      supabase!.from('pulso_diario').select('fecha, hallazgo_principal, resumen').eq('account', r.account).gte('fecha', r.periodo_desde).lte('fecha', r.periodo_hasta).order('fecha'),
+      supabase!.from('accionables_espejo').select('titulo, ejecutado_el, por_que').eq('account', r.account).eq('estado', 'Hecho').gte('ejecutado_el', r.periodo_desde).lte('ejecutado_el', r.periodo_hasta),
+      supabase!.rpc('get_estado_cuenta', { p_account: r.account }),
+    ]);
+    const idioma = r.idioma === 'en' ? 'inglés' : 'español';
+    const otras = (r.bloques || []).filter((b: any) => b.etiqueta !== etiqueta).map((b: any) => `${b.etiqueta}: ${b.texto || ''} ${(b.vinetas || []).map((v: string) => '- ' + v).join(' ')}`).join('\n');
+    const prompt = `Reescribí SOLO la sección "${etiqueta}" del reporte al cliente ${cuenta.nombre_cliente}, período ${r.periodo_desde} a ${r.periodo_hasta}, en ${idioma}, primera persona del singular.
+${instruccion ? 'INSTRUCCIÓN DE ANDRÉS: ' + instruccion : ''}
+LAS OTRAS SECCIONES (no las repitas ni las contradigas): ${otras}
+REGLAS: sin guion largo; sin "no es X, es Y"; sin listas de tres forzadas; sin adverbios de intensidad; un número exacto en vez de un adjetivo; prueba del CFO; malas noticias en voz activa y con causa. Entre 1 y 5 viñetas si la sección es de viñetas (Observaciones, Cambios, Atención, Próximos); un párrafo corto si es Contexto.
+REGLAS DE LA CUENTA: ${cuenta.reglas_dominio || ''}
+DATOS: ${JSON.stringify(r.metricas)} SERIE: ${JSON.stringify(r.serie)} CAMPAÑAS: ${JSON.stringify(r.campanas)}
+ANÁLISIS DIARIO DEL PERÍODO: ${JSON.stringify(pulsos.data || [])} CAMBIOS EJECUTADOS: ${JSON.stringify(hechos.data || [])} PLAN Y ABIERTOS: ${JSON.stringify({ plan: estado.data?.plan_vigente?.contexto, abiertos: estado.data?.accionables_abiertos?.map((a: any) => a.titulo) })}
+Devolvé SOLO JSON: {"texto": "<párrafo o vacío>", "vinetas": ["...", "..."]}`;
+    const msg = await cli.messages.create({ model: 'claude-sonnet-5', max_tokens: 1200, messages: [{ role: 'user', content: prompt }], output_config: { effort: 'medium' } as any });
+    const raw = msg.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+    const i = raw.indexOf('{'), j = raw.lastIndexOf('}');
+    const o = JSON.parse(raw.slice(i, j + 1));
+    return { texto: o.texto || undefined, vinetas: Array.isArray(o.vinetas) && o.vinetas.length ? o.vinetas : undefined };
+  }
+
   // Buscar el brief de una cuenta cuya semana cae en el rango
   async function buscarBriefEnRango(account: string, desde: string, hasta: string): Promise<any | null> {
     if (!notion || !NOTION_BASES.BRIEFS) return null;
@@ -2025,13 +2122,17 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       }
       if (!secciones.resumen) { secciones.resumen = await redactarReporte(account, cuenta, desde, hasta, datos); origen = 'sonnet-5'; }
 
+      const pdfLib = await cargarPdf();
+      const textoInicial = [secciones.resumen, secciones.cambiamos ? `${cuenta.idioma_reporte === 'en' ? 'Changes applied' : 'Cambios aplicados'}:\n${secciones.cambiamos}` : '', secciones.sigue ? `${cuenta.idioma_reporte === 'en' ? 'Next steps' : 'Próximos pasos'}:\n${secciones.sigue}` : ''].filter(Boolean).join('\n\n');
+      const bloquesIniciales = pdfLib.parsearBloques(textoInicial);
       const { data: fila, error: e2 } = await supabase.from('reportes_cliente').upsert({
-        account, periodo_desde: desde, periodo_hasta: hasta, tipo, idioma: cuenta.idioma_reporte, estado: 'borrador',
+        account, periodo_desde: desde, periodo_hasta: hasta, tipo, idioma: cuenta.idioma_reporte, estado: 'borrador', bloques: bloquesIniciales, version: 1,
         resumen_ejecutivo: secciones.resumen, que_cambiamos: secciones.cambiamos || null, que_sigue: secciones.sigue || null,
         metricas: datos.metricas, serie: datos.serie, campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
         brief_notion_id: briefUsado, escrito_por: origen === 'brief' ? 'opus-5-semanal' : origen === 'sonnet-5' ? 'sonnet-5-desde-datos' : 'andres'
       }, { onConflict: 'account,periodo_desde,tipo' }).select().single();
       if (e2) return res.status(500).json({ error: e2.message });
+      await supabase.from('reportes_versiones').upsert({ reporte_id: fila.id, version: 1, autor: origen === 'brief' ? 'opus-5-semanal' : origen === 'sonnet-5' ? 'sonnet-5' : 'andres', bloques: bloquesIniciales, motivo: 'borrador inicial' }, { onConflict: 'reporte_id,version', ignoreDuplicates: true });
       res.json({ ok: true, reporte: fila, origen, dias_con_datos: nDias });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -2050,16 +2151,50 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Editar texto (antes de aprobar)
   app.put("/api/reportes/:id", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { resumen_ejecutivo, que_cambiamos, que_sigue } = req.body || {};
-    const { data, error } = await supabase.from('reportes_cliente').update({ resumen_ejecutivo, que_cambiamos, que_sigue, editado: true, pdf_path: null }).eq('id', req.params.id).eq('estado', 'borrador').select().single();
-    if (error) return res.status(500).json({ error: error.message });
+    const { bloques, nota_interna, motivo } = req.body || {};
+    const { data: r } = await supabase.from('reportes_cliente').select('id, estado').eq('id', req.params.id).single();
+    if (!r) return res.status(404).json({ error: 'no encontrado' });
+    if (['enviado'].includes(r.estado)) return res.status(409).json({ error: 'Ya se envió; para cambiarlo, creá una versión nueva del período.' });
+    if (Array.isArray(bloques)) await guardarVersion(Number(req.params.id), bloques, 'andres', motivo || 'edición');
+    if (nota_interna !== undefined) await supabase.from('reportes_cliente').update({ nota_interna }).eq('id', req.params.id);
+    const { data } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
     res.json(data);
+  });
+  // Regenerar una sola seccion con instruccion opcional
+  app.post("/api/reportes/:id/regenerar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const { etiqueta, instruccion } = req.body || {};
+      const { data: r } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
+      if (!r) return res.status(404).json({ error: 'no encontrado' });
+      if (r.estado === 'enviado') return res.status(409).json({ error: 'Ya se envió.' });
+      const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', r.account).single();
+      r.bloques = await bloquesDe(r);
+      const nuevo = await regenerarSeccion(r, cuenta, etiqueta, instruccion);
+      const bloques = r.bloques.map((b: any) => b.etiqueta === etiqueta ? { ...b, ...nuevo } : b);
+      if (!r.bloques.some((b: any) => b.etiqueta === etiqueta)) bloques.push({ etiqueta, ...nuevo });
+      const v = await guardarVersion(r.id, bloques, 'regenerar', `regeneró "${etiqueta}"${instruccion ? ': ' + instruccion : ''}`);
+      res.json({ ok: true, bloques, version: v });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  // Versiones de un reporte
+  app.get("/api/reportes/:id/versiones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('reportes_versiones').select('id, version, fecha, autor, motivo').eq('reporte_id', req.params.id).order('version', { ascending: false });
+    res.json(data || []);
+  });
+  app.post("/api/reportes/:id/versiones/:v/restaurar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data: ver } = await supabase.from('reportes_versiones').select('bloques').eq('reporte_id', req.params.id).eq('version', req.params.v).single();
+    if (!ver) return res.status(404).json({ error: 'version no encontrada' });
+    const v = await guardarVersion(Number(req.params.id), ver.bloques, 'andres', `restauró la v${req.params.v}`);
+    res.json({ ok: true, version: v, bloques: ver.bloques });
   });
 
   // Generar el PDF (vista previa o final) y guardarlo en Storage
-  app.post("/api/reportes/:id/pdf", async (req, res) => {
-    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    try {
+  async function generarYGuardarPdf(id: number): Promise<any> {
+    const req: any = { params: { id } }; const res: any = { status: () => ({ json: (j: any) => { throw new Error(j.error || 'error'); } }), json: (j: any) => j };
+
       const pdf = await cargarPdf();
       const { data: r } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
       if (!r) return res.status(404).json({ error: 'no encontrado' });
@@ -2067,14 +2202,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
       const { data: anteriorCount } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', r.account)
         .gte('date', new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt('date', r.periodo_desde);
-      // El texto del reporte va como bloques con etiqueta (Contexto, Observaciones, ...).
-      // Si el brief trajo secciones separadas, se concatenan con sus etiquetas.
-      const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === 'en' ? 'Changes applied' : 'Cambios aplicados'}:\n${r.que_cambiamos}` : '', r.que_sigue ? `${r.idioma === 'en' ? 'Next steps' : 'Próximos pasos'}:\n${r.que_sigue}` : ''].filter(Boolean).join('\n\n');
+      const bloquesR = await bloquesDe(r);
       const input: ReporteInput = {
         account: r.account, nombre_cliente: cuenta.nombre_cliente, idioma: r.idioma, moneda: cuenta.moneda, locale: cuenta.locale,
         titulo: (cuenta.encabezado_reporte || '').split('|')[0].trim() || undefined,
         periodo_desde: r.periodo_desde, periodo_hasta: r.periodo_hasta, tipo: r.tipo,
-        bloques: pdf.parsearBloques(textoCompleto),
+        bloques: bloquesR,
         metricas: r.metricas,
         periodo_anterior_completo: ((anteriorCount as any) ?? 0) >= dias,
         campanas: r.campanas?.campanas || [], grupos: r.campanas?.grupos || [],
@@ -2085,13 +2218,11 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       const { error: up } = await supabase.storage.from('reportes').upload(ruta, buf, { contentType: 'application/pdf', upsert: true });
       if (up) return res.status(500).json({ error: up.message });
       await supabase.from('reportes_cliente').update({ pdf_path: ruta, pdf_bytes: buf.length }).eq('id', r.id);
-      if (req.query.download === '1') {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
-        return res.send(buf);
-      }
-      res.json({ ok: true, pdf_path: ruta, bytes: buf.length });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+      return ({ ok: true, pdf_path: ruta, bytes: buf.length });
+  }
+  app.post("/api/reportes/:id/pdf", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try { res.json(await generarYGuardarPdf(Number(req.params.id))); } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // Descargar el PDF guardado
@@ -2107,6 +2238,58 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   });
 
   // Aprobar: el unico human in the loop del entregable
+  app.post("/api/reportes/:id/revisado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    await supabase.from('reportes_cliente').update({ estado: 'revisado' }).eq('id', req.params.id).eq('estado', 'borrador');
+    res.json({ ok: true });
+  });
+  // Enviar: Slack por webhook desde aca; email lo manda el script de briefing (lee estado=aprobado y canal=email)
+  app.post("/api/reportes/:id/enviar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data: r } = await supabase.from('reportes_cliente').select('*').eq('id', req.params.id).single();
+    if (!r) return res.status(404).json({ error: 'no encontrado' });
+    if (r.estado !== 'aprobado') return res.status(409).json({ error: 'Primero aprobalo.' });
+    const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', r.account).single();
+    const url = `${process.env.APP_URL || 'https://app-northsignal.vercel.app'}/r/${r.token}`;
+    const canal = (req.body || {}).canal || cuenta.canal_reporte;
+    if (canal === 'slack') {
+      const hook = process.env[`SLACK_WEBHOOK_${r.account}`] || process.env.SLACK_WEBHOOK_URL;
+      if (!hook) return res.status(422).json({ error: `Falta SLACK_WEBHOOK_${r.account} en Vercel. Mientras tanto, copiá el link y pegalo en Slack: ${url}` });
+      const bloques = await bloquesDe(r);
+      const resumen = bloques.slice(0, 2).map((b: any) => `*${b.etiqueta}*\n${b.texto || ''}${(b.vinetas || []).map((v: string) => '\n• ' + v).join('')}`).join('\n\n');
+      const m = r.metricas || {};
+      const texto = r.idioma === 'en' ? `*Weekly report · ${r.periodo_desde} to ${r.periodo_hasta}*\nSpend ${m.gasto?.actual ?? '-'} · Conversions ${m.conversiones?.actual ?? '-'} · CPA ${m.cpa?.actual ?? '-'}\n\n${resumen}\n\nFull report: ${url}` : `*Reporte semanal · ${r.periodo_desde} al ${r.periodo_hasta}*\nInversión ${m.gasto?.actual ?? '-'} · Conversiones ${m.conversiones?.actual ?? '-'} · CPA ${m.cpa?.actual ?? '-'}\n\n${resumen}\n\nReporte completo: ${url}`;
+      const rs = await fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: texto }) });
+      if (!rs.ok) return res.status(500).json({ error: 'Slack respondió ' + rs.status });
+      await supabase.from('reportes_cliente').update({ estado: 'enviado', enviado_el: new Date().toISOString(), enviado_a: 'slack' }).eq('id', r.id);
+      return res.json({ ok: true, canal: 'slack', url });
+    }
+    if (canal === 'email') {
+      // El script de briefing lo manda con el PDF adjunto en su proxima corrida (9:15) y lo marca enviado
+      await supabase.from('reportes_cliente').update({ enviado_a: 'email:pendiente' }).eq('id', r.id);
+      return res.json({ ok: true, canal: 'email', pendiente: true, url, nota: 'El script lo manda por mail con el PDF adjunto en la próxima corrida de las 9:15.' });
+    }
+    return res.json({ ok: true, canal: 'manual', url, nota: 'Canal manual: copiá el link o descargá el PDF.' });
+  });
+  // El script de briefing pide los reportes aprobados por email pendientes de envio
+  app.get("/api/cron/reportes-por-enviar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('reportes_cliente').select('id, account, periodo_desde, periodo_hasta, idioma, token, pdf_path, metricas, bloques, resumen_ejecutivo').eq('estado', 'aprobado').eq('enviado_a', 'email:pendiente');
+    const out: any[] = [];
+    for (const r of data || []) {
+      const { data: cuenta } = await supabase.from('cuentas').select('nombre_cliente, destinatarios_reporte, nombre_contacto, encabezado_reporte').eq('account', r.account).single();
+      let pdfUrl: string | null = null;
+      if (r.pdf_path) { const { data: signed } = await supabase.storage.from('reportes').createSignedUrl(r.pdf_path, 3600); pdfUrl = signed?.signedUrl || null; }
+      out.push({ ...r, cuenta, pdf_url: pdfUrl, link: `${process.env.APP_URL || 'https://app-northsignal.vercel.app'}/r/${r.token}` });
+    }
+    res.json(out);
+  });
+  app.post("/api/cron/reportes-enviado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { id, a } = req.body || {};
+    await supabase.from('reportes_cliente').update({ estado: 'enviado', enviado_el: new Date().toISOString(), enviado_a: 'email:' + (a || '') }).eq('id', id);
+    res.json({ ok: true });
+  });
   app.post("/api/reportes/:id/aprobar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const { data, error } = await supabase.from('reportes_cliente').update({ estado: 'aprobado', aprobado_el: new Date().toISOString(), aprobado_por: 'andres' }).eq('id', req.params.id).eq('estado', 'borrador').select().single();
