@@ -29,14 +29,23 @@ CÓMO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:00
 REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducción o lo propuso un proceso automático; espera confirmación. En curso = aprobado para ejecución automática. Hecho = ejecutado, con fecha. Descartado = decidió no hacerlo. Origen: Semanal, Pulso diario, Anomalias, Andres, Reconciliador. Naturaleza: Observación, Inferencia, Hipótesis.
 `;
 
-const TOOLS: Anthropic.Tool[] = [
-  { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ['KAREDO', 'BHI', '360'] } }, required: ['cuenta'] } },
-  { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ['KAREDO', 'BHI', '360'] } }, required: ['cuenta'] } },
+function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
+  const ENUM = cuentas.length ? cuentas : ['KAREDO', 'BHI', '360'];
+  return [
+  { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
+  { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'salud_datos', description: 'Estado de los datos: última extracción, semana disponible, integridad, crons. Usar cuando pregunten si los datos están al día o por qué falta algo.', input_schema: { type: 'object', properties: {} } },
-  { name: 'doc_maestro', description: 'Devuelve una sección del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ['KAREDO', 'BHI', '360'] }, seccion: { type: 'string', enum: ['identidad', 'objetivos', 'restricciones', 'descartado', 'reporte', 'riesgos', 'vacios'] } }, required: ['cuenta', 'seccion'] } },
-];
+  { name: 'doc_maestro', description: 'Devuelve una sección del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM }, seccion: { type: 'string', enum: ['identidad', 'objetivos', 'restricciones', 'descartado', 'reporte', 'riesgos', 'vacios'] } }, required: ['cuenta', 'seccion'] } },
+  ];
+}
 
 export async function responderAsistente(supabase: any, mensajes: { role: 'user' | 'assistant'; content: string }[], contexto: { pagina?: string; cuenta?: string }) {
+  // Las cuentas salen de la base, no de una lista fija. Antes el asistente decia
+  // "Fresh Monkee no es una de nuestras cuentas" con Fresh Monkee ya activa.
+  const { data: filas } = await supabase.from('cuentas').select('account, nombre_cliente, moneda, perfil_analisis').eq('activa', true).order('account');
+  const cuentasActivas: string[] = (filas || []).map((c: any) => c.account);
+  const TOOLS = construirHerramientas(cuentasActivas);
+  const listaCuentas = (filas || []).map((c: any) => `${c.account} (${c.nombre_cliente || c.account}, ${c.moneda}${c.perfil_analisis === 'cadena' ? ', multi-local' : ''})`).join('; ');
   if (!anthropic) return { texto: 'El asistente necesita ANTHROPIC_API_KEY en Vercel.', costo_usd: 0 };
   const glosarioTxt = Object.entries(GLOSARIO).map(([k, v]) => `${k}: ${v}`).join('\n');
   const primerTurno = `CONTEXTO DE LA APP NORTHSIGNAL (leelo antes de responder)\n${MAPA_APP}\nGLOSARIO:\n${glosarioTxt}\n\nAHORA MISMO: el usuario está en la sección "${contexto.pagina || 'desconocida'}" con la cuenta ${contexto.cuenta || 'sin seleccionar'}.\n\nCÓMO RESPONDÉS: en español rioplatense, corto, directo, sin guion largo, sin listas de tres forzadas. Si la pregunta es sobre datos de una cuenta, usá las herramientas; nunca inventes un número. Si es sobre dónde está algo en la app, decí la sección y qué hacer. Si es sobre un término, usá el glosario. Si no sabés, decilo y sugerí crear un ticket desde Sistema.\n\nPREGUNTA: ${mensajes[mensajes.length - 1]?.content || ''}`;
@@ -45,7 +54,9 @@ export async function responderAsistente(supabase: any, mensajes: { role: 'user'
 
   let costo = 0; let vueltas = 0;
   while (vueltas++ < 4) {
-    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 1500, system: 'Sos el asistente de NorthSignal, la app de operación de cuentas de Google Ads de Andrés. Ayudás a navegar la app y a entender los datos. No ejecutás cambios.', messages: msgs, tools: TOOLS, output_config: { effort: 'low' } as any });
+    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 1500, system: `Sos el asistente de NorthSignal, la app de operación de cuentas de Google Ads de Andrés. Ayudás a navegar la app y a entender los datos. No ejecutás cambios.
+
+Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sale de la base en cada consulta, así que es la buena: si alguien nombra una cuenta que está ahí, existe. Nunca digas que una cuenta no existe sin haberla buscado en esa lista, y nunca sugieras abrir un ticket porque una cuenta "debería estar cargada" si figura ahí.`, messages: msgs, tools: TOOLS, output_config: { effort: 'low' } as any });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[];
     if (!toolUses.length || res.stop_reason !== 'tool_use') {

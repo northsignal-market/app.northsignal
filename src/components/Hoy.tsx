@@ -1,3 +1,4 @@
+import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   AlertCircle, ShieldAlert, Check, Clock, ArrowRight, 
@@ -23,6 +24,7 @@ function formatCurrency(val: number, client?: string | null) {
 }
 
 export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
+  const { nombres: nombresCuentas } = useCuentas();
   const { selectedClient, setSelectedClient, actionables, updateActionableStatus, notionBriefs } = useAppStore();
   
   const [pulse, setPulse] = useState<PulseData | null>(null);
@@ -304,7 +306,7 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
         pulsoDiario.forEach(p => { if (!ultimoPorCuenta[p.account] || p.fecha > ultimoPorCuenta[p.account].fecha) ultimoPorCuenta[p.account] = p; });
         const cuenta = selectedClient || 'KAREDO';
         const principal = ultimoPorCuenta[cuenta];
-        const otras = ['KAREDO', 'BHI', '360'].filter(a => a !== cuenta);
+        const otras = nombresCuentas.filter(a => a !== cuenta);
         const ayer = new Date(); ayer.setDate(ayer.getDate() - 1); const ayerStr = ayer.toISOString().slice(0, 10);
         return (
           <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: principal?.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>

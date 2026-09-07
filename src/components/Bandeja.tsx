@@ -1,3 +1,4 @@
+import { useCuentas } from '../lib/useCuentas';
 /**
  * BANDEJA · lo que te espera, y nada más.
  *
@@ -45,7 +46,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
 
   const resolverAlerta = async (id: number) => { await fetch(`/api/alertas/${id}/resolver`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargar(); };
 
-  const cuentas = ['KAREDO', 'BHI', '360'];
+  const { nombres: cuentas } = useCuentas();
   const enCuenta = (c: string) => !filtroCuenta || c === filtroCuenta;
   const hoy = alertas.filter(a => a.nivel === 'hoy' && enCuenta(a.account || ''));
   const listos = actionables.filter(a => a.status === NOTION_STATES.PROPUESTO && !a.reemplazado_por && enCuenta(a.client));

@@ -988,13 +988,20 @@ C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:
 
 REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducci\xF3n o lo propuso un proceso autom\xE1tico; espera confirmaci\xF3n. En curso = aprobado para ejecuci\xF3n autom\xE1tica. Hecho = ejecutado, con fecha. Descartado = decidi\xF3 no hacerlo. Origen: Semanal, Pulso diario, Anomalias, Andres, Reconciliador. Naturaleza: Observaci\xF3n, Inferencia, Hip\xF3tesis.
 `;
-var TOOLS = [
-  { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] } }, required: ["cuenta"] } },
-  { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] } }, required: ["cuenta"] } },
-  { name: "salud_datos", description: "Estado de los datos: \xFAltima extracci\xF3n, semana disponible, integridad, crons. Usar cuando pregunten si los datos est\xE1n al d\xEDa o por qu\xE9 falta algo.", input_schema: { type: "object", properties: {} } },
-  { name: "doc_maestro", description: "Devuelve una secci\xF3n del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ["KAREDO", "BHI", "360"] }, seccion: { type: "string", enum: ["identidad", "objetivos", "restricciones", "descartado", "reporte", "riesgos", "vacios"] } }, required: ["cuenta", "seccion"] } }
-];
+function construirHerramientas(cuentas) {
+  const ENUM = cuentas.length ? cuentas : ["KAREDO", "BHI", "360"];
+  return [
+    { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "salud_datos", description: "Estado de los datos: \xFAltima extracci\xF3n, semana disponible, integridad, crons. Usar cuando pregunten si los datos est\xE1n al d\xEDa o por qu\xE9 falta algo.", input_schema: { type: "object", properties: {} } },
+    { name: "doc_maestro", description: "Devuelve una secci\xF3n del doc maestro de una cuenta: identidad, objetivos, restricciones, descartado, reporte, riesgos, vacios. Usar para preguntas sobre el cliente, sus reglas o su historia.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM }, seccion: { type: "string", enum: ["identidad", "objetivos", "restricciones", "descartado", "reporte", "riesgos", "vacios"] } }, required: ["cuenta", "seccion"] } }
+  ];
+}
 async function responderAsistente(supabase2, mensajes, contexto) {
+  const { data: filas } = await supabase2.from("cuentas").select("account, nombre_cliente, moneda, perfil_analisis").eq("activa", true).order("account");
+  const cuentasActivas2 = (filas || []).map((c) => c.account);
+  const TOOLS = construirHerramientas(cuentasActivas2);
+  const listaCuentas = (filas || []).map((c) => `${c.account} (${c.nombre_cliente || c.account}, ${c.moneda}${c.perfil_analisis === "cadena" ? ", multi-local" : ""})`).join("; ");
   if (!anthropic2) return { texto: "El asistente necesita ANTHROPIC_API_KEY en Vercel.", costo_usd: 0 };
   const glosarioTxt = Object.entries(GLOSARIO).map(([k, v]) => `${k}: ${v}`).join("\n");
   const primerTurno = `CONTEXTO DE LA APP NORTHSIGNAL (leelo antes de responder)
@@ -1012,7 +1019,9 @@ PREGUNTA: ${mensajes[mensajes.length - 1]?.content || ""}`;
   let costo = 0;
   let vueltas = 0;
   while (vueltas++ < 4) {
-    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 1500, system: "Sos el asistente de NorthSignal, la app de operaci\xF3n de cuentas de Google Ads de Andr\xE9s. Ayud\xE1s a navegar la app y a entender los datos. No ejecut\xE1s cambios.", messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
+    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 1500, system: `Sos el asistente de NorthSignal, la app de operaci\xF3n de cuentas de Google Ads de Andr\xE9s. Ayud\xE1s a navegar la app y a entender los datos. No ejecut\xE1s cambios.
+
+Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sale de la base en cada consulta, as\xED que es la buena: si alguien nombra una cuenta que est\xE1 ah\xED, existe. Nunca digas que una cuenta no existe sin haberla buscado en esa lista, y nunca sugieras abrir un ticket porque una cuenta "deber\xEDa estar cargada" si figura ah\xED.`, messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter((b) => b.type === "tool_use");
     if (!toolUses.length || res.stop_reason !== "tool_use") {

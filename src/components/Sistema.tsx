@@ -1,3 +1,4 @@
+import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, Check, AlertCircle, Clock, ShieldCheck, 
@@ -6,6 +7,7 @@ import {
 import { useAppStore } from '../store/useAppStore';
 
 export function Sistema() {
+  const { nombres: nombresCuentas } = useCuentas();
   const { selectedClient } = useAppStore();
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
@@ -276,7 +278,7 @@ export function Sistema() {
                   <div className="flex items-center gap-1.5">Lo puede proponer: {['Semanal', 'Pulso diario', 'Anomalias'].map(o => (
                     <label key={o} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.solo_origen || []).includes(o)} onChange={e => guardarPolitica(p.tipo, { solo_origen: e.target.checked ? [...(p.solo_origen || []), o] : (p.solo_origen || []).filter((x: string) => x !== o) })} className="accent-[#0062CC]" />{o === 'Pulso diario' ? 'análisis diario' : o === 'Anomalias' ? 'anomalías' : 'semanal'}</label>
                   ))}</div>
-                  <div className="flex items-center gap-1.5">Cuentas: {['KAREDO', 'BHI', '360'].map(c => (
+                  <div className="flex items-center gap-1.5">Cuentas: {nombresCuentas.map(c => (
                     <label key={c} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.cuentas || []).includes(c)} onChange={e => guardarPolitica(p.tipo, { cuentas: e.target.checked ? [...(p.cuentas || []), c] : (p.cuentas || []).filter((x: string) => x !== c) })} className="accent-[#0062CC]" />{c}</label>
                   ))}</div>
                 </div>

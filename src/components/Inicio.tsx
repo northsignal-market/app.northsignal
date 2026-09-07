@@ -1,3 +1,4 @@
+import { useCuentas } from '../lib/useCuentas';
 import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowRight, AlertCircle, Check } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -8,6 +9,7 @@ interface InicioProps {
 }
 
 export function Inicio({ onNavigate }: InicioProps) {
+  const { nombres: nombresCuentas } = useCuentas();
   const { notionBriefs, actionables, setSelectedClient } = useAppStore();
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [cuentasIni, setCuentasIni] = useState<string[]>([]);
@@ -44,7 +46,7 @@ export function Inicio({ onNavigate }: InicioProps) {
       .catch(console.error);
 
     // Fetch daily pulse for the 3 accounts
-    (cuentasIni.length ? cuentasIni : ['KAREDO', 'BHI', '360']).forEach(acc => {
+    (cuentasIni.length ? cuentasIni : nombresCuentas).forEach(acc => {
       fetch(`/api/daily/overview?client=${acc}`, { credentials: 'include', headers })
         .then(async res => {
           if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return null;
@@ -119,7 +121,7 @@ export function Inicio({ onNavigate }: InicioProps) {
     return 'Última semana: 26 registros en Karedo con 935 €, en línea con las cuatro previas.';
   }, [notionBriefs]);
 
-  const accounts = ['KAREDO', 'BHI', '360'];
+  const accounts = nombresCuentas;
 
   return (
     <div className="min-h-full flex flex-col justify-center items-center px-6 py-12 select-none">

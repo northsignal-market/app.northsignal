@@ -1,3 +1,4 @@
+import { useCuentas } from '../lib/useCuentas';
 /**
  * CUENTA · todo lo de una cuenta, en pestañas, con el selector arriba.
  * Reúne lo que antes eran cuatro secciones del menú (Semana, Clientes,
@@ -29,7 +30,7 @@ interface Props {
 export function Cuenta({ segmento, onSegmento, onOpenActionable, briefId, onNavigateToBrief }: Props) {
   const { selectedClient, setSelectedClient, actionables } = useAppStore();
   const cuenta = selectedClient || 'KAREDO';
-  const cuentas = ['KAREDO', 'BHI', '360'];
+  const { nombres: cuentas } = useCuentas();
   const abiertos = actionables.filter(a => a.client === cuenta && (a.status === 'Propuesto' || a.status === 'Bloqueado')).length;
   useEffect(() => { if (briefId) onSegmento('brief'); }, [briefId]);
 
