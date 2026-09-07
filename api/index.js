@@ -13,13 +13,19 @@ var __export = (target, all) => {
 var accion_exports = {};
 __export(accion_exports, {
   AccionSchema: () => AccionSchema,
+  POR_QUE_MANUAL: () => POR_QUE_MANUAL,
   VERBOS: () => VERBOS,
   VERBOS_EJECUTABLES: () => VERBOS_EJECUTABLES,
+  VERBOS_EJECUTABLES_LISTA: () => VERBOS_EJECUTABLES_LISTA,
+  esEjecutable: () => esEjecutable,
   parsearAccion: () => parsearAccion,
   tipoAutoDesde: () => tipoAutoDesde,
   tituloDesde: () => tituloDesde
 });
 import { z as z2 } from "zod";
+function esEjecutable(verbo) {
+  return !!verbo && verbo in VERBOS_EJECUTABLES;
+}
 function tituloDesde(a) {
   const o = a.objeto, p = a.parametros || {};
   const en = donde(o) ? ` en ${donde(o)}` : "";
@@ -60,14 +66,63 @@ function tituloDesde(a) {
       return `Decidir: ${(p.pregunta || "").slice(0, 90)}`;
     case "tarea_externa":
       return `${(p.que_hacer || "Tarea").slice(0, 80)}${p.donde ? ` en ${p.donde}` : ""}`;
+    case "quitar_negativa":
+      return `Quitar la negativa ${o.keyword} de ${p.nivel === "grupo" ? o.grupo : o.campana}`;
+    case "reactivar_keyword":
+      return `Reactivar ${o.keyword} en ${o.grupo || o.campana}`;
+    case "pausar_grupo":
+      return `Pausar el grupo ${o.grupo} en ${o.campana}`;
+    case "pausar_campana":
+      return `Pausar la campa\xF1a ${o.campana}`;
+    case "reactivar_campana":
+      return `Reactivar la campa\xF1a ${o.campana}`;
+    case "cambiar_estrategia_puja":
+      return `Cambiar la puja de ${o.campana} a ${p.estrategia_destino}`;
+    case "cambiar_objetivo_puja":
+      return p.valor_nuevo == null ? `Quitar el objetivo de puja en ${o.campana}` : `Poner el objetivo de puja de ${o.campana} en ${p.valor_nuevo}`;
+    case "cambiar_presupuesto":
+      return `Cambiar el presupuesto de ${o.campana} de ${p.valor_actual} a ${p.valor_nuevo}`;
+    case "cambiar_cpc_keyword":
+      return `Cambiar el CPC de ${o.keyword} de ${p.valor_actual} a ${p.valor_nuevo}`;
+    case "aplicar_etiqueta":
+      return `Etiquetar ${o.campana} como ${p.etiqueta}`;
   }
 }
 function tipoAutoDesde(a) {
-  if (a.verbo === "agregar_negativa") return a.parametros?.nivel === "campana" ? "negativa_campana" : a.parametros?.nivel === "lista" ? null : "negativa_grupo";
-  if (a.verbo === "pausar_keyword" && !a.objeto.keywords?.length) return "pausar_keyword";
-  if (a.verbo === "pausar_anuncio") return "pausar_anuncio";
-  if (a.verbo === "cambiar_concordancia" && a.parametros?.match_type_destino) return "cambiar_concordancia";
-  return null;
+  const p = a.parametros || {};
+  switch (a.verbo) {
+    case "agregar_negativa":
+      return p.nivel === "campana" ? "negativa_campana" : p.nivel === "lista" ? null : "negativa_grupo";
+    case "quitar_negativa":
+      return a.objeto.keyword ? "quitar_negativa" : null;
+    case "pausar_keyword":
+      return !a.objeto.keywords?.length ? "pausar_keyword" : null;
+    case "reactivar_keyword":
+      return a.objeto.keyword ? "reactivar_keyword" : null;
+    case "pausar_anuncio":
+      return "pausar_anuncio";
+    case "pausar_grupo":
+      return a.objeto.grupo ? "pausar_grupo" : null;
+    case "pausar_campana":
+      return a.objeto.campana ? "pausar_campana" : null;
+    case "reactivar_campana":
+      return a.objeto.campana ? "reactivar_campana" : null;
+    case "cambiar_concordancia":
+      return p.match_type_destino ? "cambiar_concordancia" : null;
+    case "cambiar_estrategia_puja":
+      return p.estrategia_destino ? "cambiar_estrategia_puja" : null;
+    // Los de riesgo medio necesitan el valor anterior: sin el, no se puede revertir
+    case "cambiar_objetivo_puja":
+      return p.valor_actual != null ? "cambiar_objetivo_puja" : null;
+    case "cambiar_presupuesto":
+      return p.valor_actual != null && p.valor_nuevo != null ? "cambiar_presupuesto" : null;
+    case "cambiar_cpc_keyword":
+      return p.valor_actual != null && p.valor_nuevo != null ? "cambiar_cpc_keyword" : null;
+    case "aplicar_etiqueta":
+      return p.etiqueta ? "aplicar_etiqueta" : null;
+    default:
+      return null;
+  }
 }
 function parsearAccion(texto) {
   if (!texto || !texto.trim()) return { error: "sin Accion JSON" };
@@ -87,9 +142,12 @@ function parsearAccion(texto) {
   if (a.verbo === "cambiar_concordancia" && !a.parametros?.match_type_destino) return { error: "cambiar_concordancia sin match_type_destino" };
   if (a.verbo.startsWith("preguntar") && !a.parametros?.pregunta) return { error: `${a.verbo} sin pregunta` };
   if (a.verbo === "tarea_externa" && !a.parametros?.que_hacer) return { error: "tarea_externa sin que_hacer" };
+  if (["cambiar_presupuesto", "cambiar_objetivo_puja", "cambiar_cpc_keyword"].includes(a.verbo) && a.parametros?.valor_actual == null)
+    return { error: `${a.verbo} sin valor_actual: sin el valor anterior el cambio no se puede revertir` };
+  if (a.verbo === "cambiar_estrategia_puja" && !a.parametros?.estrategia_destino) return { error: "cambiar_estrategia_puja sin estrategia_destino" };
   return { accion: a };
 }
-var VERBOS, VERBOS_EJECUTABLES, AccionSchema, MT, fmtKw, donde;
+var VERBOS, VERBOS_EJECUTABLES, POR_QUE_MANUAL, VERBOS_EJECUTABLES_LISTA, AccionSchema, MT, fmtKw, donde;
 var init_accion = __esm({
   "src/lib/accion.ts"() {
     VERBOS = [
@@ -110,10 +168,49 @@ var init_accion = __esm({
       "desactivar_automatizacion",
       "preguntar_cliente",
       "preguntar_andres",
-      "tarea_externa"
+      "tarea_externa",
       // trabajo real fuera de Google Ads: un Sheet, el CRM, la landing, GTM
+      // Verbos que el ejecutor SI puede aplicar, agregados el 7 sep 2026 tras verificar
+      // la documentacion de AdsApp. El registro completo esta en capacidades_ejecucion.
+      "quitar_negativa",
+      "reactivar_keyword",
+      "pausar_grupo",
+      "pausar_campana",
+      "reactivar_campana",
+      "cambiar_estrategia_puja",
+      "cambiar_objetivo_puja",
+      "cambiar_presupuesto",
+      "cambiar_cpc_keyword",
+      "aplicar_etiqueta"
     ];
-    VERBOS_EJECUTABLES = ["pausar_keyword", "agregar_negativa", "cambiar_concordancia", "pausar_anuncio"];
+    VERBOS_EJECUTABLES = {
+      agregar_negativa: { riesgo: "bajo", requiere: ["campana", "keyword"] },
+      quitar_negativa: { riesgo: "bajo", requiere: ["campana", "keyword"] },
+      pausar_keyword: { riesgo: "bajo", requiere: ["campana", "keyword"] },
+      reactivar_keyword: { riesgo: "bajo", requiere: ["campana", "keyword"] },
+      pausar_anuncio: { riesgo: "bajo", requiere: ["campana", "ad_id"] },
+      pausar_grupo: { riesgo: "bajo", requiere: ["campana", "grupo"] },
+      cambiar_concordancia: { riesgo: "bajo", requiere: ["campana", "keyword", "match_type_destino"] },
+      aplicar_etiqueta: { riesgo: "bajo", requiere: ["campana", "etiqueta"] },
+      cambiar_estrategia_puja: { riesgo: "medio", requiere: ["campana", "estrategia_destino"] },
+      cambiar_objetivo_puja: { riesgo: "medio", requiere: ["campana", "valor_actual"] },
+      cambiar_presupuesto: { riesgo: "medio", requiere: ["campana", "valor_actual", "valor_nuevo"] },
+      pausar_campana: { riesgo: "medio", requiere: ["campana"] },
+      reactivar_campana: { riesgo: "medio", requiere: ["campana"] },
+      cambiar_cpc_keyword: { riesgo: "medio", requiere: ["campana", "keyword", "valor_actual", "valor_nuevo"] }
+    };
+    POR_QUE_MANUAL = {
+      crear_anuncio: "AdsApp solo crea expanded text ads, que Google retir\xF3. Los RSA se hacen en la interfaz.",
+      editar_anuncio: "Un anuncio no se edita: se crea uno nuevo y se pausa el viejo, y los RSA no se crean por script.",
+      cambiar_conversion_primaria: "Las acciones de conversi\xF3n no est\xE1n en AdsApp. Se cambian en Objetivos \u203A Conversiones.",
+      cambiar_segmentacion: "AdsApp lee la segmentaci\xF3n pero no la cambia de forma confiable.",
+      cambiar_landing: "La URL final no se edita: hay que recrear el anuncio.",
+      preguntar_andres: "Es una pregunta, no un cambio.",
+      preguntar_cliente: "Es una pregunta, no un cambio.",
+      tarea_externa: "Es trabajo fuera de Google Ads.",
+      investigar: "Es diagn\xF3stico, no un cambio."
+    };
+    VERBOS_EJECUTABLES_LISTA = Object.keys(VERBOS_EJECUTABLES);
     AccionSchema = z2.object({
       verbo: z2.enum(VERBOS),
       objeto: z2.object({
@@ -137,6 +234,10 @@ var init_accion = __esm({
         // tarea_externa: que sistema
         que_hacer: z2.string().nullable().optional(),
         // tarea_externa: la tarea
+        estrategia_destino: z2.string().nullable().optional(),
+        // cambiar_estrategia_puja
+        etiqueta: z2.string().nullable().optional(),
+        // aplicar_etiqueta
         pregunta: z2.string().nullable().optional(),
         dato_que_falta: z2.string().nullable().optional()
       }).default({}),
@@ -3538,6 +3639,7 @@ Reporte completo: ${url}`;
           body.match_type = a.objeto.match_type || (t.startsWith("negativa") ? a.parametros?.match_type_destino || "PHRASE" : "ANY");
           body.match_type_destino = a.parametros?.match_type_destino;
           body.ad_id = a.objeto.anuncio_id;
+          body.parametros = a.parametros || {};
         }
       }
     }
@@ -3546,7 +3648,13 @@ Reporte completo: ${url}`;
     const { data: bloqueo, error: errPrevuelo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
     if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo fall\xF3 y no se encola sin \xE9l: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todav\xEDa: ${bloqueo}`, conflicto: true });
-    if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio", "cambiar_concordancia"].includes(tipo)) return res.status(400).json({ error: "Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
+    {
+      const viejos = { negativa_grupo: "agregar_negativa", negativa_campana: "agregar_negativa" };
+      const verboReal = viejos[tipo] || tipo;
+      const { data: cap } = await supabase.from("capacidades_ejecucion").select("ejecutable, por_que_no, riesgo, requiere").eq("verbo", verboReal).maybeSingle();
+      if (!cap) return res.status(400).json({ error: `Verbo desconocido: ${tipo}. Los v\xE1lidos est\xE1n en capacidades_ejecucion.` });
+      if (!cap.ejecutable) return res.status(400).json({ error: `Esto no lo puede hacer un script: ${cap.por_que_no}`, manual: true, por_que: cap.por_que_no });
+    }
     if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });
     if (!account || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account y keyword o ad_id" });
     let camp = campana, grp = grupo, mt = match_type;
@@ -3585,7 +3693,25 @@ Reporte completo: ${url}`;
       }
       if (!camp) return res.status(422).json({ error: "No pude determinar la campa\xF1a. Ejecutalo a mano." });
     }
-    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: loteResuelto ? null : keyword || null, keywords: loteResuelto || (keywordsLote && tipo.startsWith("negativa") ? keywordsLote : null), match_type: mt || "PHRASE", match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
+    const p = body.parametros || {};
+    const { data, error } = await supabase.from("acciones_aprobadas").insert({
+      account,
+      notion_id: req.params.id,
+      tipo,
+      campana: camp,
+      grupo: grp || null,
+      keyword: loteResuelto ? null : keyword || null,
+      keywords: loteResuelto || (keywordsLote && tipo.startsWith("negativa") ? keywordsLote : null),
+      match_type: mt || "PHRASE",
+      match_type_destino: match_type_destino || null,
+      ad_id: ad_id || null,
+      nivel: p.nivel || null,
+      estrategia_destino: p.estrategia_destino || null,
+      valor_actual: p.valor_actual ?? null,
+      valor_nuevo: p.valor_nuevo ?? null,
+      etiqueta: p.etiqueta || null,
+      modo: modo === "ejecutar" ? "ejecutar" : "simular"
+    }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     if (notion) {
       try {
@@ -3677,6 +3803,12 @@ Reporte completo: ${url}`;
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     await supabase.from("accionable_relaciones").update({ resuelta: true, resuelta_el: (/* @__PURE__ */ new Date()).toISOString(), resuelta_por: "andres" }).eq("id", req.params.id);
     res.json({ ok: true });
+  });
+  app2.get("/api/salud", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.rpc("get_salud_sistema");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
   app2.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
   app2.get("/api/cadena/:nivel", async (req, res) => {

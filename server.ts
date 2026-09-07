@@ -2603,7 +2603,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       {
         const { tipoAutoDesde } = await import('./src/lib/accion');
         const a = esp.accion; const t = tipoAutoDesde(a);
-        if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword || a.objeto.keywords?.[0]; body.keywords = a.objeto.keywords?.length > 1 ? a.objeto.keywords : undefined; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; }
+        if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword || a.objeto.keywords?.[0]; body.keywords = a.objeto.keywords?.length > 1 ? a.objeto.keywords : undefined; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; body.parametros = a.parametros || {}; }
       }
     }
     const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
@@ -2612,7 +2612,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data: bloqueo, error: errPrevuelo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
     if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo falló y no se encola sin él: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todavía: ${bloqueo}`, conflicto: true });
-    if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio', 'cambiar_concordancia'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
+    // Que se puede ejecutar sale del registro capacidades_ejecucion, no de una lista fija:
+    // agregar un verbo alla lo habilita aca sin tocar el codigo.
+    {
+      const viejos: Record<string, string> = { negativa_grupo: 'agregar_negativa', negativa_campana: 'agregar_negativa' };
+      const verboReal = viejos[tipo] || tipo;
+      const { data: cap } = await supabase.from('capacidades_ejecucion').select('ejecutable, por_que_no, riesgo, requiere').eq('verbo', verboReal).maybeSingle();
+      if (!cap) return res.status(400).json({ error: `Verbo desconocido: ${tipo}. Los válidos están en capacidades_ejecucion.` });
+      if (!cap.ejecutable) return res.status(400).json({ error: `Esto no lo puede hacer un script: ${cap.por_que_no}`, manual: true, por_que: cap.por_que_no });
+    }
     if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });
     if (!account || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account y keyword o ad_id' });
     // Resolver la keyword contra la base: campaña y grupo exactos. Para negativas nuevas (que no existen como keyword) se usa lo que vino.
@@ -2635,7 +2643,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       else if (grupo) { const { data: g } = await supabase.from('keywords').select('campaign, ad_group').eq('account', account).ilike('ad_group', `%${grupo}%`).limit(1).maybeSingle(); if (g) { camp = g.campaign; grp = g.ad_group; } }
       if (!camp) return res.status(422).json({ error: 'No pude determinar la campaña. Ejecutalo a mano.' });
     }
-    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: loteResuelto ? null : (keyword || null), keywords: loteResuelto || (keywordsLote && tipo.startsWith('negativa') ? keywordsLote : null), match_type: mt || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
+    const p = (body.parametros || {}) as any;
+    const { data, error } = await supabase.from('acciones_aprobadas').insert({
+      account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null,
+      keyword: loteResuelto ? null : (keyword || null),
+      keywords: loteResuelto || (keywordsLote && tipo.startsWith('negativa') ? keywordsLote : null),
+      match_type: mt || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null,
+      nivel: p.nivel || null, estrategia_destino: p.estrategia_destino || null,
+      valor_actual: p.valor_actual ?? null, valor_nuevo: p.valor_nuevo ?? null, etiqueta: p.etiqueta || null,
+      modo: modo === 'ejecutar' ? 'ejecutar' : 'simular'
+    }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
     if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.` } }] }); } catch {} }
@@ -2717,6 +2734,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     await supabase.from('accionable_relaciones').update({ resuelta: true, resuelta_el: new Date().toISOString(), resuelta_por: 'andres' }).eq('id', req.params.id);
     res.json({ ok: true });
+  });
+
+
+  // Salud del sistema en una consulta. El punto: que Andres no descubra que algo
+  // se rompio leyendo la salida de un agente tres dias despues.
+  app.get("/api/salud", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.rpc('get_salud_sistema');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
   app.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
