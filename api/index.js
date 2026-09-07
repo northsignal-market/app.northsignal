@@ -373,7 +373,7 @@ function detectarTipoAuto(titulo, comoHacerlo) {
 function extraerKeyword(titulo, entidad) {
   const m = titulo.match(/["“'‘\[]([^"”'’\]]+)["”'’\]]/);
   if (m) return m[1].trim();
-  const c = titulo.match(/^(?:cambiar|pausar|desactivar|agregar|añadir|excluir)\s+(?:la\s+keyword\s+|la\s+palabra\s+clave\s+|el\s+término\s+|la\s+)?(.+?)\s+(?:de\s+concordancia|en\s+(?:el\s+grupo|la\s+campaña|[A-Z0-9])|como\s+negativa|a\s+nivel|a\s+(?:exacta|frase|amplia)\b)/i);
+  const c = titulo.match(/^(?:cambiar|pausar|desactivar|agregar|añadir|excluir)\s+(?:la\s+keyword\s+|la\s+palabra\s+clave\s+|el\s+término\s+|la\s+)?(.+?)\s+(?:de\s+(?:concordancia|amplia|frase|exacta)\b|en\s+(?:el\s+grupo|la\s+campaña|[A-Z0-9])|como\s+negativa|a\s+nivel|a\s+(?:exacta|frase|amplia)\b)/i);
   if (c) return c[1].trim();
   const k = titulo.match(/(?:keyword|término|termino|palabra clave|negativa)\s+(?:de\s+)?([a-z0-9äöüß][^,;:()]{2,60}?)(?:\s+(?:en|del|de la|a nivel|como)\b|$)/i);
   if (k) return k[1].trim();
@@ -3248,7 +3248,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   app2.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const body = req.body || {};
-    if (body.usar_accion && supabase) {
+    if (supabase) {
       const { data: esp } = await supabase.from("accionables_espejo").select("accion, accion_valida, account").eq("notion_id", req.params.id).maybeSingle();
       if (esp?.accion_valida && esp.accion) {
         const { tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));

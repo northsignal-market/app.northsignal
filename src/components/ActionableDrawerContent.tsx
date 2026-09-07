@@ -156,18 +156,20 @@ export function ActionableDrawerContent({
   const [ejecutado, setEjecutado] = useState<string | null>(null);
   // Que tipo de accion automatica es, si alguna. Solo negativas y pausas.
   // Con accion estructurada, el tipo sale de ahi. Sin ella, se adivina del titulo (accionables viejos).
-  const tipoAuto = action.accion ? tipoAutoDesde(action.accion) : detectarTipoAuto(action.title, action.como_hacerlo);
-  const esPregunta = action.accion?.verbo?.startsWith('preguntar');
+  // La accion estructurada fresca (de la base, al abrir) manda; la de la lista puede estar vieja; el titulo es el ultimo recurso
+  const accionActual = contexto?.actual?.accion_valida ? contexto.actual.accion : action.accion;
+  const tipoAuto = accionActual ? tipoAutoDesde(accionActual) : (contexto && !contexto.actual?.accion_valida && /\b\d+ keywords\b/i.test(action.title) ? null : detectarTipoAuto(action.title, action.como_hacerlo));
+  const esPregunta = accionActual?.verbo?.startsWith('preguntar');
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
-    const lote: string[] | null = action.accion?.objeto?.keywords?.length ? action.accion.objeto.keywords : null;
+    const lote: string[] | null = accionActual?.objeto?.keywords?.length ? accionActual.objeto.keywords : null;
     const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
     if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".'); return; }
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usar_accion: !!action.accion, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
+        body: JSON.stringify({ usar_accion: true, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
       if (!r.ok) { alert(j.error || 'Error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
     } finally { setEjecutando(false); }
@@ -501,21 +503,21 @@ export function ActionableDrawerContent({
       {/* Si es una pregunta, decirlo claro: no hay nada que tocar en Google Ads */}
       {esPregunta && (
         <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">{action.accion.verbo === 'preguntar_cliente' ? `Pregunta para ${action.accion.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
-          <p className="text-xs text-[#F5F7FA] leading-relaxed">{action.accion.parametros?.pregunta}</p>
-          {action.accion.parametros?.dato_que_falta && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Lo que falta para decidir: {action.accion.parametros.dato_que_falta}</p>}
+          <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">{accionActual.verbo === 'preguntar_cliente' ? `Pregunta para ${accionActual.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
+          <p className="text-xs text-[#F5F7FA] leading-relaxed">{accionActual.parametros?.pregunta}</p>
+          {accionActual.parametros?.dato_que_falta && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Lo que falta para decidir: {accionActual.parametros.dato_que_falta}</p>}
           <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
         </div>
       )}
-      {action.accion_error && action.status !== 'Hecho' && action.status !== 'Descartado' && (
-        String(action.accion_error).startsWith('INVARIANTE') ? (
+      {(contexto?.actual?.accion_error || (!contexto && action.accion_error)) && action.status !== 'Hecho' && action.status !== 'Descartado' && (
+        String(contexto?.actual?.accion_error || action.accion_error).startsWith('INVARIANTE') ? (
           <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
             <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Viola una regla que no se negocia</span>
-            {String(action.accion_error).replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
+            {String(contexto?.actual?.accion_error || action.accion_error).replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
             <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">El sistema no lo ejecuta y no debería ejecutarse a mano. Descartalo o pedile a la tarea del lunes que lo reformule.</p>
           </div>
         ) : (
-          <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({action.accion_error}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>
+          <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({contexto?.actual?.accion_error || action.accion_error}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>
         )
       )}
 
@@ -526,7 +528,7 @@ export function ActionableDrawerContent({
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
           ) : (
             <>
-              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : action.accion?.objeto?.keywords?.length > 1 ? `Son ${action.accion.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.` : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : accionActual?.objeto?.keywords?.length > 1 ? `Son ${accionActual.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.` : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
               <div className="flex gap-2">
                 <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
                 <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>

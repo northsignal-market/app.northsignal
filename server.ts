@@ -2379,8 +2379,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   app.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const body = req.body || {};
-    // Si el accionable tiene accion estructurada, los datos salen de ahi; el body solo trae modo
-    if (body.usar_accion && supabase) {
+    // La accion estructurada de la base manda siempre; el body solo aporta modo (y datos de respaldo para accionables sin JSON)
+    if (supabase) {
       const { data: esp } = await supabase.from('accionables_espejo').select('accion, accion_valida, account').eq('notion_id', req.params.id).maybeSingle();
       if (esp?.accion_valida && esp.accion) {
         const { tipoAutoDesde } = await import('./src/lib/accion');
