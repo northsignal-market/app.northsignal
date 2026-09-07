@@ -86,6 +86,10 @@ export const AccionSchema = z.object({
     que_hacer: z.string().nullable().optional(),             // tarea_externa: la tarea
     estrategia_destino: z.string().nullable().optional(),    // cambiar_estrategia_puja
     etiqueta: z.string().nullable().optional(),              // aplicar_etiqueta
+    // Fecha AAAA-MM-DD antes de la cual no se ejecuta. Una condicion de secuencia
+    // escrita en el texto no retiene nada: el 7 de septiembre de 2026 un accionable
+    // que pedia esperar al 21 se ejecuto el mismo dia. Acá el pre-vuelo la hace cumplir.
+    no_ejecutar_antes_de: z.string().nullable().optional(),
     pregunta: z.string().nullable().optional(),
     dato_que_falta: z.string().nullable().optional(),
   }).default({}),
@@ -186,5 +190,7 @@ export function parsearAccion(texto: string | null | undefined): { accion?: Acci
   if (['cambiar_presupuesto', 'cambiar_objetivo_puja', 'cambiar_cpc_keyword'].includes(a.verbo) && a.parametros?.valor_actual == null)
     return { error: `${a.verbo} sin valor_actual: sin el valor anterior el cambio no se puede revertir` };
   if (a.verbo === 'cambiar_estrategia_puja' && !a.parametros?.estrategia_destino) return { error: 'cambiar_estrategia_puja sin estrategia_destino' };
+  const espera = a.parametros?.no_ejecutar_antes_de;
+  if (espera && !/^\d{4}-\d{2}-\d{2}$/.test(espera)) return { error: `no_ejecutar_antes_de debe ser AAAA-MM-DD, llegó "${espera}"` };
   return { accion: a };
 }

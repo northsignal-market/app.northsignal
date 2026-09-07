@@ -34,6 +34,7 @@ const AccionPlanaSchema = z.object({
   pregunta: z.string().nullable().describe('Solo para preguntar_andres o preguntar_cliente'),
   donde: z.string().nullable().describe('Solo para tarea_externa: en que sistema (Sheet, CRM, landing, GTM)'),
   que_hacer: z.string().nullable().describe('Solo para tarea_externa: la tarea concreta'),
+  no_ejecutar_antes_de: z.string().nullable().describe('AAAA-MM-DD si el cambio no debe aplicarse antes de una fecha, por ejemplo porque hay que esperar a que otro cambio madure. Null si se puede ejecutar ya.'),
   verificar_metrica: z.string().nullable().describe('Que metrica confirma que funciono'),
   verificar_fecha: z.string().nullable().describe('Cuando revisarlo, AAAA-MM-DD'),
   verificar_esperado: z.string().nullable().describe('Que numero se espera'),

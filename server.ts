@@ -3040,7 +3040,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         const accionCanonica = pl ? {
           verbo: pl.verbo,
           objeto: { campana: pl.campana || null, grupo: pl.grupo || null, keyword: pl.keyword || null, match_type: pl.match_type || null },
-          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null, donde: pl.donde || null, que_hacer: pl.que_hacer || null },
+          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null, donde: pl.donde || null, que_hacer: pl.que_hacer || null, no_ejecutar_antes_de: pl.no_ejecutar_antes_de || null },
           verificar: pl.verificar_metrica ? { metrica: pl.verificar_metrica, fecha: pl.verificar_fecha || '', esperado: pl.verificar_esperado || '' } : null,
         } : null;
         const tituloBase = accionCanonica ? tituloDesde(accionCanonica as any) : h.titulo;

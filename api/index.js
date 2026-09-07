@@ -145,6 +145,8 @@ function parsearAccion(texto) {
   if (["cambiar_presupuesto", "cambiar_objetivo_puja", "cambiar_cpc_keyword"].includes(a.verbo) && a.parametros?.valor_actual == null)
     return { error: `${a.verbo} sin valor_actual: sin el valor anterior el cambio no se puede revertir` };
   if (a.verbo === "cambiar_estrategia_puja" && !a.parametros?.estrategia_destino) return { error: "cambiar_estrategia_puja sin estrategia_destino" };
+  const espera = a.parametros?.no_ejecutar_antes_de;
+  if (espera && !/^\d{4}-\d{2}-\d{2}$/.test(espera)) return { error: `no_ejecutar_antes_de debe ser AAAA-MM-DD, lleg\xF3 "${espera}"` };
   return { accion: a };
 }
 var VERBOS, VERBOS_EJECUTABLES, POR_QUE_MANUAL, VERBOS_EJECUTABLES_LISTA, AccionSchema, MT, fmtKw, donde;
@@ -238,6 +240,10 @@ var init_accion = __esm({
         // cambiar_estrategia_puja
         etiqueta: z2.string().nullable().optional(),
         // aplicar_etiqueta
+        // Fecha AAAA-MM-DD antes de la cual no se ejecuta. Una condicion de secuencia
+        // escrita en el texto no retiene nada: el 7 de septiembre de 2026 un accionable
+        // que pedia esperar al 21 se ejecuto el mismo dia. Acá el pre-vuelo la hace cumplir.
+        no_ejecutar_antes_de: z2.string().nullable().optional(),
         pregunta: z2.string().nullable().optional(),
         dato_que_falta: z2.string().nullable().optional()
       }).default({}),
@@ -779,6 +785,7 @@ var AccionPlanaSchema = z3.object({
   pregunta: z3.string().nullable().describe("Solo para preguntar_andres o preguntar_cliente"),
   donde: z3.string().nullable().describe("Solo para tarea_externa: en que sistema (Sheet, CRM, landing, GTM)"),
   que_hacer: z3.string().nullable().describe("Solo para tarea_externa: la tarea concreta"),
+  no_ejecutar_antes_de: z3.string().nullable().describe("AAAA-MM-DD si el cambio no debe aplicarse antes de una fecha, por ejemplo porque hay que esperar a que otro cambio madure. Null si se puede ejecutar ya."),
   verificar_metrica: z3.string().nullable().describe("Que metrica confirma que funciono"),
   verificar_fecha: z3.string().nullable().describe("Cuando revisarlo, AAAA-MM-DD"),
   verificar_esperado: z3.string().nullable().describe("Que numero se espera")
@@ -4091,7 +4098,7 @@ Reporte completo: ${url}`;
         const accionCanonica = pl ? {
           verbo: pl.verbo,
           objeto: { campana: pl.campana || null, grupo: pl.grupo || null, keyword: pl.keyword || null, match_type: pl.match_type || null },
-          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null, donde: pl.donde || null, que_hacer: pl.que_hacer || null },
+          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null, donde: pl.donde || null, que_hacer: pl.que_hacer || null, no_ejecutar_antes_de: pl.no_ejecutar_antes_de || null },
           verificar: pl.verificar_metrica ? { metrica: pl.verificar_metrica, fecha: pl.verificar_fecha || "", esperado: pl.verificar_esperado || "" } : null
         } : null;
         const tituloBase = accionCanonica ? tituloDesde3(accionCanonica) : h.titulo;
