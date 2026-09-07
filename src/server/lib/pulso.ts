@@ -17,7 +17,25 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
-import { AccionSchema, tituloDesde, VERBOS } from '../../lib/accion';
+import { tituloDesde, VERBOS } from '../../lib/accion';
+
+// Esquema PLANO de accion para el pulso. El AccionSchema completo (objeto + parametros
+// + verificar, con 17 verbos y una docena de opcionales anidados) hace que la gramatica
+// compilada de la API supere el limite y devuelva 400. Aca van los mismos datos en un
+// solo nivel; el server los arma en la forma canonica antes de escribir.
+const AccionPlanaSchema = z.object({
+  verbo: z.enum(VERBOS),
+  campana: z.string().nullable().describe('Nombre exacto de la campana'),
+  grupo: z.string().nullable().describe('Nombre exacto del grupo, o null'),
+  keyword: z.string().nullable().describe('Texto exacto de la keyword sin corchetes ni comillas, o null'),
+  match_type: z.string().nullable().describe('EXACT, PHRASE o BROAD: la concordancia ACTUAL'),
+  match_type_destino: z.string().nullable().describe('Solo para cambiar_concordancia: EXACT, PHRASE o BROAD'),
+  nivel: z.string().nullable().describe('Solo para agregar_negativa: grupo, campana o lista'),
+  pregunta: z.string().nullable().describe('Solo para preguntar_andres o preguntar_cliente'),
+  verificar_metrica: z.string().nullable().describe('Que metrica confirma que funciono'),
+  verificar_fecha: z.string().nullable().describe('Cuando revisarlo, AAAA-MM-DD'),
+  verificar_esperado: z.string().nullable().describe('Que numero se espera'),
+});
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
@@ -53,7 +71,7 @@ export const PulsoSchema = z.object({
     evidencia_texto: z.string().describe('Los números que lo sostienen, con fechas'),
     naturaleza: z.enum(['observacion', 'inferencia', 'hipotesis']),
     como_hacerlo: z.string().describe('Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campañas > la campaña > el grupo > Palabras clave; pestaña Palabras clave negativas; Objetivos > Conversiones; Configuración > Puja. Uno por línea. Escrito para una persona con Google Ads abierto, no para el sistema.'),
-    accion: AccionSchema.nullable().describe('La acción estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no podés decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como está en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
+    accion: AccionPlanaSchema.nullable().describe('La acción estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no podés decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como está en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
     donde: z.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
     causa_raiz: z.string().describe('El problema de fondo en una frase que otro hallazgo podría compartir. Nunca "detectado por el pulso".')
   })).describe('Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.')

@@ -10,6 +10,8 @@ interface InicioProps {
 export function Inicio({ onNavigate }: InicioProps) {
   const { notionBriefs, actionables, setSelectedClient } = useAppStore();
   const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [cuentasIni, setCuentasIni] = useState<string[]>([]);
+  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasIni(Array.isArray(x) ? x.map((c: any) => c.account) : [])).catch(() => {}); }, []);
   const [pulses, setPulses] = useState<Record<string, any>>({});
   const [semana, setSemana] = useState<Record<string, any>>({});
   const [veredictos, setVeredictos] = useState<Record<string, string>>({});
@@ -42,7 +44,7 @@ export function Inicio({ onNavigate }: InicioProps) {
       .catch(console.error);
 
     // Fetch daily pulse for the 3 accounts
-    ['KAREDO', 'BHI', '360'].forEach(acc => {
+    (cuentasIni.length ? cuentasIni : ['KAREDO', 'BHI', '360']).forEach(acc => {
       fetch(`/api/daily/overview?client=${acc}`, { credentials: 'include', headers })
         .then(async res => {
           if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return null;

@@ -80,7 +80,11 @@ function App() {
     selectedAction, setSelectedAction
   } = useAppStore();
 
-  const clients = ['360', 'BHI', 'KAREDO'];
+  // Cuentas desde la base, no cableadas: sumar un cliente es una fila en `cuentas`.
+  const [cuentas, setCuentas] = useState<any[]>([]);
+  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setCuentas(Array.isArray(d) ? d : [])).catch(() => {}); }, []);
+  const clients = cuentas.length ? cuentas.map(c => c.account) : ['360', 'BHI', 'KAREDO'];
+  const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
 
   // Check authentication
   useEffect(() => {

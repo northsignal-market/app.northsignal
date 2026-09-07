@@ -171,7 +171,11 @@ function formatValue(col: string, val: any, currency: string) {
 
 export function Datos({ initialSearch, initialView }: { initialSearch?: string; initialView?: string } = {}) {
   const { selectedClient, setIsAuthenticated } = useAppStore();
-  const currency = selectedClient === 'KAREDO' ? 'EUR' : 'CLP';
+  const [cuentasApi, setCuentasApi] = useState<any[]>([]);
+  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasApi(Array.isArray(x) ? x : [])).catch(() => {}); }, []);
+  const monedaDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
+  const presupuestoDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.presupuesto_diario ?? (acc === 'KAREDO' ? 135 : 20000);
+  const currency = monedaDe(selectedClient);
   
   const [activeView, setActiveView] = useState('v_keywords_analisis');
   const [weeks, setWeeks] = useState<string[]>([]);
@@ -267,10 +271,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
              const dailyAvg = (Number(data.mtd_spend) || 0) / dayOfMonth;
              const projectedTotal = dailyAvg * currentMonthDays;
              
-             let dailyBudget = 0;
-             if (selectedClient === 'KAREDO') dailyBudget = 135;
-             else if (selectedClient === 'BHI') dailyBudget = 20000;
-             else if (selectedClient === '360') dailyBudget = 21000;
+             const dailyBudget = presupuestoDe(selectedClient);
              
              if (dailyBudget > 0) {
                const monthlyBudget = dailyBudget * currentMonthDays;
@@ -680,7 +681,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
       if (totals) {
          doc.setFontSize(10);
          doc.setTextColor(50, 50, 50);
-         const docCurrency = selectedClient === 'KAREDO' ? 'EUR' : 'CLP';
+         const docCurrency = monedaDe(selectedClient);
          const totalsText = `Inversión: ${formatValue('cost', totals.cost, docCurrency)}  |  Clics: ${totals.clicks}  |  Impr: ${totals.impressions}  |  Conv: ${totals.conversions}  |  CPA: ${formatValue('cpa', totals.cpa, docCurrency)}  |  CTR: ${(totals.ctr || 0).toFixed(2)}%`;
          doc.text(totalsText, 14, 38);
       }
@@ -693,7 +694,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           let val = row[col];
           if (val === null || val === undefined) return '-';
           if (typeof val === 'number') {
-            const docCurrency = selectedClient === 'KAREDO' ? 'EUR' : 'CLP';
+            const docCurrency = monedaDe(selectedClient);
             return formatValue(col, val, docCurrency);
           }
           return val.toString();
@@ -1229,21 +1230,21 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-[#FFFFFF]">Pacing Predictivo (Burn Rate)</h3>
-                <p className="text-xs text-[#F5F7FA]/70">Proyección fin de mes basada en gasto diario promedio ({formatValue('gasto', burnRate.dailyAvg, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}/día)</p>
+                <p className="text-xs text-[#F5F7FA]/70">Proyección fin de mes basada en gasto diario promedio ({formatValue('gasto', burnRate.dailyAvg, monedaDe(selectedClient))}/día)</p>
               </div>
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Proyección Mensual</p>
                 <p className={`text-lg font-bold tabular ${burnRate.status === 'over' ? 'text-[#0062CC]' : burnRate.status === 'under' ? 'text-[#F5F7FA]' : 'text-[#FFFFFF]'}`}>
-                  {formatValue('gasto', burnRate.projectedTotal, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
+                  {formatValue('gasto', burnRate.projectedTotal, monedaDe(selectedClient))}
                 </p>
               </div>
               <div className="w-px h-10 bg-[#0062CC]/20"></div>
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
                 <p className="text-lg font-bold tabular text-[#FFFFFF]">
-                  {formatValue('gasto', burnRate.monthlyBudget, selectedClient === 'KAREDO' ? 'EUR' : 'CLP')}
+                  {formatValue('gasto', burnRate.monthlyBudget, monedaDe(selectedClient))}
                 </p>
               </div>
             </div>

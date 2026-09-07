@@ -32,6 +32,17 @@ import { GoogleGenAI } from '@google/genai';
 
 // Cache for Notion Client resolutions
 const notionClientCache: Record<string, string> = {};
+// Cuentas activas desde Supabase, no cableadas. Agregar un cliente es una fila,
+// no un despliegue. Cache corto para no consultar en cada peticion.
+let _cuentasCache: { at: number; data: any[] } = { at: 0, data: [] };
+async function cuentasActivas(): Promise<any[]> {
+  if (Date.now() - _cuentasCache.at < 300000 && _cuentasCache.data.length) return _cuentasCache.data;
+  if (!supabase) return [];
+  const { data } = await supabase.from('cuentas').select('account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario, notion_ficha_id').eq('activa', true).order('account');
+  if (data?.length) _cuentasCache = { at: Date.now(), data };
+  return data || [];
+}
+
 async function resolveNotionClient(notion: any, relationProp: any): Promise<string> {
   if (!relationProp?.relation || relationProp.relation.length === 0) return 'Unknown';
   const pageId = relationProp.relation[0].id;
@@ -308,13 +319,14 @@ export function createApp() {
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
       });
+      const monedaPorCuenta = new Map((await cuentasActivas()).map(c => [c.account, c.moneda]));
       const clients = response.results.map((p: any) => {
         const name = p.properties.Cliente?.title?.map((t: any) => t.plain_text).join('') || 'Sin nombre';
         const aprendizajes = p.properties['Aprendizajes consolidados']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         const hipotesis = p.properties['Hipotesis abiertas']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         const semanas = p.properties['Semanas analizadas']?.number ?? 0;
         const status = p.properties.Estado?.select?.name || 'Activo';
-        const moneda = p.properties.Moneda?.select?.name || (name.toUpperCase().includes('KAREDO') ? 'EUR' : 'CLP');
+        const moneda = p.properties.Moneda?.select?.name || [...monedaPorCuenta.entries()].find(([a]) => name.toUpperCase().includes(a))?.[1] || 'CLP';
         const country = p.properties.Pais?.select?.name || '';
         const budget = p.properties['Presupuesto diario']?.number || 0;
         const customerId = p.properties['Customer ID']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
@@ -379,7 +391,10 @@ export function createApp() {
         
         // Llamar a get_weekly_package para cada cuenta
         const results = await Promise.all(
-          accounts.map(acc => supabase.rpc('get_weekly_package', { p_account: acc }))
+          accounts.map(async (acc: string) => {
+            const pf = (await cuentasActivas()).find(c => c.account === acc)?.perfil_analisis;
+            return supabase!.rpc(pf === 'cadena' ? 'get_weekly_package_cadena' : 'get_weekly_package', { p_account: acc });
+          })
         );
         
         results.forEach(res => {
@@ -1012,7 +1027,8 @@ export function createApp() {
         
         if(!supabase) throw new Error('No supabase credentials');
         
-        const { data: pkg } = await supabase.rpc('get_weekly_package', { p_account: client });
+        const perfil = (await cuentasActivas()).find(c => c.account === client)?.perfil_analisis;
+        const { data: pkg } = await supabase.rpc(perfil === 'cadena' ? 'get_weekly_package_cadena' : 'get_weekly_package', { p_account: client });
         if (pkg && pkg.length > 0) {
            // Provide a summarized version to Gemini to keep tokens low
            const state = pkg[0].estado_estructural ? JSON.stringify(pkg[0].estado_estructural).substring(0, 500) : '';
@@ -1896,7 +1912,10 @@ Las descripciones no deben superar los 90 caracteres.`;
         let sincronizados = 0;
         for (const f of fichas.results) {
           const nombre = f.properties?.Cliente?.title?.map((t: any) => t.plain_text).join('') || f.properties?.Name?.title?.map((t: any) => t.plain_text).join('') || '';
-          const acct = /karedo/i.test(nombre) ? 'KAREDO' : /bhi|best health/i.test(nombre) ? 'BHI' : /360/.test(nombre) ? '360' : null;
+          const cts = await cuentasActivas();
+          const acct = cts.find(c => (c.nombre_cliente || '').toLowerCase() === String(nombre).toLowerCase())?.account
+                    || cts.find(c => String(nombre).toLowerCase().includes((c.nombre_cliente || '').split(' ')[0].toLowerCase()))?.account
+                    || cts.find(c => String(nombre).toLowerCase().includes(c.account.toLowerCase().replace('_', ' ')))?.account || null;
           if (!acct) continue;
           const aprendizajes = f.properties['Aprendizajes consolidados']?.rich_text?.map((t: any) => t.plain_text).join('') || null;
           const hipotesis = f.properties['Hipotesis abiertas']?.rich_text?.map((t: any) => t.plain_text).join('') || null;
@@ -2228,11 +2247,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Descargar el PDF guardado
   app.get("/api/reportes/:id/pdf", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data: r } = await supabase.from('reportes_cliente').select('account, periodo_desde, pdf_path').eq('id', req.params.id).single();
-    if (!r?.pdf_path) return res.status(404).json({ error: 'sin PDF; generalo primero' });
+    const { data: r0 } = await supabase.from('reportes_cliente').select('account, periodo_desde, pdf_path').eq('id', req.params.id).single();
+    if (!r0) return res.status(404).json({ error: 'no encontrado' });
+    let r = r0;
+    // Sin PDF (o desactualizado tras una edicion): generarlo ahora
+    if (!r.pdf_path) { try { const g = await generarYGuardarPdf(Number(req.params.id)); r = { ...r, pdf_path: g.pdf_path }; } catch (e: any) { return res.status(500).json({ error: 'No pude generar el PDF: ' + e.message }); } }
     const { data, error } = await supabase.storage.from('reportes').download(r.pdf_path);
     if (error || !data) return res.status(500).json({ error: error?.message || 'no se pudo descargar' });
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Disposition', `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
     res.send(Buffer.from(await data.arrayBuffer()));
   });
@@ -2683,6 +2707,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     res.json({ ok: true });
   });
 
+  app.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
+
   // Briefing: lo que hay para vos hoy. Lo lee el script de briefing (mail) y la app.
   app.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -2858,7 +2884,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
 
     const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
     const fecha = (req.query.fecha as string) || ayer.toISOString().slice(0, 10);
-    const cuentas = (req.query.client as string) ? [req.query.client as string] : ['KAREDO', 'BHI', '360'];
+    const cuentas = (req.query.client as string) ? [req.query.client as string] : (await cuentasActivas()).map(c => c.account);
     const forzar = req.query.forzar === '1';
 
     // Idempotencia: si ya hay pulso para (cuenta, fecha) y no se fuerza, no se llama al modelo.
@@ -2900,8 +2926,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       let creados = 0;
       for (const h of (filtrados || []) as any[]) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
-        const { tituloDesde, tipoAutoDesde } = await import('./src/lib/accion');
-        const tituloBase = h.accion ? tituloDesde(h.accion) : h.titulo;
+        const { tituloDesde } = await import('./src/lib/accion');
+        // El pulso devuelve la accion plana; se arma la forma canonica {objeto, parametros, verificar}
+        const pl: any = h.accion;
+        const accionCanonica = pl ? {
+          verbo: pl.verbo,
+          objeto: { campana: pl.campana || null, grupo: pl.grupo || null, keyword: pl.keyword || null, match_type: pl.match_type || null },
+          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null },
+          verificar: pl.verificar_metrica ? { metrica: pl.verificar_metrica, fecha: pl.verificar_fecha || '', esperado: pl.verificar_esperado || '' } : null,
+        } : null;
+        const tituloBase = accionCanonica ? tituloDesde(accionCanonica as any) : h.titulo;
         const title = `${tituloBase} · ${cuenta}`.slice(0, 200);
         // LEER ANTES DE ESCRIBIR: si hay uno abierto para la misma entidad o causa, comentar en vez de crear
         const entidadClave = String(h.donde || h.entidad || '').slice(0, 200);
@@ -2927,7 +2961,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
           Naturaleza: { select: { name: nat } },
           'Por que': { rich_text: [{ text: { content: String(h.evidencia_texto || '').slice(0, 1900) } }] },
           'Como hacerlo': { rich_text: [{ text: { content: String(h.como_hacerlo || '').slice(0, 1900) } }] },
-          'Accion JSON': { rich_text: [{ text: { content: h.accion ? JSON.stringify(h.accion).slice(0, 1900) : '' } }] },
+          'Accion JSON': { rich_text: [{ text: { content: accionCanonica ? '`' + JSON.stringify(accionCanonica).slice(0, 1880) + '`' : '' } }] },
           'Causa raiz': { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || '').slice(0, 500) } }] },
           Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || '').slice(0, 300) } }] },
           Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },
@@ -3017,7 +3051,9 @@ async function findNotionClientId(notionClient: any, account: string): Promise<s
     const r: any = await notionClient.databases.query({ database_id: NOTION_BASES.CLIENTES });
     for (const p of r.results) {
       const nombre = p.properties?.Cliente?.title?.map((t: any) => t.plain_text).join('') || p.properties?.Name?.title?.map((t: any) => t.plain_text).join('') || '';
-      if ((account === 'KAREDO' && /karedo/i.test(nombre)) || (account === 'BHI' && /bhi|best health/i.test(nombre)) || (account === '360' && /360/.test(nombre))) return p.id;
+      const ct = (await cuentasActivas()).find(c => c.account === account);
+      const nm = String(nombre).toLowerCase(), base = (ct?.nombre_cliente || account).toLowerCase();
+      if (nm === base || nm.includes(base.split(' ')[0]) || nm.includes(account.toLowerCase().replace('_', ' '))) return p.id;
     }
   } catch {}
   return null;

@@ -658,6 +658,19 @@ init_accion();
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z as z3 } from "zod";
+var AccionPlanaSchema = z3.object({
+  verbo: z3.enum(VERBOS),
+  campana: z3.string().nullable().describe("Nombre exacto de la campana"),
+  grupo: z3.string().nullable().describe("Nombre exacto del grupo, o null"),
+  keyword: z3.string().nullable().describe("Texto exacto de la keyword sin corchetes ni comillas, o null"),
+  match_type: z3.string().nullable().describe("EXACT, PHRASE o BROAD: la concordancia ACTUAL"),
+  match_type_destino: z3.string().nullable().describe("Solo para cambiar_concordancia: EXACT, PHRASE o BROAD"),
+  nivel: z3.string().nullable().describe("Solo para agregar_negativa: grupo, campana o lista"),
+  pregunta: z3.string().nullable().describe("Solo para preguntar_andres o preguntar_cliente"),
+  verificar_metrica: z3.string().nullable().describe("Que metrica confirma que funciono"),
+  verificar_fecha: z3.string().nullable().describe("Cuando revisarlo, AAAA-MM-DD"),
+  verificar_esperado: z3.string().nullable().describe("Que numero se espera")
+});
 var anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 var PRECIO_IN = 2 / 1e6;
 var PRECIO_OUT = 10 / 1e6;
@@ -690,7 +703,7 @@ var PulsoSchema = z3.object({
     evidencia_texto: z3.string().describe("Los n\xFAmeros que lo sostienen, con fechas"),
     naturaleza: z3.enum(["observacion", "inferencia", "hipotesis"]),
     como_hacerlo: z3.string().describe("Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campa\xF1as > la campa\xF1a > el grupo > Palabras clave; pesta\xF1a Palabras clave negativas; Objetivos > Conversiones; Configuraci\xF3n > Puja. Uno por l\xEDnea. Escrito para una persona con Google Ads abierto, no para el sistema."),
-    accion: AccionSchema.nullable().describe('La acci\xF3n estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no pod\xE9s decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como est\xE1 en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
+    accion: AccionPlanaSchema.nullable().describe('La acci\xF3n estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no pod\xE9s decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como est\xE1 en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
     donde: z3.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
     causa_raiz: z3.string().describe('El problema de fondo en una frase que otro hallazgo podr\xEDa compartir. Nunca "detectado por el pulso".')
   })).describe("Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.")
@@ -1140,6 +1153,14 @@ import cookieParser from "cookie-parser";
 import { Client as NotionClient } from "@notionhq/client";
 var cargarPdf = () => Promise.resolve().then(() => (init_reporte_pdf(), reporte_pdf_exports));
 var notionClientCache = {};
+var _cuentasCache = { at: 0, data: [] };
+async function cuentasActivas() {
+  if (Date.now() - _cuentasCache.at < 3e5 && _cuentasCache.data.length) return _cuentasCache.data;
+  if (!supabase) return [];
+  const { data } = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario, notion_ficha_id").eq("activa", true).order("account");
+  if (data?.length) _cuentasCache = { at: Date.now(), data };
+  return data || [];
+}
 async function resolveNotionClient(notion2, relationProp) {
   if (!relationProp?.relation || relationProp.relation.length === 0) return "Unknown";
   const pageId = relationProp.relation[0].id;
@@ -1351,13 +1372,14 @@ function createApp() {
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
       });
+      const monedaPorCuenta = new Map((await cuentasActivas()).map((c) => [c.account, c.moneda]));
       const clients = response.results.map((p) => {
         const name = p.properties.Cliente?.title?.map((t) => t.plain_text).join("") || "Sin nombre";
         const aprendizajes = p.properties["Aprendizajes consolidados"]?.rich_text?.map((t) => t.plain_text).join("") || "";
         const hipotesis = p.properties["Hipotesis abiertas"]?.rich_text?.map((t) => t.plain_text).join("") || "";
         const semanas = p.properties["Semanas analizadas"]?.number ?? 0;
         const status = p.properties.Estado?.select?.name || "Activo";
-        const moneda = p.properties.Moneda?.select?.name || (name.toUpperCase().includes("KAREDO") ? "EUR" : "CLP");
+        const moneda = p.properties.Moneda?.select?.name || [...monedaPorCuenta.entries()].find(([a]) => name.toUpperCase().includes(a))?.[1] || "CLP";
         const country = p.properties.Pais?.select?.name || "";
         const budget = p.properties["Presupuesto diario"]?.number || 0;
         const customerId = p.properties["Customer ID"]?.rich_text?.map((t) => t.plain_text).join("") || "";
@@ -1396,7 +1418,10 @@ function createApp() {
         if (accountsErr) throw accountsErr;
         const accounts = Array.from(new Set(accountsData.map((r) => r.account)));
         const results = await Promise.all(
-          accounts.map((acc) => supabase.rpc("get_weekly_package", { p_account: acc }))
+          accounts.map(async (acc) => {
+            const pf = (await cuentasActivas()).find((c) => c.account === acc)?.perfil_analisis;
+            return supabase.rpc(pf === "cadena" ? "get_weekly_package_cadena" : "get_weekly_package", { p_account: acc });
+          })
         );
         results.forEach((res2) => {
           if (res2.error) {
@@ -1926,7 +1951,8 @@ function createApp() {
       let weeklySummary = "No se pudieron obtener datos detallados de la semana.";
       try {
         if (!supabase) throw new Error("No supabase credentials");
-        const { data: pkg } = await supabase.rpc("get_weekly_package", { p_account: client });
+        const perfil = (await cuentasActivas()).find((c) => c.account === client)?.perfil_analisis;
+        const { data: pkg } = await supabase.rpc(perfil === "cadena" ? "get_weekly_package_cadena" : "get_weekly_package", { p_account: client });
         if (pkg && pkg.length > 0) {
           const state = pkg[0].estado_estructural ? JSON.stringify(pkg[0].estado_estructural).substring(0, 500) : "";
           const alerts = pkg[0].alertas_altas ? JSON.stringify(pkg[0].alertas_altas).substring(0, 500) : "";
@@ -2722,7 +2748,8 @@ Las descripciones no deben superar los 90 caracteres.`;
         let sincronizados = 0;
         for (const f of fichas.results) {
           const nombre = f.properties?.Cliente?.title?.map((t) => t.plain_text).join("") || f.properties?.Name?.title?.map((t) => t.plain_text).join("") || "";
-          const acct = /karedo/i.test(nombre) ? "KAREDO" : /bhi|best health/i.test(nombre) ? "BHI" : /360/.test(nombre) ? "360" : null;
+          const cts = await cuentasActivas();
+          const acct = cts.find((c) => (c.nombre_cliente || "").toLowerCase() === String(nombre).toLowerCase())?.account || cts.find((c) => String(nombre).toLowerCase().includes((c.nombre_cliente || "").split(" ")[0].toLowerCase()))?.account || cts.find((c) => String(nombre).toLowerCase().includes(c.account.toLowerCase().replace("_", " ")))?.account || null;
           if (!acct) continue;
           const aprendizajes = f.properties["Aprendizajes consolidados"]?.rich_text?.map((t) => t.plain_text).join("") || null;
           const hipotesis = f.properties["Hipotesis abiertas"]?.rich_text?.map((t) => t.plain_text).join("") || null;
@@ -3051,11 +3078,22 @@ ${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
   });
   app2.get("/api/reportes/:id/pdf", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { data: r } = await supabase.from("reportes_cliente").select("account, periodo_desde, pdf_path").eq("id", req.params.id).single();
-    if (!r?.pdf_path) return res.status(404).json({ error: "sin PDF; generalo primero" });
+    const { data: r0 } = await supabase.from("reportes_cliente").select("account, periodo_desde, pdf_path").eq("id", req.params.id).single();
+    if (!r0) return res.status(404).json({ error: "no encontrado" });
+    let r = r0;
+    if (!r.pdf_path) {
+      try {
+        const g = await generarYGuardarPdf(Number(req.params.id));
+        r = { ...r, pdf_path: g.pdf_path };
+      } catch (e) {
+        return res.status(500).json({ error: "No pude generar el PDF: " + e.message });
+      }
+    }
     const { data, error } = await supabase.storage.from("reportes").download(r.pdf_path);
     if (error || !data) return res.status(500).json({ error: error?.message || "no se pudo descargar" });
     res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Disposition", `inline; filename="NorthSignal_${r.account}_${r.periodo_desde}.pdf"`);
     res.send(Buffer.from(await data.arrayBuffer()));
   });
@@ -3618,6 +3656,7 @@ Reporte completo: ${url}`;
     await supabase.from("accionable_relaciones").update({ resuelta: true, resuelta_el: (/* @__PURE__ */ new Date()).toISOString(), resuelta_por: "andres" }).eq("id", req.params.id);
     res.json({ ok: true });
   });
+  app2.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
   app2.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data } = await supabase.rpc("get_briefing");
@@ -3773,7 +3812,7 @@ Reporte completo: ${url}`;
     const ayer = /* @__PURE__ */ new Date();
     ayer.setDate(ayer.getDate() - 1);
     const fecha2 = req.query.fecha || ayer.toISOString().slice(0, 10);
-    const cuentas = req.query.client ? [req.query.client] : ["KAREDO", "BHI", "360"];
+    const cuentas = req.query.client ? [req.query.client] : (await cuentasActivas()).map((c) => c.account);
     const forzar = req.query.forzar === "1";
     const { data: existentes } = await supabase.from("pulso_diario").select("account").eq("fecha", fecha2).in("account", cuentas);
     const yaHechas = new Set((existentes || []).map((e) => e.account));
@@ -3820,8 +3859,15 @@ Reporte completo: ${url}`;
       let creados = 0;
       for (const h of filtrados || []) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
-        const { tituloDesde: tituloDesde3, tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
-        const tituloBase = h.accion ? tituloDesde3(h.accion) : h.titulo;
+        const { tituloDesde: tituloDesde3 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
+        const pl = h.accion;
+        const accionCanonica = pl ? {
+          verbo: pl.verbo,
+          objeto: { campana: pl.campana || null, grupo: pl.grupo || null, keyword: pl.keyword || null, match_type: pl.match_type || null },
+          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null },
+          verificar: pl.verificar_metrica ? { metrica: pl.verificar_metrica, fecha: pl.verificar_fecha || "", esperado: pl.verificar_esperado || "" } : null
+        } : null;
+        const tituloBase = accionCanonica ? tituloDesde3(accionCanonica) : h.titulo;
         const title = `${tituloBase} \xB7 ${cuenta}`.slice(0, 200);
         const entidadClave = String(h.donde || h.entidad || "").slice(0, 200);
         const { data: existenteId } = await supabase.rpc("accionable_existente", { p_account: cuenta, p_entidad: entidadClave, p_causa: h.causa_raiz || null });
@@ -3852,7 +3898,7 @@ Reporte completo: ${url}`;
           Naturaleza: { select: { name: nat } },
           "Por que": { rich_text: [{ text: { content: String(h.evidencia_texto || "").slice(0, 1900) } }] },
           "Como hacerlo": { rich_text: [{ text: { content: String(h.como_hacerlo || "").slice(0, 1900) } }] },
-          "Accion JSON": { rich_text: [{ text: { content: h.accion ? JSON.stringify(h.accion).slice(0, 1900) : "" } }] },
+          "Accion JSON": { rich_text: [{ text: { content: accionCanonica ? "`" + JSON.stringify(accionCanonica).slice(0, 1880) + "`" : "" } }] },
           "Causa raiz": { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || "").slice(0, 500) } }] },
           Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || "").slice(0, 300) } }] },
           Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },
@@ -3939,7 +3985,9 @@ async function findNotionClientId(notionClient, account) {
     const r = await notionClient.databases.query({ database_id: NOTION_BASES.CLIENTES });
     for (const p of r.results) {
       const nombre = p.properties?.Cliente?.title?.map((t) => t.plain_text).join("") || p.properties?.Name?.title?.map((t) => t.plain_text).join("") || "";
-      if (account === "KAREDO" && /karedo/i.test(nombre) || account === "BHI" && /bhi|best health/i.test(nombre) || account === "360" && /360/.test(nombre)) return p.id;
+      const ct = (await cuentasActivas()).find((c) => c.account === account);
+      const nm = String(nombre).toLowerCase(), base = (ct?.nombre_cliente || account).toLowerCase();
+      if (nm === base || nm.includes(base.split(" ")[0]) || nm.includes(account.toLowerCase().replace("_", " "))) return p.id;
     }
   } catch {
   }

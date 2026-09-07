@@ -21,6 +21,8 @@ export function Accionables({
   const { actionables, updateActionableStatus } = useAppStore();
 
   const [search, setSearch] = useState('');
+  const [cuentasApi, setCuentasApi] = useState<any[]>([]);
+  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasApi(Array.isArray(x) ? x : [])).catch(() => {}); }, []);
   const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
   useEffect(() => { fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((d: any[]) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))).catch(() => {}); }, []);
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
@@ -154,9 +156,7 @@ export function Accionables({
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todos los Clientes</option>
-          <option value="360" className="bg-[#1A1F36]">360</option>
-          <option value="BHI" className="bg-[#1A1F36]">BHI</option>
-          <option value="KAREDO" className="bg-[#1A1F36]">KAREDO</option>
+          {(cuentasApi.length ? cuentasApi.map((c: any) => c.account) : ['KAREDO']).map((a: string) => <option key={a} value={a} className="bg-[#1A1F36]">{a}</option>)}
         </select>
 
         {/* Status */}
