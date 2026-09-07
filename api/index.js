@@ -219,12 +219,14 @@ var init_reporte_pdf = __esm({
 // src/lib/tipoAuto.ts
 var tipoAuto_exports = {};
 __export(tipoAuto_exports, {
+  concordanciaDestino: () => concordanciaDestino,
   detectarTipoAuto: () => detectarTipoAuto,
   extraerKeyword: () => extraerKeyword
 });
 function detectarTipoAuto(titulo, comoHacerlo) {
   const t = `${titulo} ${comoHacerlo || ""}`.toLowerCase();
   if (/negativ/.test(t)) return /nivel (de )?campa|a la campa|lista/.test(t) ? "negativa_campana" : "negativa_grupo";
+  if (/concordancia|match type/.test(t) && /cambiar|pasar|mover|a exacta|a frase|a amplia|to exact|to phrase/.test(t)) return "cambiar_concordancia";
   if (/pausar|pausa\b|desactivar/.test(t)) {
     if (/anuncio|rsa\b|\bad\b/.test(t)) return "pausar_anuncio";
     if (/grupo de anuncios|ad group|campa[ñn]a completa|toda la campa/.test(t)) return null;
@@ -239,6 +241,13 @@ function extraerKeyword(titulo, entidad) {
   if (k) return k[1].trim();
   const partes = String(entidad || "").split("|").map((x) => x.trim());
   return partes[2] || "";
+}
+function concordanciaDestino(titulo) {
+  const t = titulo.toLowerCase();
+  const m = t.match(/\ba\s+(exacta|frase|amplia|exact|phrase|broad)\b/g);
+  if (!m || !m.length) return null;
+  const ult = m[m.length - 1].replace(/^a\s+/, "");
+  return /exact/.test(ult) ? "EXACT" : /frase|phrase/.test(ult) ? "PHRASE" : "BROAD";
 }
 var init_tipoAuto = __esm({
   "src/lib/tipoAuto.ts"() {
@@ -2906,7 +2915,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   });
   async function aplicarPoliticaAuto(account, notionId, titulo, entidad, origen, confianza, comoHacerlo) {
     if (!supabase) return null;
-    const { detectarTipoAuto: detectarTipoAuto2, extraerKeyword: extraerKeyword2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
+    const { detectarTipoAuto: detectarTipoAuto2, extraerKeyword: extraerKeyword2, concordanciaDestino: concordanciaDestino2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
     const tipo = detectarTipoAuto2(titulo, comoHacerlo);
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc("politica_aplica", { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
@@ -2914,7 +2923,9 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const partes = String(entidad || "").split("|").map((x) => x.trim());
     const kw = extraerKeyword2(titulo, entidad);
     if (!partes[0] || !kw && tipo !== "pausar_anuncio") return null;
-    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: partes[0], grupo: partes[1] || null, keyword: kw || null, match_type: /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", modo, aprobada_por: "politica", por_politica: true });
+    const destino = tipo === "cambiar_concordancia" ? concordanciaDestino2(titulo) : null;
+    if (tipo === "cambiar_concordancia" && !destino) return null;
+    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: partes[0], grupo: partes[1] || null, keyword: kw || null, match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo, aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
         await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
@@ -2926,10 +2937,11 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   }
   app2.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { account, tipo, campana, grupo, keyword, match_type, ad_id, modo } = req.body || {};
-    if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio"].includes(tipo)) return res.status(400).json({ error: "Solo negativas y pausas se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
+    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = req.body || {};
+    if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio", "cambiar_concordancia"].includes(tipo)) return res.status(400).json({ error: "Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
+    if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });
     if (!account || !campana || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account, campana y keyword o ad_id" });
-    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || "PHRASE", ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
+    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || "PHRASE", match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     if (notion) {
       try {

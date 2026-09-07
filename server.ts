@@ -2232,7 +2232,7 @@ Las descripciones no deben superar los 90 caracteres.`;
   // va directo a acciones_aprobadas (en el modo de la politica) sin esperar a Andres.
   async function aplicarPoliticaAuto(account: string, notionId: string, titulo: string, entidad: string, origen: string, confianza: number | null, comoHacerlo?: string | null): Promise<string | null> {
     if (!supabase) return null;
-    const { detectarTipoAuto, extraerKeyword } = await import('./src/lib/tipoAuto');
+    const { detectarTipoAuto, extraerKeyword, concordanciaDestino } = await import('./src/lib/tipoAuto');
     const tipo = detectarTipoAuto(titulo, comoHacerlo);
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc('politica_aplica', { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
@@ -2240,7 +2240,9 @@ Las descripciones no deben superar los 90 caracteres.`;
     const partes = String(entidad || '').split('|').map(x => x.trim());
     const kw = extraerKeyword(titulo, entidad);
     if (!partes[0] || (!kw && tipo !== 'pausar_anuncio')) return null;
-    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: partes[0], grupo: partes[1] || null, keyword: kw || null, match_type: /exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE', modo, aprobada_por: 'politica', por_politica: true });
+    const destino = tipo === 'cambiar_concordancia' ? concordanciaDestino(titulo) : null;
+    if (tipo === 'cambiar_concordancia' && !destino) return null;
+    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: partes[0], grupo: partes[1] || null, keyword: kw || null, match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
       await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.` } }] });
@@ -2254,10 +2256,11 @@ Las descripciones no deben superar los 90 caracteres.`;
   // Aprobar un accionable para que el script ejecutor lo aplique. Solo negativas y pausas.
   app.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { account, tipo, campana, grupo, keyword, match_type, ad_id, modo } = req.body || {};
-    if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas y pausas se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
+    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = req.body || {};
+    if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio', 'cambiar_concordancia'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
+    if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });
     if (!account || !campana || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account, campana y keyword o ad_id' });
-    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || 'PHRASE', ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
+    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana, grupo: grupo || null, keyword: keyword || null, match_type: match_type || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
     if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.` } }] }); } catch {} }

@@ -235,7 +235,7 @@ export function Sistema() {
           <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <div>
               <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué puede hacer el sistema sin preguntarte</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Solo negativas y pausas, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas y cambios de concordancia, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
             </div>
             <label className="flex items-center gap-2 shrink-0 cursor-pointer">
               <span className="text-xs text-[#F5F7FA]">{politicas.general ? 'Encendido' : 'Apagado'}</span>
@@ -248,7 +248,7 @@ export function Sistema() {
             {politicas.politicas.map((p: any) => (
               <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-70' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#FFFFFF]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios' } as any)[p.tipo]}</span></label>
+                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#FFFFFF]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios', cambiar_concordancia: 'Cambiar concordancia de keywords' } as any)[p.tipo]}</span></label>
                   <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
                     {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
                   </div>
@@ -276,7 +276,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas y pausas, que se pueden deshacer. Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas y cambios de concordancia, que se pueden deshacer. Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
           </div>
           {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una negativa o una pausa desde el accionable.</p> : (
             <div className="space-y-1">

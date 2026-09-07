@@ -5,7 +5,7 @@ import {
   ArrowRight, Plus, History, Sparkles, HelpCircle
 } from 'lucide-react';
 import { receta } from '../lib/recetas';
-import { detectarTipoAuto, extraerKeyword } from '../lib/tipoAuto';
+import { detectarTipoAuto, extraerKeyword, concordanciaDestino } from '../lib/tipoAuto';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 import { useAppStore } from '../store/useAppStore';
@@ -159,7 +159,7 @@ export function ActionableDrawerContent({
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: /exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE', modo }) });
+        body: JSON.stringify({ account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
       if (!r.ok) alert(j.error || 'Error'); else setEjecutado(modo);
     } finally { setEjecutando(false); }
@@ -452,7 +452,7 @@ export function ActionableDrawerContent({
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
           ) : (
             <>
-              <p className="text-xs text-[#F5F7FA] opacity-80">Esto es una {tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos. Un script la ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
               <div className="flex gap-2">
                 <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
                 <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
