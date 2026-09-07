@@ -61,7 +61,6 @@ function tituloDesde(a) {
   }
 }
 function tipoAutoDesde(a) {
-  if (a.objeto.keywords && a.objeto.keywords.length > 1) return null;
   if (a.verbo === "agregar_negativa") return a.parametros?.nivel === "campana" ? "negativa_campana" : a.parametros?.nivel === "lista" ? null : "negativa_grupo";
   if (a.verbo === "pausar_keyword" && !a.objeto.keywords?.length) return "pausar_keyword";
   if (a.verbo === "pausar_anuncio") return "pausar_anuncio";
@@ -362,7 +361,8 @@ __export(tipoAuto_exports, {
 function detectarTipoAuto(titulo, comoHacerlo) {
   const t = `${titulo} ${comoHacerlo || ""}`.toLowerCase();
   if (/negativ/.test(t)) return /nivel (de )?campa|a la campa|lista/.test(t) ? "negativa_campana" : "negativa_grupo";
-  if (/concordancia|match type/.test(t) && /cambiar|pasar|mover|a exacta|a frase|a amplia|to exact|to phrase/.test(t)) return "cambiar_concordancia";
+  if (/concordancia|match type/.test(t) && /cambiar|pasar|mover|a exacta|a frase|a amplia|to exact|to phrase/.test(t) || /\bde (amplia|frase|exacta) a (amplia|frase|exacta)\b/.test(t)) return "cambiar_concordancia";
+  if (/\b\d+ (keywords|palabras clave|negativas|t[eé]rminos)\b/.test(t)) return null;
   if (/pausar|pausa\b|desactivar/.test(t)) {
     if (/anuncio|rsa\b|\bad\b/.test(t)) return "pausar_anuncio";
     if (/grupo de anuncios|ad group|campa[ñn]a completa|toda la campa/.test(t)) return null;
@@ -3210,10 +3210,21 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc("politica_aplica", { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
     if (!modo) return null;
-    const kw = extraerKeyword2(titulo, entidad);
+    const { data: espA } = await supabase.from("accionables_espejo").select("accion, accion_valida").eq("notion_id", notionId).maybeSingle();
+    const lote = espA?.accion_valida && espA.accion?.objeto?.keywords?.length > 1 ? espA.accion.objeto.keywords : null;
+    const kw = lote ? lote[0] : extraerKeyword2(titulo, entidad);
     if (!kw && tipo !== "pausar_anuncio") return null;
     const destino = tipo === "cambiar_concordancia" ? concordanciaDestino2(titulo) : null;
     if (tipo === "cambiar_concordancia" && !destino) return null;
+    let loteOk = null;
+    if (lote && tipo === "pausar_keyword") {
+      loteOk = [];
+      for (const k of lote) {
+        const rr = await resolverKeyword(account, k, entidad || "");
+        if (rr) loteOk.push(k);
+      }
+      if (!loteOk.length) return null;
+    }
     const r = await resolverKeyword(account, kw, `${entidad || ""} ${titulo}`);
     if (!r) return null;
     const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: notionId });
@@ -3224,7 +3235,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
       return null;
     }
-    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: r.grupo, keyword: kw, match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo, aprobada_por: "politica", por_politica: true });
+    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo, aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
         await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
@@ -3248,7 +3259,8 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
           body.tipo = t;
           body.campana = a.objeto.campana;
           body.grupo = a.objeto.grupo;
-          body.keyword = a.objeto.keyword;
+          body.keyword = a.objeto.keyword || a.objeto.keywords?.[0];
+          body.keywords = a.objeto.keywords?.length > 1 ? a.objeto.keywords : void 0;
           body.match_type = a.objeto.match_type || (t.startsWith("negativa") ? a.parametros?.match_type_destino || "PHRASE" : "ANY");
           body.match_type_destino = a.parametros?.match_type_destino;
           body.ad_id = a.objeto.anuncio_id;
@@ -3256,13 +3268,29 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
     }
     const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
+    const keywordsLote = Array.isArray(body.keywords) && body.keywords.length > 1 ? body.keywords : void 0;
     const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todav\xEDa: ${bloqueo}`, conflicto: true });
     if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio", "cambiar_concordancia"].includes(tipo)) return res.status(400).json({ error: "Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
     if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });
     if (!account || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account y keyword o ad_id" });
     let camp = campana, grp = grupo, mt = match_type;
-    if (keyword && tipo !== "negativa_grupo" && tipo !== "negativa_campana") {
+    let loteResuelto;
+    if (keywordsLote && tipo === "pausar_keyword") {
+      const ok = [], no = [];
+      for (const k of keywordsLote) {
+        const r = await resolverKeyword(account, k, `${campana || ""} ${grupo || ""}`);
+        if (r) {
+          ok.push(k);
+          if (!camp) camp = r.campana;
+        } else no.push(k);
+      }
+      if (!ok.length) return res.status(422).json({ error: `Ninguna de las ${keywordsLote.length} keywords est\xE1 activa en ${account}. Puede que ya est\xE9n pausadas.` });
+      loteResuelto = ok;
+      grp = null;
+      mt = "ANY";
+      if (no.length) console.log(`[lote] ${no.length} no encontradas: ${no.join(", ")}`);
+    } else if (keyword && tipo !== "negativa_grupo" && tipo !== "negativa_campana") {
       const r = await resolverKeyword(account, keyword, `${campana || ""} ${grupo || ""}`);
       if (!r) return res.status(422).json({ error: `No encontr\xE9 la keyword "${keyword}" activa en ${account}. Puede estar escrita distinto o ya pausada. Ejecutalo a mano con "C\xF3mo hacerlo".` });
       camp = r.campana;
@@ -3282,7 +3310,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
       if (!camp) return res.status(422).json({ error: "No pude determinar la campa\xF1a. Ejecutalo a mano." });
     }
-    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: keyword || null, match_type: mt || "PHRASE", match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
+    const { data, error } = await supabase.from("acciones_aprobadas").insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: loteResuelto ? null : keyword || null, keywords: loteResuelto || (keywordsLote && tipo.startsWith("negativa") ? keywordsLote : null), match_type: mt || "PHRASE", match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === "ejecutar" ? "ejecutar" : "simular" }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     if (notion) {
       try {
@@ -3308,7 +3336,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         await notion.pages.update({ page_id: acc.notion_id, properties: { Estado: { select: { name: NOTION_STATES.HECHO } }, "Ejecutado el": { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } }, "Decision final": { rich_text: [{ text: { content: `Ejecutado por el script a las ${(/* @__PURE__ */ new Date()).toISOString().slice(11, 16)} UTC. ${resultado || ""}`.slice(0, 1900) } }] } } });
       } catch {
       }
-      await supabase.from("operator_log").insert({ account: acc.account, fecha: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), hora: (/* @__PURE__ */ new Date()).toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keyword || acc.ad_id}`, donde: `${acc.campana}${acc.grupo ? " \u203A " + acc.grupo : ""}`, por_que: "Aprobado en la app, ejecutado por el script", accionable_notion_id: acc.notion_id });
+      await supabase.from("operator_log").insert({ account: acc.account, fecha: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), hora: (/* @__PURE__ */ new Date()).toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keywords?.length ? acc.keywords.length + " keywords: " + acc.keywords.join(", ").slice(0, 300) : acc.keyword || acc.ad_id}`, donde: `${acc.campana}${acc.grupo ? " \u203A " + acc.grupo : ""}`, por_que: "Aprobado en la app, ejecutado por el script", accionable_notion_id: acc.notion_id });
     }
     res.json({ ok: true });
   });

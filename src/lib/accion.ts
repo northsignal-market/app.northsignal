@@ -82,7 +82,6 @@ export function tituloDesde(a: Accion): string {
 
 /** Tipo de acción automática que corresponde a este objeto, si alguna. */
 export function tipoAutoDesde(a: Accion): 'negativa_grupo' | 'negativa_campana' | 'pausar_keyword' | 'pausar_anuncio' | 'cambiar_concordancia' | null {
-  if (a.objeto.keywords && a.objeto.keywords.length > 1) return null; // lotes: a mano por ahora
   if (a.verbo === 'agregar_negativa') return a.parametros?.nivel === 'campana' ? 'negativa_campana' : a.parametros?.nivel === 'lista' ? null : 'negativa_grupo';
   if (a.verbo === 'pausar_keyword' && !a.objeto.keywords?.length) return 'pausar_keyword';
   if (a.verbo === 'pausar_anuncio') return 'pausar_anuncio';

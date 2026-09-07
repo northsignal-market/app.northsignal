@@ -8,7 +8,8 @@ export type TipoAuto = 'negativa_grupo' | 'negativa_campana' | 'pausar_keyword' 
 export function detectarTipoAuto(titulo: string, comoHacerlo?: string | null): TipoAuto | null {
   const t = `${titulo} ${comoHacerlo || ''}`.toLowerCase();
   if (/negativ/.test(t)) return /nivel (de )?campa|a la campa|lista/.test(t) ? 'negativa_campana' : 'negativa_grupo';
-  if (/concordancia|match type/.test(t) && /cambiar|pasar|mover|a exacta|a frase|a amplia|to exact|to phrase/.test(t)) return 'cambiar_concordancia';
+  if ((/concordancia|match type/.test(t) && /cambiar|pasar|mover|a exacta|a frase|a amplia|to exact|to phrase/.test(t)) || /\bde (amplia|frase|exacta) a (amplia|frase|exacta)\b/.test(t)) return 'cambiar_concordancia';
+  if (/\b\d+ (keywords|palabras clave|negativas|t[eé]rminos)\b/.test(t)) return null; // lote sin JSON: no hay lista que ejecutar
   if (/pausar|pausa\b|desactivar/.test(t)) {
     if (/anuncio|rsa\b|\bad\b/.test(t)) return 'pausar_anuncio';
     if (/grupo de anuncios|ad group|campa[ñn]a completa|toda la campa/.test(t)) return null; // grupos y campañas no se pausan solos

@@ -161,12 +161,13 @@ export function ActionableDrawerContent({
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
-    const kw = extraerKeyword(action.title, action.entidad || action.where);
-    if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término en el título. Ejecutalo a mano con "Cómo hacerlo".'); return; }
+    const lote: string[] | null = action.accion?.objeto?.keywords?.length ? action.accion.objeto.keywords : null;
+    const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
+    if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".'); return; }
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usar_accion: !!action.accion, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
+        body: JSON.stringify({ usar_accion: !!action.accion, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
       if (!r.ok) { alert(j.error || 'Error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
     } finally { setEjecutando(false); }
@@ -525,7 +526,7 @@ export function ActionableDrawerContent({
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
           ) : (
             <>
-              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : action.accion?.objeto?.keywords?.length > 1 ? `Son ${action.accion.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.` : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
               <div className="flex gap-2">
                 <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
                 <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>

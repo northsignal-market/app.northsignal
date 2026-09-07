@@ -2352,15 +2352,19 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc('politica_aplica', { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
     if (!modo) return null;
-    const kw = extraerKeyword(titulo, entidad);
+    const { data: espA } = await supabase.from('accionables_espejo').select('accion, accion_valida').eq('notion_id', notionId).maybeSingle();
+    const lote: string[] | null = espA?.accion_valida && espA.accion?.objeto?.keywords?.length > 1 ? espA.accion.objeto.keywords : null;
+    const kw = lote ? lote[0] : extraerKeyword(titulo, entidad);
     if (!kw && tipo !== 'pausar_anuncio') return null;
     const destino = tipo === 'cambiar_concordancia' ? concordanciaDestino(titulo) : null;
     if (tipo === 'cambiar_concordancia' && !destino) return null;
+    let loteOk: string[] | null = null;
+    if (lote && tipo === 'pausar_keyword') { loteOk = []; for (const k of lote) { const rr = await resolverKeyword(account, k, entidad || ''); if (rr) loteOk.push(k); } if (!loteOk.length) return null; }
     const r = await resolverKeyword(account, kw, `${entidad || ''} ${titulo}`);
     if (!r) return null; // sin resolver, no se ejecuta solo: queda para Andres
     const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
     if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
-    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: r.grupo, keyword: kw, match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
+    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
       await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.` } }] });
@@ -2381,10 +2385,11 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       if (esp?.accion_valida && esp.accion) {
         const { tipoAutoDesde } = await import('./src/lib/accion');
         const a = esp.accion; const t = tipoAutoDesde(a);
-        if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; }
+        if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword || a.objeto.keywords?.[0]; body.keywords = a.objeto.keywords?.length > 1 ? a.objeto.keywords : undefined; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; }
       }
     }
     const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
+    const keywordsLote: string[] | undefined = Array.isArray(body.keywords) && body.keywords.length > 1 ? body.keywords : undefined;
     // PRE-VUELO: si hay un conflicto abierto que bloquea, no se encola
     const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todavía: ${bloqueo}`, conflicto: true });
@@ -2392,8 +2397,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });
     if (!account || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account y keyword o ad_id' });
     // Resolver la keyword contra la base: campaña y grupo exactos. Para negativas nuevas (que no existen como keyword) se usa lo que vino.
-    let camp = campana, grp = grupo, mt = match_type;
-    if (keyword && tipo !== 'negativa_grupo' && tipo !== 'negativa_campana') {
+    let camp = campana, grp = grupo, mt = match_type; let loteResuelto: string[] | undefined;
+    if (keywordsLote && tipo === 'pausar_keyword') {
+      // Lote de pausas: resolver cada una; las que no existen activas se reportan y se omiten
+      const ok: string[] = [], no: string[] = [];
+      for (const k of keywordsLote) { const r = await resolverKeyword(account, k, `${campana || ''} ${grupo || ''}`); if (r) { ok.push(k); if (!camp) camp = r.campana; } else no.push(k); }
+      if (!ok.length) return res.status(422).json({ error: `Ninguna de las ${keywordsLote.length} keywords está activa en ${account}. Puede que ya estén pausadas.` });
+      loteResuelto = ok; grp = null; mt = 'ANY';
+      if (no.length) console.log(`[lote] ${no.length} no encontradas: ${no.join(', ')}`);
+    } else if (keyword && tipo !== 'negativa_grupo' && tipo !== 'negativa_campana') {
       const r = await resolverKeyword(account, keyword, `${campana || ''} ${grupo || ''}`);
       if (!r) return res.status(422).json({ error: `No encontré la keyword "${keyword}" activa en ${account}. Puede estar escrita distinto o ya pausada. Ejecutalo a mano con "Cómo hacerlo".` });
       camp = r.campana; grp = r.grupo; mt = r.match_type;
@@ -2404,7 +2416,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       else if (grupo) { const { data: g } = await supabase.from('keywords').select('campaign, ad_group').eq('account', account).ilike('ad_group', `%${grupo}%`).limit(1).maybeSingle(); if (g) { camp = g.campaign; grp = g.ad_group; } }
       if (!camp) return res.status(422).json({ error: 'No pude determinar la campaña. Ejecutalo a mano.' });
     }
-    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: keyword || null, match_type: mt || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
+    const { data, error } = await supabase.from('acciones_aprobadas').insert({ account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null, keyword: loteResuelto ? null : (keyword || null), keywords: loteResuelto || (keywordsLote && tipo.startsWith('negativa') ? keywordsLote : null), match_type: mt || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null, modo: modo === 'ejecutar' ? 'ejecutar' : 'simular' }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
     if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.` } }] }); } catch {} }
@@ -2423,7 +2435,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data: acc } = await supabase.from('acciones_aprobadas').update({ estado, resultado, ejecutada_el: new Date().toISOString() }).eq('id', id).select().single();
     if (acc?.notion_id && notion && estado === 'ejecutada') {
       try { await notion.pages.update({ page_id: acc.notion_id, properties: { Estado: { select: { name: NOTION_STATES.HECHO } }, 'Ejecutado el': { date: { start: new Date().toISOString().slice(0, 10) } }, 'Decision final': { rich_text: [{ text: { content: `Ejecutado por el script a las ${new Date().toISOString().slice(11, 16)} UTC. ${resultado || ''}`.slice(0, 1900) } }] } } }); } catch {}
-      await supabase.from('operator_log').insert({ account: acc.account, fecha: new Date().toISOString().slice(0, 10), hora: new Date().toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keyword || acc.ad_id}`, donde: `${acc.campana}${acc.grupo ? ' › ' + acc.grupo : ''}`, por_que: 'Aprobado en la app, ejecutado por el script', accionable_notion_id: acc.notion_id });
+      await supabase.from('operator_log').insert({ account: acc.account, fecha: new Date().toISOString().slice(0, 10), hora: new Date().toISOString().slice(11, 16), que_cambio: `${acc.tipo}: ${acc.keywords?.length ? acc.keywords.length + ' keywords: ' + acc.keywords.join(', ').slice(0, 300) : (acc.keyword || acc.ad_id)}`, donde: `${acc.campana}${acc.grupo ? ' › ' + acc.grupo : ''}`, por_que: 'Aprobado en la app, ejecutado por el script', accionable_notion_id: acc.notion_id });
     }
     res.json({ ok: true });
   });
