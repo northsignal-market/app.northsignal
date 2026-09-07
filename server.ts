@@ -2362,7 +2362,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (lote && tipo === 'pausar_keyword') { loteOk = []; for (const k of lote) { const rr = await resolverKeyword(account, k, entidad || ''); if (rr) loteOk.push(k); } if (!loteOk.length) return null; }
     const r = await resolverKeyword(account, kw, `${entidad || ''} ${titulo}`);
     if (!r) return null; // sin resolver, no se ejecuta solo: queda para Andres
-    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
+    const { data: bloqueo, error: errPv } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
+    if (errPv) { console.error('[politica] prevuelo fallo: ' + errPv.message); return null; }
     if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
     await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
@@ -2381,8 +2382,10 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const body = req.body || {};
     // La accion estructurada de la base manda siempre; el body solo aporta modo (y datos de respaldo para accionables sin JSON)
     if (supabase) {
-      const { data: esp } = await supabase.from('accionables_espejo').select('accion, accion_valida, account').eq('notion_id', req.params.id).maybeSingle();
-      if (esp?.accion_valida && esp.accion) {
+      const { data: esp } = await supabase.from('accionables_espejo').select('accion, accion_valida, accion_error, account').eq('notion_id', req.params.id).maybeSingle();
+      // Sin accion estructurada valida no se ejecuta nada: el texto no alcanza para tocar la cuenta
+      if (!esp?.accion_valida || !esp.accion) return res.status(422).json({ error: `Este accionable no tiene acción estructurada válida${esp?.accion_error ? ` (${esp.accion_error})` : ''}. Ejecutalo a mano con "Cómo hacerlo", o esperá a que la tarea del lunes lo reformule.` });
+      {
         const { tipoAutoDesde } = await import('./src/lib/accion');
         const a = esp.accion; const t = tipoAutoDesde(a);
         if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword || a.objeto.keywords?.[0]; body.keywords = a.objeto.keywords?.length > 1 ? a.objeto.keywords : undefined; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; }
@@ -2391,7 +2394,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
     const keywordsLote: string[] | undefined = Array.isArray(body.keywords) && body.keywords.length > 1 ? body.keywords : undefined;
     // PRE-VUELO: si hay un conflicto abierto que bloquea, no se encola
-    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
+    const { data: bloqueo, error: errPrevuelo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
+    if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo falló y no se encola sin él: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todavía: ${bloqueo}`, conflicto: true });
     if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio', 'cambiar_concordancia'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
     if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });

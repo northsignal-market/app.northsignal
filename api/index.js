@@ -3227,7 +3227,11 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     }
     const r = await resolverKeyword(account, kw, `${entidad || ""} ${titulo}`);
     if (!r) return null;
-    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: notionId });
+    const { data: bloqueo, error: errPv } = await supabase.rpc("prevuelo", { p_notion_id: notionId });
+    if (errPv) {
+      console.error("[politica] prevuelo fallo: " + errPv.message);
+      return null;
+    }
     if (bloqueo) {
       try {
         if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POL\xCDTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] });
@@ -3249,8 +3253,9 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const body = req.body || {};
     if (supabase) {
-      const { data: esp } = await supabase.from("accionables_espejo").select("accion, accion_valida, account").eq("notion_id", req.params.id).maybeSingle();
-      if (esp?.accion_valida && esp.accion) {
+      const { data: esp } = await supabase.from("accionables_espejo").select("accion, accion_valida, accion_error, account").eq("notion_id", req.params.id).maybeSingle();
+      if (!esp?.accion_valida || !esp.accion) return res.status(422).json({ error: `Este accionable no tiene acci\xF3n estructurada v\xE1lida${esp?.accion_error ? ` (${esp.accion_error})` : ""}. Ejecutalo a mano con "C\xF3mo hacerlo", o esper\xE1 a que la tarea del lunes lo reformule.` });
+      {
         const { tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
         const a = esp.accion;
         const t = tipoAutoDesde2(a);
@@ -3269,7 +3274,8 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     }
     const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
     const keywordsLote = Array.isArray(body.keywords) && body.keywords.length > 1 ? body.keywords : void 0;
-    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
+    const { data: bloqueo, error: errPrevuelo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
+    if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo fall\xF3 y no se encola sin \xE9l: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todav\xEDa: ${bloqueo}`, conflicto: true });
     if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio", "cambiar_concordancia"].includes(tipo)) return res.status(400).json({ error: "Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
     if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });

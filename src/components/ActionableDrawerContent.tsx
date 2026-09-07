@@ -158,7 +158,8 @@ export function ActionableDrawerContent({
   // Con accion estructurada, el tipo sale de ahi. Sin ella, se adivina del titulo (accionables viejos).
   // La accion estructurada fresca (de la base, al abrir) manda; la de la lista puede estar vieja; el titulo es el ultimo recurso
   const accionActual = contexto?.actual?.accion_valida ? contexto.actual.accion : action.accion;
-  const tipoAuto = accionActual ? tipoAutoDesde(accionActual) : (contexto && !contexto.actual?.accion_valida && /\b\d+ keywords\b/i.test(action.title) ? null : detectarTipoAuto(action.title, action.como_hacerlo));
+  // Sin accion estructurada valida no hay boton: el servidor tampoco lo aceptaria. Mientras carga el contexto, tampoco.
+  const tipoAuto = accionActual ? tipoAutoDesde(accionActual) : null;
   const esPregunta = accionActual?.verbo?.startsWith('preguntar');
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
