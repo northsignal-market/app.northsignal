@@ -2847,12 +2847,49 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     }
     return nuevos;
   }
+
+  // Refresca accionables_espejo desde Notion. Antes solo pasaba al abrir la app.
+  async function refrescarEspejo(): Promise<number> {
+    const notionKey = process.env.NOTION_API_KEY;
+    if (!supabase || !notionKey || !NOTION_BASES.ACCIONABLES) return 0;
+    const notion = new NotionClient({ auth: notionKey });
+    const r: any = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100 });
+    const { parsearAccion } = await import('./src/lib/accion');
+    const filas: any[] = [];
+    for (const page of r.results as any[]) {
+      const p = page.properties || {};
+      const txt = (x: any) => (x?.rich_text || x?.title || []).map((t: any) => t.plain_text).join('');
+      const cuenta = await resolveNotionClient(notion, p.Cliente);
+      const accionJson = txt(p['Accion JSON']);
+      const parsed = parsearAccion(accionJson);
+      filas.push({
+        notion_id: page.id, account: cuenta, titulo: txt(p.Accionable || p.Name), estado: p.Estado?.select?.name || null,
+        prioridad: p.Prioridad?.select?.name || null, naturaleza: p.Naturaleza?.select?.name || null,
+        origen: p.Origen?.select?.name || null, entidad: txt(p.Entidad) || null, causa_raiz: txt(p['Causa raiz']) || null,
+        por_que: txt(p['Por que'] || p['Por qué']).slice(0, 1000), detectado: p.Detectado?.date?.start || null,
+        ejecutado_el: p['Ejecutado el']?.date?.start || null, vence: p.Vence?.date?.start || null,
+        semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: txt(p['Revision IA']) || null,
+        ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString(),
+        accion: parsed.accion || null, accion_valida: !!parsed.accion, accion_error: parsed.error || null
+      });
+    }
+    if (!filas.length) return 0;
+    const { error } = await supabase.from('accionables_espejo').upsert(filas, { onConflict: 'notion_id' });
+    if (error) throw new Error(error.message);
+    return filas.length;
+  }
+
   app.all("/api/cron/novedades", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     try {
       const comentarios = await sincronizarComentarios();
       const { data: otras } = await supabase.rpc('novedades_generar');
-      res.json({ ok: true, comentarios_nuevos: comentarios, otras: otras });
+      // El espejo se escribia solo cuando alguien abria la app: los agentes leen
+      // accionables_vigentes() y encontraban una foto de horas atras. Ahora se
+      // refresca cada 30 minutos con las novedades.
+      let espejo = 0;
+      try { espejo = await refrescarEspejo(); } catch (e: any) { console.error('[espejo] ' + e.message); }
+      res.json({ ok: true, comentarios_nuevos: comentarios, otras: otras, espejo_filas: espejo });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   app.get("/api/novedades", async (req, res) => {

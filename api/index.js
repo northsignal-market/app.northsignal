@@ -3794,12 +3794,59 @@ Reporte completo: ${url}`;
     }
     return nuevos;
   }
+  async function refrescarEspejo() {
+    const notionKey2 = process.env.NOTION_API_KEY;
+    if (!supabase || !notionKey2 || !NOTION_BASES.ACCIONABLES) return 0;
+    const notion2 = new NotionClient({ auth: notionKey2 });
+    const r = await notion2.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100 });
+    const { parsearAccion: parsearAccion2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
+    const filas = [];
+    for (const page of r.results) {
+      const p = page.properties || {};
+      const txt = (x) => (x?.rich_text || x?.title || []).map((t) => t.plain_text).join("");
+      const cuenta = await resolveNotionClient(notion2, p.Cliente);
+      const accionJson = txt(p["Accion JSON"]);
+      const parsed = parsearAccion2(accionJson);
+      filas.push({
+        notion_id: page.id,
+        account: cuenta,
+        titulo: txt(p.Accionable || p.Name),
+        estado: p.Estado?.select?.name || null,
+        prioridad: p.Prioridad?.select?.name || null,
+        naturaleza: p.Naturaleza?.select?.name || null,
+        origen: p.Origen?.select?.name || null,
+        entidad: txt(p.Entidad) || null,
+        causa_raiz: txt(p["Causa raiz"]) || null,
+        por_que: txt(p["Por que"] || p["Por qu\xE9"]).slice(0, 1e3),
+        detectado: p.Detectado?.date?.start || null,
+        ejecutado_el: p["Ejecutado el"]?.date?.start || null,
+        vence: p.Vence?.date?.start || null,
+        semanas_pendiente: p["Semanas pendiente"]?.number ?? null,
+        revision_ia: txt(p["Revision IA"]) || null,
+        ultima_edicion: page.last_edited_time,
+        sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
+        accion: parsed.accion || null,
+        accion_valida: !!parsed.accion,
+        accion_error: parsed.error || null
+      });
+    }
+    if (!filas.length) return 0;
+    const { error } = await supabase.from("accionables_espejo").upsert(filas, { onConflict: "notion_id" });
+    if (error) throw new Error(error.message);
+    return filas.length;
+  }
   app2.all("/api/cron/novedades", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
       const comentarios = await sincronizarComentarios();
       const { data: otras } = await supabase.rpc("novedades_generar");
-      res.json({ ok: true, comentarios_nuevos: comentarios, otras });
+      let espejo = 0;
+      try {
+        espejo = await refrescarEspejo();
+      } catch (e) {
+        console.error("[espejo] " + e.message);
+      }
+      res.json({ ok: true, comentarios_nuevos: comentarios, otras, espejo_filas: espejo });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
