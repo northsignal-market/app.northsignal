@@ -2636,6 +2636,18 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       if (!ok.length) return res.status(422).json({ error: `Ninguna de las ${keywordsLote.length} keywords está activa en ${account}. Puede que ya estén pausadas.` });
       loteResuelto = ok; grp = null; mt = 'ANY';
       if (no.length) console.log(`[lote] ${no.length} no encontradas: ${no.join(', ')}`);
+    } else if (tipo === 'quitar_negativa' && keyword) {
+      // Una negativa no es una keyword activa: se busca en la tabla de negativas.
+      // Antes caia en resolverKeyword y devolvia "no encontre la keyword activa",
+      // que para este verbo es siempre falso.
+      const limpio = String(keyword).replace(/^[\[\"]+|[\]\"]+$/g, '').trim();
+      let q = supabase.from('negatives').select('campaign, ad_group, match_type, negative_keyword')
+        .eq('account', account).ilike('negative_keyword', `%${limpio}%`);
+      if (campana) q = q.eq('campaign', campana);
+      const { data: negs } = await q.order('run_ts', { ascending: false }).limit(5);
+      if (!negs?.length) return res.status(422).json({ error: `No encontré la negativa "${keyword}" en ${account}. Puede que ya se haya quitado, o que esté escrita distinto. Verificá en Palabras clave negativas.` });
+      const elegida = negs.find((n: any) => !body.nivel || (body.nivel === 'campana' ? !n.ad_group : !!n.ad_group)) || negs[0];
+      camp = elegida.campaign; grp = elegida.ad_group || null; mt = elegida.match_type || mt;
     } else if (keyword && tipo !== 'negativa_grupo' && tipo !== 'negativa_campana') {
       const r = await resolverKeyword(account, keyword, `${campana || ''} ${grupo || ''}`);
       if (!r) return res.status(422).json({ error: `No encontré la keyword "${keyword}" activa en ${account}. Puede estar escrita distinto o ya pausada. Ejecutalo a mano con "Cómo hacerlo".` });

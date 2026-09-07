@@ -17,7 +17,17 @@ export function receta(titulo: string, cliente?: string): Receta | null {
   const t = titulo.toLowerCase();
   const ent = comillas(titulo) || entre(titulo, /(?:keyword|término|termino|grupo|campaña|campana)\s+([^\s,;:]+(?:\s+[^\s,;:]+){0,3})/i);
 
-  // Negativas
+  // Quitar una negativa: es lo contrario de agregarla y los pasos son distintos.
+  // Sin este caso, un accionable de "quitar la negativa X" mostraba los pasos para
+  // agregarla, que es exactamente el cambio opuesto al pedido.
+  if (/negativ/.test(t) && /quitar|sacar|eliminar|remover|borrar|revertir|deshacer/.test(t)) {
+    const nivel = /nivel campa|a nivel de campa|campaign/.test(t) ? 'campaña' : /lista/.test(t) ? 'lista' : 'grupo';
+    const pasos = nivel === 'lista'
+      ? ['En Google Ads, menú izquierdo: Herramientas > Biblioteca compartida > Listas de palabras clave negativas.', `Abrí la lista que contiene${ent ? ` "${ent}"` : ' el término'}.`, `Tildá la fila${ent ? ` de "${ent}"` : ''} y usá "Quitar" en la barra de arriba.`, 'Guardar. La lista sigue aplicada a las campañas; solo sale ese término.']
+      : ['En Google Ads, menú izquierdo: Campañas.', nivel === 'campaña' ? 'Abrí la campaña.' : 'Abrí la campaña y después el grupo de anuncios que dice el accionable.', 'En el submenú del medio: Palabras clave > pestaña "Palabras clave negativas".', `Buscá${ent ? ` "${ent}"` : ' el término'} en el filtro de arriba. Fijate que la concordancia sea la misma que dice el accionable: puede haber más de una fila con el mismo texto.`, 'Tildá la fila y usá "Quitar" en la barra de arriba.'];
+    return { titulo: `Quitar una negativa de nivel ${nivel}`, pasos, nota: 'Al quitarla, el término vuelve a poder disparar avisos desde la próxima subasta. Si la sacás porque bloqueaba algo que convertía, mirá el gasto de ese término los siguientes 7 días: si vuelve a gastar sin convertir, la negativa estaba bien puesta.' };
+  }
+  // Agregar negativas
   if (/negativ/.test(t)) {
     const nivel = /nivel campa|a nivel de campa|campaign/.test(t) ? 'campaña' : /lista/.test(t) ? 'lista' : 'grupo';
     const pasos = nivel === 'lista'

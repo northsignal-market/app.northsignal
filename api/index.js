@@ -3681,6 +3681,16 @@ Reporte completo: ${url}`;
       grp = null;
       mt = "ANY";
       if (no.length) console.log(`[lote] ${no.length} no encontradas: ${no.join(", ")}`);
+    } else if (tipo === "quitar_negativa" && keyword) {
+      const limpio = String(keyword).replace(/^[\[\"]+|[\]\"]+$/g, "").trim();
+      let q = supabase.from("negatives").select("campaign, ad_group, match_type, negative_keyword").eq("account", account).ilike("negative_keyword", `%${limpio}%`);
+      if (campana) q = q.eq("campaign", campana);
+      const { data: negs } = await q.order("run_ts", { ascending: false }).limit(5);
+      if (!negs?.length) return res.status(422).json({ error: `No encontr\xE9 la negativa "${keyword}" en ${account}. Puede que ya se haya quitado, o que est\xE9 escrita distinto. Verific\xE1 en Palabras clave negativas.` });
+      const elegida = negs.find((n) => !body.nivel || (body.nivel === "campana" ? !n.ad_group : !!n.ad_group)) || negs[0];
+      camp = elegida.campaign;
+      grp = elegida.ad_group || null;
+      mt = elegida.match_type || mt;
     } else if (keyword && tipo !== "negativa_grupo" && tipo !== "negativa_campana") {
       const r = await resolverKeyword(account, keyword, `${campana || ""} ${grupo || ""}`);
       if (!r) return res.status(422).json({ error: `No encontr\xE9 la keyword "${keyword}" activa en ${account}. Puede estar escrita distinto o ya pausada. Ejecutalo a mano con "C\xF3mo hacerlo".` });
