@@ -9,6 +9,140 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/lib/accion.ts
+var accion_exports = {};
+__export(accion_exports, {
+  AccionSchema: () => AccionSchema,
+  VERBOS: () => VERBOS,
+  VERBOS_EJECUTABLES: () => VERBOS_EJECUTABLES,
+  parsearAccion: () => parsearAccion,
+  tipoAutoDesde: () => tipoAutoDesde,
+  tituloDesde: () => tituloDesde
+});
+import { z as z2 } from "zod";
+function tituloDesde(a) {
+  const o = a.objeto, p = a.parametros || {};
+  const en = donde(o) ? ` en ${donde(o)}` : "";
+  switch (a.verbo) {
+    case "pausar_keyword":
+      return o.keywords?.length ? `Pausar ${o.keywords.length} keywords${en}` : `Pausar ${fmtKw(o.keyword, o.match_type)}${en}`;
+    case "reactivar_keyword":
+      return `Reactivar ${fmtKw(o.keyword, o.match_type)}${en}`;
+    case "agregar_negativa":
+      return `Agregar negativa ${fmtKw(o.keyword, p.match_type_destino || o.match_type || "PHRASE")} a nivel ${p.nivel || "grupo"}${en}`;
+    case "quitar_negativa":
+      return `Quitar negativa ${fmtKw(o.keyword, o.match_type)}${en}`;
+    case "cambiar_concordancia":
+      return `Cambiar ${o.keyword} de ${MT[o.match_type || ""] || "?"} a ${MT[p.match_type_destino || ""] || "?"}${en}`;
+    case "crear_keyword":
+      return `Crear keyword ${fmtKw(o.keyword, p.match_type_destino || o.match_type)}${en}`;
+    case "pausar_anuncio":
+      return `Pausar anuncio ${o.anuncio_id || ""}${en}`.trim();
+    case "crear_anuncio":
+      return `Crear anuncio${en}`;
+    case "cambiar_puja":
+      return `Cambiar puja${p.valor_actual != null ? ` de ${p.valor_actual}` : ""}${p.valor_nuevo != null ? ` a ${p.valor_nuevo}` : ""}${en}`;
+    case "cambiar_presupuesto":
+      return `Cambiar presupuesto${p.valor_actual != null ? ` de ${p.valor_actual}` : ""}${p.valor_nuevo != null ? ` a ${p.valor_nuevo}` : ""}${o.campana ? ` de ${o.campana}` : ""}`;
+    case "cambiar_estrategia_puja":
+      return `Cambiar estrategia de puja${p.valor_actual ? ` de ${p.valor_actual}` : ""}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}${o.campana ? ` en ${o.campana}` : ""}`;
+    case "cambiar_conversion":
+      return `Cambiar ${o.accion_conversion || "acci\xF3n de conversi\xF3n"}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}`;
+    case "cambiar_landing":
+      return `Cambiar landing${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}${en}`;
+    case "cambiar_programacion":
+      return `Cambiar programaci\xF3n de anuncios${o.campana ? ` en ${o.campana}` : ""}`;
+    case "desactivar_automatizacion":
+      return `Desactivar ${p.valor_actual || "automatizaci\xF3n de Google"}${o.campana ? ` en ${o.campana}` : ""}`;
+    case "preguntar_cliente":
+      return `Preguntar a ${p.a_quien || "cliente"}: ${(p.pregunta || "").slice(0, 80)}`;
+    case "preguntar_andres":
+      return `Decidir: ${(p.pregunta || "").slice(0, 90)}`;
+  }
+}
+function tipoAutoDesde(a) {
+  if (a.objeto.keywords && a.objeto.keywords.length > 1) return null;
+  if (a.verbo === "agregar_negativa") return a.parametros?.nivel === "campana" ? "negativa_campana" : a.parametros?.nivel === "lista" ? null : "negativa_grupo";
+  if (a.verbo === "pausar_keyword" && !a.objeto.keywords?.length) return "pausar_keyword";
+  if (a.verbo === "pausar_anuncio") return "pausar_anuncio";
+  if (a.verbo === "cambiar_concordancia" && a.parametros?.match_type_destino) return "cambiar_concordancia";
+  return null;
+}
+function parsearAccion(texto) {
+  if (!texto || !texto.trim()) return { error: "sin Accion JSON" };
+  let raw2;
+  try {
+    raw2 = JSON.parse(texto.replace(/^```json\s*|```$/g, "").trim());
+  } catch {
+    return { error: "JSON inv\xE1lido" };
+  }
+  const r = AccionSchema.safeParse(raw2);
+  if (!r.success) return { error: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+  const a = r.data;
+  if (["pausar_keyword", "cambiar_concordancia", "reactivar_keyword"].includes(a.verbo) && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: `${a.verbo} sin keyword` };
+  if (a.verbo === "agregar_negativa" && !a.objeto.keyword) return { error: "agregar_negativa sin keyword" };
+  if (a.verbo === "cambiar_concordancia" && !a.parametros?.match_type_destino) return { error: "cambiar_concordancia sin match_type_destino" };
+  if (a.verbo.startsWith("preguntar") && !a.parametros?.pregunta) return { error: `${a.verbo} sin pregunta` };
+  return { accion: a };
+}
+var VERBOS, VERBOS_EJECUTABLES, AccionSchema, MT, fmtKw, donde;
+var init_accion = __esm({
+  "src/lib/accion.ts"() {
+    VERBOS = [
+      "pausar_keyword",
+      "reactivar_keyword",
+      "agregar_negativa",
+      "quitar_negativa",
+      "cambiar_concordancia",
+      "crear_keyword",
+      "pausar_anuncio",
+      "crear_anuncio",
+      "cambiar_puja",
+      "cambiar_presupuesto",
+      "cambiar_estrategia_puja",
+      "cambiar_conversion",
+      "cambiar_landing",
+      "cambiar_programacion",
+      "desactivar_automatizacion",
+      "preguntar_cliente",
+      "preguntar_andres"
+    ];
+    VERBOS_EJECUTABLES = ["pausar_keyword", "agregar_negativa", "cambiar_concordancia", "pausar_anuncio"];
+    AccionSchema = z2.object({
+      verbo: z2.enum(VERBOS),
+      objeto: z2.object({
+        campana: z2.string().min(1).nullable().optional(),
+        grupo: z2.string().nullable().optional(),
+        keyword: z2.string().nullable().optional(),
+        match_type: z2.enum(["EXACT", "PHRASE", "BROAD"]).nullable().optional(),
+        anuncio_id: z2.string().nullable().optional(),
+        accion_conversion: z2.string().nullable().optional(),
+        keywords: z2.array(z2.string()).nullable().optional()
+        // para lotes: pausar 21 keywords
+      }),
+      parametros: z2.object({
+        match_type_destino: z2.enum(["EXACT", "PHRASE", "BROAD"]).nullable().optional(),
+        nivel: z2.enum(["grupo", "campana", "lista"]).nullable().optional(),
+        valor_nuevo: z2.union([z2.number(), z2.string()]).nullable().optional(),
+        valor_actual: z2.union([z2.number(), z2.string()]).nullable().optional(),
+        a_quien: z2.string().nullable().optional(),
+        // preguntar_*
+        pregunta: z2.string().nullable().optional(),
+        dato_que_falta: z2.string().nullable().optional()
+      }).default({}),
+      verificar: z2.object({
+        metrica: z2.string(),
+        fecha: z2.string(),
+        // YYYY-MM-DD
+        esperado: z2.string()
+      }).nullable().optional()
+    });
+    MT = { EXACT: "exacta", PHRASE: "frase", BROAD: "amplia" };
+    fmtKw = (k, mt) => k ? mt === "EXACT" ? `[${k}]` : mt === "PHRASE" ? `"${k}"` : k : "";
+    donde = (o) => [o.grupo, o.campana].filter(Boolean).join(" \xB7 ");
+  }
+});
+
 // src/server/lib/reporte-pdf.tsx
 var reporte_pdf_exports = {};
 __export(reporte_pdf_exports, {
@@ -518,43 +652,45 @@ var geminiKey = process.env.GEMINI_API_KEY;
 var ai = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
 
 // src/server/lib/pulso.ts
+init_accion();
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z as z2 } from "zod";
+import { z as z3 } from "zod";
 var anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 var PRECIO_IN = 2 / 1e6;
 var PRECIO_OUT = 10 / 1e6;
-var PulsoSchema = z2.object({
-  nivel: z2.enum(["normal", "atencion", "critico"]),
-  resumen: z2.string().describe("3 a 5 l\xEDneas en espa\xF1ol. La primera dice qu\xE9 pas\xF3."),
-  hallazgo_principal: z2.string().nullable(),
-  conecta_con: z2.string().nullable().describe("Patr\xF3n anterior al que se parece, o null"),
-  evidencia: z2.array(z2.object({
-    nombre: z2.string(),
-    grupo: z2.string().nullable(),
-    valor: z2.number().nullable(),
-    umbral: z2.number(),
-    direccion: z2.enum(["sube", "baja", "cruza"]),
-    cumple: z2.boolean(),
-    tendencia_3d: z2.enum(["sube", "baja", "plana", "sin_datos"]),
-    dias_seguidos_cumpliendo: z2.number().int().min(0),
-    nota: z2.string().nullable().describe("Una l\xEDnea si hay algo que decir sobre este indicador hoy")
+var PulsoSchema = z3.object({
+  nivel: z3.enum(["normal", "atencion", "critico"]),
+  resumen: z3.string().describe("3 a 5 l\xEDneas en espa\xF1ol. La primera dice qu\xE9 pas\xF3."),
+  hallazgo_principal: z3.string().nullable(),
+  conecta_con: z3.string().nullable().describe("Patr\xF3n anterior al que se parece, o null"),
+  evidencia: z3.array(z3.object({
+    nombre: z3.string(),
+    grupo: z3.string().nullable(),
+    valor: z3.number().nullable(),
+    umbral: z3.number(),
+    direccion: z3.enum(["sube", "baja", "cruza"]),
+    cumple: z3.boolean(),
+    tendencia_3d: z3.enum(["sube", "baja", "plana", "sin_datos"]),
+    dias_seguidos_cumpliendo: z3.number().int().min(0),
+    nota: z3.string().nullable().describe("Una l\xEDnea si hay algo que decir sobre este indicador hoy")
   })).describe("Un objeto por cada indicador del plan, en el mismo orden"),
-  hipotesis_movidas: z2.array(z2.object({
-    id: z2.string(),
-    movimiento: z2.enum(["confirma", "descarta", "sin_cambio"]),
-    evidencia_texto: z2.string()
+  hipotesis_movidas: z3.array(z3.object({
+    id: z3.string(),
+    movimiento: z3.enum(["confirma", "descarta", "sin_cambio"]),
+    evidencia_texto: z3.string()
   })),
-  hallazgos: z2.array(z2.object({
-    titulo: z2.string().describe('Como acci\xF3n: "Pausar X", "Revisar Y", no como problema'),
-    severidad: z2.enum(["baja", "media", "alta", "critica"]),
-    confianza: z2.number().min(0).max(1),
-    entidad: z2.string().describe("Campa\xF1a, grupo, keyword o t\xE9rmino con nombre exacto"),
-    evidencia_texto: z2.string().describe("Los n\xFAmeros que lo sostienen, con fechas"),
-    naturaleza: z2.enum(["observacion", "inferencia", "hipotesis"]),
-    como_hacerlo: z2.string().describe("Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campa\xF1as > la campa\xF1a > el grupo > Palabras clave; pesta\xF1a Palabras clave negativas; Objetivos > Conversiones; Configuraci\xF3n > Puja. Uno por l\xEDnea. Escrito para una persona con Google Ads abierto, no para el sistema."),
-    donde: z2.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
-    causa_raiz: z2.string().describe('El problema de fondo en una frase que otro hallazgo podr\xEDa compartir. Nunca "detectado por el pulso".')
+  hallazgos: z3.array(z3.object({
+    titulo: z3.string().describe('Como acci\xF3n con verbo de la lista cerrada: "Pausar X en Y", "Agregar negativa Z", "Preguntar a Andr\xE9s si...". Nunca "Revisar" ni "Decidir".'),
+    severidad: z3.enum(["baja", "media", "alta", "critica"]),
+    confianza: z3.number().min(0).max(1),
+    entidad: z3.string().describe("Campa\xF1a, grupo, keyword o t\xE9rmino con nombre exacto"),
+    evidencia_texto: z3.string().describe("Los n\xFAmeros que lo sostienen, con fechas"),
+    naturaleza: z3.enum(["observacion", "inferencia", "hipotesis"]),
+    como_hacerlo: z3.string().describe("Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campa\xF1as > la campa\xF1a > el grupo > Palabras clave; pesta\xF1a Palabras clave negativas; Objetivos > Conversiones; Configuraci\xF3n > Puja. Uno por l\xEDnea. Escrito para una persona con Google Ads abierto, no para el sistema."),
+    accion: AccionSchema.nullable().describe('La acci\xF3n estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no pod\xE9s decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como est\xE1 en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
+    donde: z3.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
+    causa_raiz: z3.string().describe('El problema de fondo en una frase que otro hallazgo podr\xEDa compartir. Nunca "detectado por el pulso".')
   })).describe("Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.")
 });
 function pulsoDisponible() {
@@ -685,6 +821,9 @@ var GLOSARIO = {
   "GBRAID": "Identificador del clic en iOS con privacidad. Equivale al GCLID; Make lo descartaba.",
   "Ventana de 90 d\xEDas": "Google solo acepta conversiones offline de clics de hasta 90 d\xEDas. Un ciclo m\xE1s largo no se puede atribuir.",
   // Sistema
+  "Acci\xF3n estructurada": "El accionable como dato: verbo de lista cerrada, objeto, par\xE1metros y qu\xE9 verificar. El t\xEDtulo se deriva de esto y el bot\xF3n de ejecutar lo lee.",
+  "Pre-vuelo": "Chequeo antes de ejecutar: si otro accionable abierto entra en conflicto con este, no se ejecuta hasta resolverlo.",
+  "Versi\xF3n": "Cada vez que el cuerpo de un accionable cambia, el sistema guarda qu\xE9 cambi\xF3, cu\xE1ndo y por qu\xE9. Lo ves en el accionable.",
   "Bandeja": "La cola de lo que espera tu criterio: acci\xF3n hoy, listos, por confirmar, reportes. Vac\xEDa es la meta.",
   "Calibraci\xF3n": "Si el sistema acierta lo que promete: con 80% de confianza declarada, deber\xEDa acertar 8 de 10.",
   "Predicci\xF3n": "Rango de conversiones o CPA para la semana que empieza, con la probabilidad de caer adentro. Se compara el lunes siguiente.",
@@ -994,7 +1133,7 @@ function getClientContext(client) {
 // server.ts
 import express from "express";
 import path from "path";
-import { z as z3 } from "zod";
+import { z as z4 } from "zod";
 import cookieParser from "cookie-parser";
 import { Client as NotionClient } from "@notionhq/client";
 var cargarPdf = () => Promise.resolve().then(() => (init_reporte_pdf(), reporte_pdf_exports));
@@ -1614,6 +1753,7 @@ function createApp() {
           que_lo_confirmaria: props["Que lo confirmaria"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           como_hacerlo: props["Como hacerlo"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           origen: props["Origen"]?.select?.name || "",
+          accion_json: props["Accion JSON"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           entidad: props["Entidad"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
           vence: props["Vence"]?.date?.start || null,
           reemplazado_por: props["Reemplazado por"]?.relation?.[0]?.id || null,
@@ -1626,6 +1766,12 @@ function createApp() {
           url: page.url
         };
       }));
+      const { parsearAccion: parsearAccion2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
+      for (const a of data) {
+        const p = parsearAccion2(a.accion_json);
+        a.accion = p.accion || null;
+        a.accion_error = p.error || null;
+      }
       const visibles = data.filter((a) => !a.reemplazado_por);
       res.json({ data: visibles });
       if (supabase) supabase.from("accionables_espejo").upsert(data.map((a) => ({
@@ -1646,7 +1792,10 @@ function createApp() {
         semanas_pendiente: a.weeks_pending ?? null,
         revision_ia: a.revision_ia || null,
         ultima_edicion: a.last_edited,
-        sincronizado: (/* @__PURE__ */ new Date()).toISOString()
+        sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
+        accion: a.accion || null,
+        accion_valida: !!a.accion,
+        accion_error: a.accion_error || null
       })), { onConflict: "notion_id" }).then(({ error }) => {
         if (error) console.error("[espejo] " + error.message);
       });
@@ -2026,7 +2175,7 @@ Nota: ${resolutionNote || ""}`;
   app2.post("/api/operator_log", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase missing" });
     try {
-      const { account, que_cambio, donde, valor_anterior, valor_nuevo, por_que, accionable_notion_id } = req.body;
+      const { account, que_cambio, donde: donde2, valor_anterior, valor_nuevo, por_que, accionable_notion_id } = req.body;
       if (!account || !que_cambio) {
         return res.status(400).json({ error: "account y que_cambio son requeridos" });
       }
@@ -2037,7 +2186,7 @@ Nota: ${resolutionNote || ""}`;
         fecha: today,
         hora: nowTime,
         que_cambio,
-        donde: donde || "conversiones",
+        donde: donde2 || "conversiones",
         valor_anterior: valor_anterior || null,
         valor_nuevo: valor_nuevo || null,
         por_que: por_que || "",
@@ -2139,9 +2288,9 @@ Las descripciones no deben superar los 90 caracteres.`;
         }
       });
       if (!response.text) throw new Error("No response text");
-      const rsaZodSchema = z3.object({
-        headlines: z3.array(z3.string()),
-        descriptions: z3.array(z3.string())
+      const rsaZodSchema = z4.object({
+        headlines: z4.array(z4.string()),
+        descriptions: z4.array(z4.string())
       });
       const parsedData = rsaZodSchema.parse(JSON.parse(response.text));
       const result = {
@@ -2344,12 +2493,12 @@ Las descripciones no deben superar los 90 caracteres.`;
   app2.post("/api/operator-log", async (req, res) => {
     try {
       if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-      const { account, que_cambio, donde, valor_anterior, valor_nuevo, por_que, accionable_notion_id } = req.body;
+      const { account, que_cambio, donde: donde2, valor_anterior, valor_nuevo, por_que, accionable_notion_id } = req.body;
       if (!account || !que_cambio) return res.status(400).json({ error: "account y que_cambio son obligatorios" });
       const { data, error } = await supabase.from("operator_log").insert({
         account,
         que_cambio,
-        donde: donde || "otro",
+        donde: donde2 || "otro",
         valor_anterior,
         valor_nuevo,
         por_que,
@@ -2595,18 +2744,72 @@ Las descripciones no deben superar los 90 caracteres.`;
     }
     return { resumen: lineas.join("\n"), cambiamos: "", sigue: "" };
   }
+  async function buscarBriefEnRango(account, desde, hasta) {
+    if (!notion || !NOTION_BASES.BRIEFS) return null;
+    const clienteId = await findNotionClientId(notion, account);
+    if (!clienteId) return null;
+    const q = await notion.databases.query({ database_id: NOTION_BASES.BRIEFS, filter: { and: [{ property: "Cliente", relation: { contains: clienteId } }, { property: "Semana", date: { on_or_after: desde } }, { property: "Semana", date: { on_or_before: hasta } }] }, sorts: [{ property: "Semana", direction: "descending" }], page_size: 4 });
+    return q.results[0] || null;
+  }
+  async function redactarReporte(account, cuenta, desde, hasta, datos) {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error("Sin brief para ese rango y sin ANTHROPIC_API_KEY para redactar");
+    const Anthropic3 = (await import("@anthropic-ai/sdk")).default;
+    const cli = new Anthropic3({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const [pulsos, accHechos, estado] = await Promise.all([
+      supabase.from("pulso_diario").select("fecha, hallazgo_principal, resumen").eq("account", account).gte("fecha", desde).lte("fecha", hasta).order("fecha"),
+      supabase.from("accionables_espejo").select("titulo, ejecutado_el, por_que").eq("account", account).eq("estado", "Hecho").gte("ejecutado_el", desde).lte("ejecutado_el", hasta),
+      supabase.rpc("get_estado_cuenta", { p_account: account })
+    ]);
+    const idioma = cuenta.idioma_reporte === "en" ? "ingl\xE9s" : "espa\xF1ol";
+    const etiquetas = cuenta.idioma_reporte === "en" ? "Context:, Observations:, Changes applied:, Points of attention:, Next steps:" : "Contexto:, Observaciones:, Cambios aplicados:, Puntos de atenci\xF3n:, Pr\xF3ximos pasos:";
+    const prompt = `Escrib\xED la secci\xF3n de reporte al cliente para ${cuenta.nombre_cliente}, per\xEDodo ${desde} a ${hasta}, en ${idioma}, primera persona del singular (sos el media buyer de NorthSignal).
+
+ESTRUCTURA: bloques con etiqueta en su propia l\xEDnea seguida de dos puntos y vi\xF1etas con guion debajo. Etiquetas exactas: ${etiquetas}. Contexto solo si afecta la lectura. Entre dos y cinco vi\xF1etas en Observaciones. Cada bloque con el largo que necesita; las vi\xF1etas no miden todas igual.
+
+QUE NO HACER: sin guion largo; sin "no es X, es Y"; sin listas de exactamente tres forzadas; sin adverbios de intensidad; sin "cabe destacar" ni "en este sentido"; sin escalar afirmaciones; un n\xFAmero exacto en vez de un adjetivo; sin tablas; sin keywords sueltas; sin jerga (prueba del CFO). Malas noticias en voz activa y con causa.
+
+REGLAS DE LA CUENTA: ${cuenta.reglas_dominio || ""}
+
+DATOS DEL PER\xCDODO: ${JSON.stringify(datos.metricas)}
+SERIE: ${JSON.stringify(datos.serie)}
+CAMPA\xD1AS Y GRUPOS CON GASTO: ${JSON.stringify({ campanas: datos.campanas, grupos: datos.grupos })}
+LO QUE EL AN\xC1LISIS DIARIO ENCONTR\xD3 CADA D\xCDA: ${JSON.stringify(pulsos.data || [])}
+CAMBIOS EJECUTADOS EN EL PER\xCDODO: ${JSON.stringify(accHechos.data || [])}
+ACCIONABLES ABIERTOS Y PLAN: ${JSON.stringify({ abiertos: estado.data?.accionables_abiertos, plan: estado.data?.plan_vigente?.contexto, por_que_limitada: estado.data?.por_que_limitada?.por_que })}
+
+Devolv\xE9 solo el texto del reporte, sin encabezado ni comentarios.`;
+    const msg = await cli.messages.create({ model: "claude-sonnet-5", max_tokens: 2500, messages: [{ role: "user", content: prompt }], output_config: { effort: "medium" } });
+    return msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  }
   app2.post("/api/reportes/generar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
-      const { account, desde, hasta, tipo = "semanal", brief_id, resumen_manual } = req.body || {};
+      const { account, desde, hasta, tipo: tipoIn, brief_id, resumen_manual } = req.body || {};
       if (!account || !desde || !hasta) return res.status(400).json({ error: "account, desde y hasta son obligatorios" });
+      if (hasta < desde) return res.status(400).json({ error: "El rango est\xE1 al rev\xE9s" });
+      const dias = (new Date(hasta).getTime() - new Date(desde).getTime()) / 864e5 + 1;
+      const tipo = tipoIn || (dias > 10 ? "mensual" : "semanal");
       const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", account).single();
       if (!cuenta) return res.status(404).json({ error: "cuenta no encontrada" });
-      let secciones = { resumen: resumen_manual || "", cambiamos: "", sigue: "" };
-      if (brief_id && notion) secciones = await extraerSeccionesBrief(brief_id);
-      if (!secciones.resumen) return res.status(422).json({ error: "El brief no tiene secci\xF3n de reporte al cliente. Pas\xE1 resumen_manual o un brief_id con la secci\xF3n." });
+      const { count: nDias } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", account).gte("date", desde).lte("date", hasta);
+      if (!nDias) return res.status(422).json({ error: `No hay datos diarios de ${account} entre ${desde} y ${hasta}. La capa diaria empieza el 22 de agosto de 2026.` });
       const { data: datos, error } = await supabase.rpc("get_reporte_datos", { p_account: account, p_desde: desde, p_hasta: hasta });
       if (error) return res.status(500).json({ error: error.message });
+      let secciones = { resumen: resumen_manual || "", cambiamos: "", sigue: "" };
+      let origen = resumen_manual ? "manual" : "";
+      let briefUsado = brief_id || null;
+      if (!secciones.resumen && notion) {
+        const brief = brief_id ? { id: brief_id } : await buscarBriefEnRango(account, desde, hasta);
+        if (brief) {
+          secciones = await extraerSeccionesBrief(brief.id);
+          briefUsado = brief.id;
+          if (secciones.resumen) origen = "brief";
+        }
+      }
+      if (!secciones.resumen) {
+        secciones.resumen = await redactarReporte(account, cuenta, desde, hasta, datos);
+        origen = "sonnet-5";
+      }
       const { data: fila, error: e2 } = await supabase.from("reportes_cliente").upsert({
         account,
         periodo_desde: desde,
@@ -2620,10 +2823,11 @@ Las descripciones no deben superar los 90 caracteres.`;
         metricas: datos.metricas,
         serie: datos.serie,
         campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
-        brief_notion_id: brief_id || null
+        brief_notion_id: briefUsado,
+        escrito_por: origen === "brief" ? "opus-5-semanal" : origen === "sonnet-5" ? "sonnet-5-desde-datos" : "andres"
       }, { onConflict: "account,periodo_desde,tipo" }).select().single();
       if (e2) return res.status(500).json({ error: e2.message });
-      res.json({ ok: true, reporte: fila });
+      res.json({ ok: true, reporte: fila, origen, dias_con_datos: nDias });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -2812,18 +3016,47 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (!supabase || !notion || !NOTION_BASES.ACCIONABLES) return 0;
     let cursor;
     const filas = [];
+    const { parsearAccion: parsearAccion2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
     do {
       const r = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100, start_cursor: cursor });
       for (const page of r.results) {
         const p = page.properties;
         const txt = (k) => p[k]?.rich_text?.map((t) => t.plain_text).join("") || "";
         const cliente = await resolveNotionClient(notion, p.Cliente);
+        const parsed = parsearAccion2(txt("Accion JSON"));
+        let accionError = parsed.error || null;
+        if (parsed.accion?.objeto?.keyword && ["pausar_keyword", "cambiar_concordancia", "reactivar_keyword"].includes(parsed.accion.verbo) && cliente) {
+          const { data: rk } = await supabase.rpc("resolver_keyword", { p_account: cliente, p_keyword: parsed.accion.objeto.keyword, p_pista: `${parsed.accion.objeto.grupo || ""} ${parsed.accion.objeto.campana || ""}` });
+          if (!rk?.campana) accionError = `keyword "${parsed.accion.objeto.keyword}" no encontrada activa en ${cliente}`;
+          else {
+            parsed.accion.objeto.campana = rk.campana;
+            parsed.accion.objeto.grupo = rk.grupo;
+            if (!parsed.accion.objeto.match_type) parsed.accion.objeto.match_type = rk.match_type;
+          }
+        }
+        if (parsed.accion && cliente && !accionError) {
+          const { data: inv } = await supabase.rpc("verificar_invariantes", { p_account: cliente, p_accion: parsed.accion });
+          const bloq = (inv || []).filter((x) => x.bloquea);
+          if (bloq.length) {
+            accionError = "INVARIANTE: " + bloq.map((x) => x.detalle).join(" | ");
+            const st = p.Estado?.select?.name;
+            if (["Propuesto", "Bloqueado"].includes(st) && !txt("Decision final").includes("[INVARIANTE")) {
+              try {
+                await notion.comments.create({ parent: { page_id: page.id }, rich_text: [{ text: { content: `[INVARIANTE ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Este accionable viola una regla que no se negocia: ${bloq.map((x) => x.detalle).join(" | ")}`.slice(0, 1900) } }] });
+              } catch {
+              }
+            }
+          }
+        }
         filas.push({
           notion_id: page.id,
           account: cliente,
           titulo: p.Accion?.title?.map((t) => t.plain_text).join("") || "",
           estado: p.Estado?.select?.name || "",
           prioridad: p.Prioridad?.select?.name || "",
+          accion: parsed.accion || null,
+          accion_valida: !!parsed.accion && !accionError,
+          accion_error: accionError,
           naturaleza: p.Naturaleza?.select?.name || "",
           origen: p.Origen?.select?.name || null,
           entidad: txt("Entidad") || null,
@@ -2841,9 +3074,45 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
       cursor = r.has_more ? r.next_cursor : void 0;
     } while (cursor);
+    const { createHash } = await import("crypto");
+    const campos = ["titulo", "por_que", "accion", "entidad", "prioridad", "estado"];
+    const { data: previos } = await supabase.from("accionables_espejo").select("notion_id, titulo, por_que, accion, entidad, prioridad, estado, hash, version").in("notion_id", filas.map((f) => f.notion_id));
+    const prevMap = new Map((previos || []).map((p) => [p.notion_id, p]));
+    const versiones = [];
+    for (const f of filas) {
+      const hash = createHash("sha256").update(JSON.stringify(campos.map((c) => f[c] ?? null))).digest("hex").slice(0, 16);
+      const prev = prevMap.get(f.notion_id);
+      f.hash = hash;
+      if (!prev) {
+        f.version = 1;
+        versiones.push({ notion_id: f.notion_id, version: 1, autor: f.origen || "desconocido", diff: { creado: { antes: null, despues: f.titulo } }, hash });
+        continue;
+      }
+      if (prev.hash === hash) {
+        f.version = prev.version || 1;
+        continue;
+      }
+      const diff = {};
+      for (const c of campos) {
+        const a = prev[c] ?? null, b = f[c] ?? null;
+        if (JSON.stringify(a) !== JSON.stringify(b)) diff[c] = { antes: typeof a === "string" ? a.slice(0, 600) : a, despues: typeof b === "string" ? b.slice(0, 600) : b };
+      }
+      f.version = (prev.version || 1) + 1;
+      versiones.push({ notion_id: f.notion_id, version: f.version, autor: f.ultima_edicion && Date.now() - new Date(f.ultima_edicion).getTime() < 3 * 36e5 ? "reciente" : "desconocido", diff, hash });
+    }
     if (filas.length) {
       const { error } = await supabase.from("accionables_espejo").upsert(filas, { onConflict: "notion_id" });
       if (error) throw new Error(error.message);
+    }
+    if (versiones.length) {
+      const { error: ev } = await supabase.from("accionable_versiones").upsert(versiones, { onConflict: "notion_id,version", ignoreDuplicates: true });
+      if (ev) console.error("[versiones] " + ev.message);
+      else console.log(`[versiones] ${versiones.length} nuevas`);
+    }
+    try {
+      await supabase.rpc("detectar_conflictos");
+    } catch (e) {
+      console.error("[conflictos] " + e.message);
     }
     let rellenados = 0;
     for (const f of filas) {
@@ -2852,8 +3121,8 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       if (!f.origen) props.Origen = { select: { name: "Semanal" } };
       if (!f.entidad) {
         const r = await notion.pages.retrieve({ page_id: f.notion_id });
-        const donde = r?.properties?.Donde?.rich_text?.map((t) => t.plain_text).join("") || "";
-        if (donde.trim()) props.Entidad = { rich_text: [{ text: { content: donde.trim().slice(0, 200) } }] };
+        const donde2 = r?.properties?.Donde?.rich_text?.map((t) => t.plain_text).join("") || "";
+        if (donde2.trim()) props.Entidad = { rich_text: [{ text: { content: donde2.trim().slice(0, 200) } }] };
       }
       if (Object.keys(props).length) {
         try {
@@ -2935,6 +3204,14 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (tipo === "cambiar_concordancia" && !destino) return null;
     const r = await resolverKeyword(account, kw, `${entidad || ""} ${titulo}`);
     if (!r) return null;
+    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: notionId });
+    if (bloqueo) {
+      try {
+        if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POL\xCDTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] });
+      } catch {
+      }
+      return null;
+    }
     await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: r.grupo, keyword: kw, match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo, aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
@@ -2947,7 +3224,28 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
   }
   app2.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = req.body || {};
+    const body = req.body || {};
+    if (body.usar_accion && supabase) {
+      const { data: esp } = await supabase.from("accionables_espejo").select("accion, accion_valida, account").eq("notion_id", req.params.id).maybeSingle();
+      if (esp?.accion_valida && esp.accion) {
+        const { tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
+        const a = esp.accion;
+        const t = tipoAutoDesde2(a);
+        if (t) {
+          body.account = esp.account;
+          body.tipo = t;
+          body.campana = a.objeto.campana;
+          body.grupo = a.objeto.grupo;
+          body.keyword = a.objeto.keyword;
+          body.match_type = a.objeto.match_type || (t.startsWith("negativa") ? a.parametros?.match_type_destino || "PHRASE" : "ANY");
+          body.match_type_destino = a.parametros?.match_type_destino;
+          body.ad_id = a.objeto.anuncio_id;
+        }
+      }
+    }
+    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
+    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
+    if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todav\xEDa: ${bloqueo}`, conflicto: true });
     if (!["negativa_grupo", "negativa_campana", "pausar_keyword", "pausar_anuncio", "cambiar_concordancia"].includes(tipo)) return res.status(400).json({ error: "Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano." });
     if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });
     if (!account || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account y keyword o ad_id" });
@@ -3032,6 +3330,39 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
   });
+  app2.post("/api/invariantes", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account, accion } = req.body || {};
+    const { data, error } = await supabase.rpc("verificar_invariantes", { p_account: account, p_accion: accion });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app2.get("/api/relaciones-abiertas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("accionable_relaciones").select("a, b, motivo").eq("resuelta", false).eq("severidad", "bloquea");
+    const m = {};
+    for (const r of data || []) {
+      m[r.a] = r.motivo;
+      if (!String(r.b).startsWith("keyword:")) m[r.b] = r.motivo;
+    }
+    res.json(m);
+  });
+  app2.get("/api/accionables/:id/contexto", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const id = req.params.id;
+    const [v, rel, esp] = await Promise.all([
+      supabase.from("accionable_versiones").select("*").eq("notion_id", id).order("version", { ascending: false }).limit(10),
+      supabase.from("v_accionable_relaciones").select("*").or(`a.eq.${id},b.eq.${id}`).eq("resuelta", false),
+      supabase.from("accionables_espejo").select("version, accion, accion_valida, accion_error, hash").eq("notion_id", id).maybeSingle()
+    ]);
+    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: id });
+    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null });
+  });
+  app2.post("/api/relaciones/:id/resolver", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    await supabase.from("accionable_relaciones").update({ resuelta: true, resuelta_el: (/* @__PURE__ */ new Date()).toISOString(), resuelta_por: "andres" }).eq("id", req.params.id);
+    res.json({ ok: true });
+  });
   app2.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data } = await supabase.rpc("get_briefing");
@@ -3075,7 +3406,8 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       client ? supabase.from("v_acierto_por_tipo").select("*").eq("account", client) : supabase.from("v_acierto_por_tipo").select("*"),
       supabase.from("v_brecha_objetivo").select("*")
     ]);
-    res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [] });
+    const { data: inv } = await supabase.from("v_accionables_invalidos").select("*").limit(30);
+    res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [], invalidos: inv || [] });
   });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -3157,7 +3489,9 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       let creados = 0;
       for (const h of filtrados || []) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
-        const title = `${h.titulo} \xB7 ${cuenta}`.slice(0, 200);
+        const { tituloDesde: tituloDesde3, tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
+        const tituloBase = h.accion ? tituloDesde3(h.accion) : h.titulo;
+        const title = `${tituloBase} \xB7 ${cuenta}`.slice(0, 200);
         const entidadClave = String(h.donde || h.entidad || "").slice(0, 200);
         const { data: existenteId } = await supabase.rpc("accionable_existente", { p_account: cuenta, p_entidad: entidadClave, p_causa: h.causa_raiz || null });
         if (existenteId) {
@@ -3187,6 +3521,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
           Naturaleza: { select: { name: nat } },
           "Por que": { rich_text: [{ text: { content: String(h.evidencia_texto || "").slice(0, 1900) } }] },
           "Como hacerlo": { rich_text: [{ text: { content: String(h.como_hacerlo || "").slice(0, 1900) } }] },
+          "Accion JSON": { rich_text: [{ text: { content: h.accion ? JSON.stringify(h.accion).slice(0, 1900) : "" } }] },
           "Causa raiz": { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || "").slice(0, 500) } }] },
           Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || "").slice(0, 300) } }] },
           Detectado: { date: { start: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) } },

@@ -207,6 +207,23 @@ export function Sistema() {
               ))}
             </div>
           </div>
+          {(aprendido.invalidos || []).length > 0 && (
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Accionables que no cumplen el estándar</h2>
+                <p className="text-xs text-[#F5F7FA] opacity-60">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
+              </div>
+              <div className="space-y-1">
+                {aprendido.invalidos.map((a: any) => (
+                  <div key={a.notion_id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className="text-[#F5F7FA] opacity-50 w-14 shrink-0">{a.account}</span>
+                    <span className="text-[#FFFFFF] flex-1 truncate">{a.titulo}</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-50 shrink-0 max-w-[280px] truncate" title={a.accion_error}>{a.accion_error}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {aprendido.acierto_por_tipo.length > 0 && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>

@@ -37,7 +37,7 @@ const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
   ) },
   { id: 'reporte', titulo: 'Aprobar un reporte al cliente', cuerpo: (
     <div className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed">
-      <p>El lunes a las 9:15 aparece el borrador en <span className="text-[#FFFFFF]">Cuenta › Reportes</span>, y en la Bandeja como "reporte para aprobar", en el idioma de esa cuenta. Tiene las secciones que vos usás: contexto, observaciones, cambios aplicados, puntos de atención, próximos pasos. Los números del período y las tablas de campañas y grupos con gasto los pone el sistema desde Supabase.</p>
+      <p>El lunes a las 9:15 aparece el borrador en <span className="text-[#FFFFFF]">Cuenta › Reportes</span>, y en la Bandeja como "reporte para aprobar", en el idioma de esa cuenta. Y podés armar uno de cualquier período con un clic: última semana, dos semanas, mes pasado, o las fechas que quieras; el sistema busca solo el análisis de esa semana y, si no hay, lo redacta desde los datos. Tiene las secciones que vos usás: contexto, observaciones, cambios aplicados, puntos de atención, próximos pasos. Los números del período y las tablas de campañas y grupos con gasto los pone el sistema desde Supabase.</p>
       <p><span className="text-[#FFFFFF]">Ver PDF</span> lo genera con el branding de NorthSignal y lo abre. <span className="text-[#FFFFFF]">Editar texto</span> si querés cambiar algo. <span className="text-[#FFFFFF]">Aprobar</span> cuando esté listo. El envío por el canal de cada cuenta (Slack para Karedo, mail para BHI) viene en la siguiente versión; mientras tanto, descargá el PDF y mandalo.</p>
     </div>
   ) },

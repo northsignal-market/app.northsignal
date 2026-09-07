@@ -49,6 +49,9 @@ export const GLOSARIO: Record<string, string> = {
   'GBRAID': 'Identificador del clic en iOS con privacidad. Equivale al GCLID; Make lo descartaba.',
   'Ventana de 90 días': 'Google solo acepta conversiones offline de clics de hasta 90 días. Un ciclo más largo no se puede atribuir.',
   // Sistema
+  'Acción estructurada': 'El accionable como dato: verbo de lista cerrada, objeto, parámetros y qué verificar. El título se deriva de esto y el botón de ejecutar lo lee.',
+  'Pre-vuelo': 'Chequeo antes de ejecutar: si otro accionable abierto entra en conflicto con este, no se ejecuta hasta resolverlo.',
+  'Versión': 'Cada vez que el cuerpo de un accionable cambia, el sistema guarda qué cambió, cuándo y por qué. Lo ves en el accionable.',
   'Bandeja': 'La cola de lo que espera tu criterio: acción hoy, listos, por confirmar, reportes. Vacía es la meta.',
   'Calibración': 'Si el sistema acierta lo que promete: con 80% de confianza declarada, debería acertar 8 de 10.',
   'Predicción': 'Rango de conversiones o CPA para la semana que empieza, con la probabilidad de caer adentro. Se compara el lunes siguiente.',

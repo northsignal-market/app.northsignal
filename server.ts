@@ -851,6 +851,7 @@ export function createApp() {
           que_lo_confirmaria: props['Que lo confirmaria']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           como_hacerlo: props['Como hacerlo']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           origen: props['Origen']?.select?.name || '',
+          accion_json: props['Accion JSON']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           entidad: props['Entidad']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
           vence: props['Vence']?.date?.start || null,
           reemplazado_por: props['Reemplazado por']?.relation?.[0]?.id || null,
@@ -864,13 +865,16 @@ export function createApp() {
         };
       }));
       // La app oculta los reemplazados; el resto los ve
+      const { parsearAccion } = await import('./src/lib/accion');
+      for (const a of data as any[]) { const p = parsearAccion(a.accion_json); a.accion = p.accion || null; a.accion_error = p.error || null; }
       const visibles = data.filter((a: any) => !a.reemplazado_por);
       res.json({ data: visibles });
       // Espejo en Supabase: permite dedupe por entidad y reconciliacion en SQL. Fire-and-forget.
       if (supabase) supabase.from('accionables_espejo').upsert(data.map((a: any) => ({
         notion_id: a.id, account: a.client, titulo: a.title, estado: a.status, prioridad: a.priority, naturaleza: a.naturaleza, origen: a.origen || null,
         entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detected || null, ejecutado_el: a.ejecutado_el || null,
-        vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString()
+        vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString(),
+        accion: a.accion || null, accion_valida: !!a.accion, accion_error: a.accion_error || null
       })), { onConflict: 'notion_id' }).then(({ error }: any) => { if (error) console.error('[espejo] ' + error.message); });
     } catch (e: any) {
       console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
@@ -1949,30 +1953,82 @@ Las descripciones no deben superar los 90 caracteres.`;
   }
 
   // Crear borrador de reporte para una cuenta y periodo
+  // Buscar el brief de una cuenta cuya semana cae en el rango
+  async function buscarBriefEnRango(account: string, desde: string, hasta: string): Promise<any | null> {
+    if (!notion || !NOTION_BASES.BRIEFS) return null;
+    const clienteId = await findNotionClientId(notion, account);
+    if (!clienteId) return null;
+    const q: any = await notion.databases.query({ database_id: NOTION_BASES.BRIEFS, filter: { and: [ { property: 'Cliente', relation: { contains: clienteId } }, { property: 'Semana', date: { on_or_after: desde } }, { property: 'Semana', date: { on_or_before: hasta } } ] }, sorts: [{ property: 'Semana', direction: 'descending' }], page_size: 4 });
+    return q.results[0] || null;
+  }
+
+  // Redactar el reporte con Sonnet 5 desde los datos, cuando no hay brief con la seccion
+  async function redactarReporte(account: string, cuenta: any, desde: string, hasta: string, datos: any): Promise<string> {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('Sin brief para ese rango y sin ANTHROPIC_API_KEY para redactar');
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const cli = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const [pulsos, accHechos, estado] = await Promise.all([
+      supabase!.from('pulso_diario').select('fecha, hallazgo_principal, resumen').eq('account', account).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+      supabase!.from('accionables_espejo').select('titulo, ejecutado_el, por_que').eq('account', account).eq('estado', 'Hecho').gte('ejecutado_el', desde).lte('ejecutado_el', hasta),
+      supabase!.rpc('get_estado_cuenta', { p_account: account }),
+    ]);
+    const idioma = cuenta.idioma_reporte === 'en' ? 'inglés' : 'español';
+    const etiquetas = cuenta.idioma_reporte === 'en' ? 'Context:, Observations:, Changes applied:, Points of attention:, Next steps:' : 'Contexto:, Observaciones:, Cambios aplicados:, Puntos de atención:, Próximos pasos:';
+    const prompt = `Escribí la sección de reporte al cliente para ${cuenta.nombre_cliente}, período ${desde} a ${hasta}, en ${idioma}, primera persona del singular (sos el media buyer de NorthSignal).
+
+ESTRUCTURA: bloques con etiqueta en su propia línea seguida de dos puntos y viñetas con guion debajo. Etiquetas exactas: ${etiquetas}. Contexto solo si afecta la lectura. Entre dos y cinco viñetas en Observaciones. Cada bloque con el largo que necesita; las viñetas no miden todas igual.
+
+QUE NO HACER: sin guion largo; sin "no es X, es Y"; sin listas de exactamente tres forzadas; sin adverbios de intensidad; sin "cabe destacar" ni "en este sentido"; sin escalar afirmaciones; un número exacto en vez de un adjetivo; sin tablas; sin keywords sueltas; sin jerga (prueba del CFO). Malas noticias en voz activa y con causa.
+
+REGLAS DE LA CUENTA: ${cuenta.reglas_dominio || ''}
+
+DATOS DEL PERÍODO: ${JSON.stringify(datos.metricas)}
+SERIE: ${JSON.stringify(datos.serie)}
+CAMPAÑAS Y GRUPOS CON GASTO: ${JSON.stringify({ campanas: datos.campanas, grupos: datos.grupos })}
+LO QUE EL ANÁLISIS DIARIO ENCONTRÓ CADA DÍA: ${JSON.stringify(pulsos.data || [])}
+CAMBIOS EJECUTADOS EN EL PERÍODO: ${JSON.stringify(accHechos.data || [])}
+ACCIONABLES ABIERTOS Y PLAN: ${JSON.stringify({ abiertos: estado.data?.accionables_abiertos, plan: estado.data?.plan_vigente?.contexto, por_que_limitada: estado.data?.por_que_limitada?.por_que })}
+
+Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
+    const msg = await cli.messages.create({ model: 'claude-sonnet-5', max_tokens: 2500, messages: [{ role: 'user', content: prompt }], output_config: { effort: 'medium' } as any });
+    return msg.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n').trim();
+  }
+
+  // Crear borrador: solo cuenta y rango. El brief se busca solo; si no hay, se redacta desde los datos.
   app.post("/api/reportes/generar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     try {
-      const { account, desde, hasta, tipo = 'semanal', brief_id, resumen_manual } = req.body || {};
+      const { account, desde, hasta, tipo: tipoIn, brief_id, resumen_manual } = req.body || {};
       if (!account || !desde || !hasta) return res.status(400).json({ error: 'account, desde y hasta son obligatorios' });
+      if (hasta < desde) return res.status(400).json({ error: 'El rango está al revés' });
+      const dias = (new Date(hasta).getTime() - new Date(desde).getTime()) / 864e5 + 1;
+      const tipo = tipoIn || (dias > 10 ? 'mensual' : 'semanal');
       const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', account).single();
       if (!cuenta) return res.status(404).json({ error: 'cuenta no encontrada' });
-
-      // Texto: del brief de Notion, o manual, o vacío para que Andrés lo escriba
-      let secciones = { resumen: resumen_manual || '', cambiamos: '', sigue: '' };
-      if (brief_id && notion) secciones = await extraerSeccionesBrief(brief_id);
-      if (!secciones.resumen) return res.status(422).json({ error: 'El brief no tiene sección de reporte al cliente. Pasá resumen_manual o un brief_id con la sección.' });
+      // Hay datos para ese rango?
+      const { count: nDias } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', account).gte('date', desde).lte('date', hasta);
+      if (!nDias) return res.status(422).json({ error: `No hay datos diarios de ${account} entre ${desde} y ${hasta}. La capa diaria empieza el 22 de agosto de 2026.` });
 
       const { data: datos, error } = await supabase.rpc('get_reporte_datos', { p_account: account, p_desde: desde, p_hasta: hasta });
       if (error) return res.status(500).json({ error: error.message });
+
+      // Texto: manual > brief indicado > brief encontrado en el rango > redactado desde los datos
+      let secciones = { resumen: resumen_manual || '', cambiamos: '', sigue: '' };
+      let origen = resumen_manual ? 'manual' : ''; let briefUsado: string | null = brief_id || null;
+      if (!secciones.resumen && notion) {
+        const brief = brief_id ? { id: brief_id } : await buscarBriefEnRango(account, desde, hasta);
+        if (brief) { secciones = await extraerSeccionesBrief(brief.id); briefUsado = brief.id; if (secciones.resumen) origen = 'brief'; }
+      }
+      if (!secciones.resumen) { secciones.resumen = await redactarReporte(account, cuenta, desde, hasta, datos); origen = 'sonnet-5'; }
 
       const { data: fila, error: e2 } = await supabase.from('reportes_cliente').upsert({
         account, periodo_desde: desde, periodo_hasta: hasta, tipo, idioma: cuenta.idioma_reporte, estado: 'borrador',
         resumen_ejecutivo: secciones.resumen, que_cambiamos: secciones.cambiamos || null, que_sigue: secciones.sigue || null,
         metricas: datos.metricas, serie: datos.serie, campanas: { campanas: datos.campanas, grupos: datos.grupos, accionables: datos.accionables_ejecutados },
-        brief_notion_id: brief_id || null
+        brief_notion_id: briefUsado, escrito_por: origen === 'brief' ? 'opus-5-semanal' : origen === 'sonnet-5' ? 'sonnet-5-desde-datos' : 'andres'
       }, { onConflict: 'account,periodo_desde,tipo' }).select().single();
       if (e2) return res.status(500).json({ error: e2.message });
-      res.json({ ok: true, reporte: fila });
+      res.json({ ok: true, reporte: fila, origen, dias_con_datos: nDias });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -2158,19 +2214,61 @@ Las descripciones no deben superar los 90 caracteres.`;
   async function sincronizarEspejo(): Promise<number> {
     if (!supabase || !notion || !NOTION_BASES.ACCIONABLES) return 0;
     let cursor: string | undefined; const filas: any[] = [];
+    const { parsearAccion } = await import('./src/lib/accion');
     do {
       const r: any = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100, start_cursor: cursor });
       for (const page of r.results) {
         const p = page.properties; const txt = (k: string) => p[k]?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         const cliente = await resolveNotionClient(notion, p.Cliente);
+        const parsed = parsearAccion(txt('Accion JSON'));
+        let accionError = parsed.error || null;
+        // Validar contra la base: la keyword existe activa en esa cuenta
+        if (parsed.accion?.objeto?.keyword && ['pausar_keyword', 'cambiar_concordancia', 'reactivar_keyword'].includes(parsed.accion.verbo) && cliente) {
+          const { data: rk } = await supabase.rpc('resolver_keyword', { p_account: cliente, p_keyword: parsed.accion.objeto.keyword, p_pista: `${parsed.accion.objeto.grupo || ''} ${parsed.accion.objeto.campana || ''}` });
+          if (!rk?.campana) accionError = `keyword "${parsed.accion.objeto.keyword}" no encontrada activa en ${cliente}`;
+          else { parsed.accion.objeto.campana = rk.campana; parsed.accion.objeto.grupo = rk.grupo; if (!parsed.accion.objeto.match_type) parsed.accion.objeto.match_type = rk.match_type; }
+        }
+        // Invariantes: si viola una bloqueante, el accionable queda marcado y comentado
+        if (parsed.accion && cliente && !accionError) {
+          const { data: inv } = await supabase.rpc('verificar_invariantes', { p_account: cliente, p_accion: parsed.accion });
+          const bloq = (inv || []).filter((x: any) => x.bloquea);
+          if (bloq.length) {
+            accionError = 'INVARIANTE: ' + bloq.map((x: any) => x.detalle).join(' | ');
+            const st = p.Estado?.select?.name;
+            if (['Propuesto', 'Bloqueado'].includes(st) && !txt('Decision final').includes('[INVARIANTE')) {
+              try { await notion.comments.create({ parent: { page_id: page.id }, rich_text: [{ text: { content: `[INVARIANTE ${new Date().toISOString().slice(0, 10)}] Este accionable viola una regla que no se negocia: ${bloq.map((x: any) => x.detalle).join(' | ')}`.slice(0, 1900) } }] }); } catch {}
+            }
+          }
+        }
         filas.push({ notion_id: page.id, account: cliente, titulo: p.Accion?.title?.map((t: any) => t.plain_text).join('') || '', estado: p.Estado?.select?.name || '', prioridad: p.Prioridad?.select?.name || '',
+          accion: parsed.accion || null, accion_valida: !!parsed.accion && !accionError, accion_error: accionError,
           naturaleza: p.Naturaleza?.select?.name || '', origen: p.Origen?.select?.name || null, entidad: txt('Entidad') || null, causa_raiz: txt('Causa raiz') || null, por_que: txt('Por que').slice(0, 1000),
           detectado: p.Detectado?.date?.start || null, ejecutado_el: p['Ejecutado el']?.date?.start || null, vence: p.Vence?.date?.start || null, reemplazado_por: p['Reemplazado por']?.relation?.[0]?.id || null,
           semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: p['Revision IA']?.select?.name || null, ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString() });
       }
       cursor = r.has_more ? r.next_cursor : undefined;
     } while (cursor);
+    // Versionado: comparar con lo que habia; si cambio lo sustantivo, guardar version con diff
+    const { createHash } = await import('crypto');
+    const campos = ['titulo', 'por_que', 'accion', 'entidad', 'prioridad', 'estado'];
+    const { data: previos } = await supabase.from('accionables_espejo').select('notion_id, titulo, por_que, accion, entidad, prioridad, estado, hash, version').in('notion_id', filas.map((f: any) => f.notion_id));
+    const prevMap = new Map((previos || []).map((p: any) => [p.notion_id, p]));
+    const versiones: any[] = [];
+    for (const f of filas) {
+      const hash = createHash('sha256').update(JSON.stringify(campos.map(c => f[c] ?? null))).digest('hex').slice(0, 16);
+      const prev = prevMap.get(f.notion_id);
+      f.hash = hash;
+      if (!prev) { f.version = 1; versiones.push({ notion_id: f.notion_id, version: 1, autor: f.origen || 'desconocido', diff: { creado: { antes: null, despues: f.titulo } }, hash }); continue; }
+      if (prev.hash === hash) { f.version = prev.version || 1; continue; }
+      const diff: any = {};
+      for (const c of campos) { const a = prev[c] ?? null, b = f[c] ?? null; if (JSON.stringify(a) !== JSON.stringify(b)) diff[c] = { antes: typeof a === 'string' ? a.slice(0, 600) : a, despues: typeof b === 'string' ? b.slice(0, 600) : b }; }
+      f.version = (prev.version || 1) + 1;
+      versiones.push({ notion_id: f.notion_id, version: f.version, autor: f.ultima_edicion && Date.now() - new Date(f.ultima_edicion).getTime() < 3 * 3600e3 ? 'reciente' : 'desconocido', diff, hash });
+    }
     if (filas.length) { const { error } = await supabase.from('accionables_espejo').upsert(filas, { onConflict: 'notion_id' }); if (error) throw new Error(error.message); }
+    if (versiones.length) { const { error: ev } = await supabase.from('accionable_versiones').upsert(versiones, { onConflict: 'notion_id,version', ignoreDuplicates: true }); if (ev) console.error('[versiones] ' + ev.message); else console.log(`[versiones] ${versiones.length} nuevas`); }
+    // Conflictos: recalcular tras sincronizar
+    try { await supabase.rpc('detectar_conflictos'); } catch (e: any) { console.error('[conflictos] ' + e.message); }
     // Relleno unico: los accionables anteriores a la capa de coherencia no tienen Origen ni Entidad.
     // Sin Entidad el reconciliador no deduplica. Origen = Semanal (todos los viejos son del semanal); Entidad = Donde.
     let rellenados = 0;
@@ -2252,6 +2350,8 @@ Las descripciones no deben superar los 90 caracteres.`;
     if (tipo === 'cambiar_concordancia' && !destino) return null;
     const r = await resolverKeyword(account, kw, `${entidad || ''} ${titulo}`);
     if (!r) return null; // sin resolver, no se ejecuta solo: queda para Andres
+    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
+    if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
     await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: r.grupo, keyword: kw, match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
@@ -2266,7 +2366,20 @@ Las descripciones no deben superar los 90 caracteres.`;
   // Aprobar un accionable para que el script ejecutor lo aplique. Solo negativas y pausas.
   app.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = req.body || {};
+    const body = req.body || {};
+    // Si el accionable tiene accion estructurada, los datos salen de ahi; el body solo trae modo
+    if (body.usar_accion && supabase) {
+      const { data: esp } = await supabase.from('accionables_espejo').select('accion, accion_valida, account').eq('notion_id', req.params.id).maybeSingle();
+      if (esp?.accion_valida && esp.accion) {
+        const { tipoAutoDesde } = await import('./src/lib/accion');
+        const a = esp.accion; const t = tipoAutoDesde(a);
+        if (t) { body.account = esp.account; body.tipo = t; body.campana = a.objeto.campana; body.grupo = a.objeto.grupo; body.keyword = a.objeto.keyword; body.match_type = a.objeto.match_type || (t.startsWith('negativa') ? (a.parametros?.match_type_destino || 'PHRASE') : 'ANY'); body.match_type_destino = a.parametros?.match_type_destino; body.ad_id = a.objeto.anuncio_id; }
+      }
+    }
+    const { account, tipo, campana, grupo, keyword, match_type, match_type_destino, ad_id, modo } = body;
+    // PRE-VUELO: si hay un conflicto abierto que bloquea, no se encola
+    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
+    if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todavía: ${bloqueo}`, conflicto: true });
     if (!['negativa_grupo', 'negativa_campana', 'pausar_keyword', 'pausar_anuncio', 'cambiar_concordancia'].includes(tipo)) return res.status(400).json({ error: 'Solo negativas, pausas y cambios de concordancia se pueden ejecutar desde la app. Presupuesto, puja y conversiones se hacen a mano.' });
     if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });
     if (!account || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account y keyword o ad_id' });
@@ -2335,6 +2448,38 @@ Las descripciones no deben superar los 90 caracteres.`;
     res.json({ ok: true });
   });
 
+
+  app.post("/api/invariantes", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, accion } = req.body || {};
+    const { data, error } = await supabase.rpc('verificar_invariantes', { p_account: account, p_accion: accion });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+  app.get("/api/relaciones-abiertas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('accionable_relaciones').select('a, b, motivo').eq('resuelta', false).eq('severidad', 'bloquea');
+    const m: Record<string, string> = {}; for (const r of data || []) { m[r.a] = r.motivo; if (!String(r.b).startsWith('keyword:')) m[r.b] = r.motivo; }
+    res.json(m);
+  });
+  // Historial y relaciones de un accionable: que cambio desde que se propuso, y con que conflicta
+  app.get("/api/accionables/:id/contexto", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const id = req.params.id;
+    const [v, rel, esp] = await Promise.all([
+      supabase.from('accionable_versiones').select('*').eq('notion_id', id).order('version', { ascending: false }).limit(10),
+      supabase.from('v_accionable_relaciones').select('*').or(`a.eq.${id},b.eq.${id}`).eq('resuelta', false),
+      supabase.from('accionables_espejo').select('version, accion, accion_valida, accion_error, hash').eq('notion_id', id).maybeSingle(),
+    ]);
+    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: id });
+    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null });
+  });
+  app.post("/api/relaciones/:id/resolver", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    await supabase.from('accionable_relaciones').update({ resuelta: true, resuelta_el: new Date().toISOString(), resuelta_por: 'andres' }).eq('id', req.params.id);
+    res.json({ ok: true });
+  });
+
   // Briefing: lo que hay para vos hoy. Lo lee el script de briefing (mail) y la app.
   app.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -2382,7 +2527,8 @@ Las descripciones no deben superar los 90 caracteres.`;
       client ? supabase.from('v_acierto_por_tipo').select('*').eq('account', client) : supabase.from('v_acierto_por_tipo').select('*'),
       supabase.from('v_brecha_objetivo').select('*'),
     ]);
-    res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [] });
+    const { data: inv } = await supabase.from('v_accionables_invalidos').select('*').limit(30);
+    res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [], invalidos: inv || [] });
   });
 
   // ---- Doc maestro ensamblado ----
@@ -2475,7 +2621,9 @@ Las descripciones no deben superar los 90 caracteres.`;
       let creados = 0;
       for (const h of (filtrados || []) as any[]) {
         if (!notion || !NOTION_BASES.ACCIONABLES) break;
-        const title = `${h.titulo} · ${cuenta}`.slice(0, 200);
+        const { tituloDesde, tipoAutoDesde } = await import('./src/lib/accion');
+        const tituloBase = h.accion ? tituloDesde(h.accion) : h.titulo;
+        const title = `${tituloBase} · ${cuenta}`.slice(0, 200);
         // LEER ANTES DE ESCRIBIR: si hay uno abierto para la misma entidad o causa, comentar en vez de crear
         const entidadClave = String(h.donde || h.entidad || '').slice(0, 200);
         const { data: existenteId } = await supabase!.rpc('accionable_existente', { p_account: cuenta, p_entidad: entidadClave, p_causa: h.causa_raiz || null });
@@ -2500,6 +2648,7 @@ Las descripciones no deben superar los 90 caracteres.`;
           Naturaleza: { select: { name: nat } },
           'Por que': { rich_text: [{ text: { content: String(h.evidencia_texto || '').slice(0, 1900) } }] },
           'Como hacerlo': { rich_text: [{ text: { content: String(h.como_hacerlo || '').slice(0, 1900) } }] },
+          'Accion JSON': { rich_text: [{ text: { content: h.accion ? JSON.stringify(h.accion).slice(0, 1900) : '' } }] },
           'Causa raiz': { rich_text: [{ text: { content: String(h.causa_raiz || p.conecta_con || '').slice(0, 500) } }] },
           Donde: { rich_text: [{ text: { content: String(h.donde || h.entidad || '').slice(0, 300) } }] },
           Detectado: { date: { start: new Date().toISOString().slice(0, 10) } },

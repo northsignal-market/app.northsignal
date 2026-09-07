@@ -37,7 +37,17 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const [textoReporte, setTextoReporte] = useState({ resumen_ejecutivo: '', que_cambiamos: '', que_sigue: '' });
   const [trabajandoReporte, setTrabajandoReporte] = useState<string | null>(null);
   const [generandoDesde, setGenerandoDesde] = useState(false);
-  const [formGenerar, setFormGenerar] = useState({ desde: '', hasta: '', brief_id: '' });
+  const [formGenerar, setFormGenerar] = useState({ desde: '', hasta: '' });
+  const [origenReporte, setOrigenReporte] = useState<string | null>(null);
+  const lunesDe = (d: Date) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const preset = (que: 'semana_cerrada' | 'dos_semanas' | 'mes_pasado' | 'ultimos_7') => {
+    const hoy = new Date(); const lun = lunesDe(hoy);
+    if (que === 'semana_cerrada') { const d = new Date(lun); d.setDate(d.getDate() - 7); const h = new Date(lun); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
+    if (que === 'dos_semanas') { const d = new Date(lun); d.setDate(d.getDate() - 14); const h = new Date(lun); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
+    if (que === 'mes_pasado') { const d = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1); const h = new Date(hoy.getFullYear(), hoy.getMonth(), 0); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
+    if (que === 'ultimos_7') { const d = new Date(hoy); d.setDate(d.getDate() - 7); const h = new Date(hoy); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
+  };
 
   const cargarReportes = () => {
     fetch(`/api/reportes?client=${activeClient}`, { credentials: 'include' })
@@ -66,9 +76,9 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
     setTrabajandoReporte('generar');
     try {
       const r = await fetch('/api/reportes/generar', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: activeClient, desde: formGenerar.desde, hasta: formGenerar.hasta, brief_id: formGenerar.brief_id || undefined }) });
+        body: JSON.stringify({ account: activeClient, desde: formGenerar.desde, hasta: formGenerar.hasta }) });
       const d = await r.json();
-      if (!r.ok) alert(d.error || 'Error'); else { setGenerandoDesde(false); cargarReportes(); }
+      if (!r.ok) alert(d.error || 'Error'); else { setGenerandoDesde(false); setOrigenReporte(d.origen); cargarReportes(); }
     } finally { setTrabajandoReporte(null); }
   };
   useEffect(() => {
@@ -533,16 +543,23 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Borrador desde el brief → revisás → aprobás. Un minuto por período.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Elegís el período, el sistema arma el borrador, lo leés, lo aprobás. {origenReporte === 'sonnet-5' ? 'El último se redactó desde los datos porque no había análisis semanal para ese rango.' : origenReporte === 'brief' ? 'El último salió del análisis semanal.' : ''}</p>
           </div>
           <button onClick={() => setGenerandoDesde(v => !v)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>{generandoDesde ? 'Cancelar' : 'Nuevo borrador'}</button>
         </div>
         {generandoDesde && (
-          <div className="flex flex-wrap items-end gap-2 p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
-            <label className="text-[11px] text-[#F5F7FA] opacity-70 flex-1 min-w-[220px]">ID del brief en Notion (con la sección de reporte)<br /><input value={formGenerar.brief_id} onChange={e => setFormGenerar(f => ({ ...f, brief_id: e.target.value }))} placeholder="3d03b1f6de28817e…" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" /></label>
-            <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Generando…' : 'Crear borrador'}</button>
+          <div className="p-3 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-2)' }}>
+            <div className="flex flex-wrap gap-1.5">
+              {([['semana_cerrada', 'Última semana cerrada'], ['dos_semanas', 'Últimas dos semanas'], ['mes_pasado', 'Mes pasado'], ['ultimos_7', 'Últimos 7 días']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#FFFFFF]" style={{ border: '1px solid var(--border)' }}>{l}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-[11px] text-[#F5F7FA] opacity-70">Desde<br /><input type="date" value={formGenerar.desde} max={formGenerar.hasta || undefined} onChange={e => setFormGenerar(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+              <label className="text-[11px] text-[#F5F7FA] opacity-70">Hasta<br /><input type="date" value={formGenerar.hasta} min={formGenerar.desde || undefined} onChange={e => setFormGenerar(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} /></label>
+              <button onClick={generarReporte} disabled={!formGenerar.desde || !formGenerar.hasta || trabajandoReporte === 'generar'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajandoReporte === 'generar' ? 'Armando el borrador…' : 'Crear borrador'}</button>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50">El sistema busca solo el análisis de esa semana; si no hay, lo redacta desde los datos. Los números salen siempre de Supabase.</span>
+            </div>
           </div>
         )}
         {reportes.length === 0 ? (

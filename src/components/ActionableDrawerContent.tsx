@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { receta } from '../lib/recetas';
 import { detectarTipoAuto, extraerKeyword, concordanciaDestino } from '../lib/tipoAuto';
+import { tipoAutoDesde } from '../lib/accion';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 import { useAppStore } from '../store/useAppStore';
@@ -148,9 +149,15 @@ export function ActionableDrawerContent({
   const [logQueCambio, setLogQueCambio] = useState('');
   const [logDonde, setLogDonde] = useState(action.where || '');
   const [ejecutando, setEjecutando] = useState(false);
+  const [contexto, setContexto] = useState<any>(null);
+  useEffect(() => { fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setContexto(d)).catch(() => {}); }, [action.id]);
+  const resolverRelacion = async (id: number) => { await fetch(`/api/relaciones/${id}/resolver`, { method: 'POST', credentials: 'include' }); const r = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (r.ok) setContexto(await r.json()); };
+  const NOMBRE_CAMPO: Record<string, string> = { titulo: 'Título', por_que: 'Por qué', accion: 'Acción estructurada', entidad: 'Entidad', prioridad: 'Prioridad', estado: 'Estado', creado: 'Creado' };
   const [ejecutado, setEjecutado] = useState<string | null>(null);
   // Que tipo de accion automatica es, si alguna. Solo negativas y pausas.
-  const tipoAuto = detectarTipoAuto(action.title, action.como_hacerlo);
+  // Con accion estructurada, el tipo sale de ahi. Sin ella, se adivina del titulo (accionables viejos).
+  const tipoAuto = action.accion ? tipoAutoDesde(action.accion) : detectarTipoAuto(action.title, action.como_hacerlo);
+  const esPregunta = action.accion?.verbo?.startsWith('preguntar');
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
@@ -159,9 +166,9 @@ export function ActionableDrawerContent({
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
+        body: JSON.stringify({ usar_accion: !!action.accion, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
-      if (!r.ok) alert(j.error || 'Error'); else setEjecutado(modo);
+      if (!r.ok) { alert(j.error || 'Error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
     } finally { setEjecutando(false); }
   };
   const [logValorAnterior, setLogValorAnterior] = useState('');
@@ -445,8 +452,74 @@ export function ActionableDrawerContent({
 
 
 
+
+      {/* Qué cambió desde que se propuso, y con qué se relaciona */}
+      {contexto && (contexto.versiones?.length > 1 || contexto.relaciones?.length > 0) && (
+        <div className="p-3.5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: contexto.bloqueo ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          {contexto.bloqueo && (
+            <div className="text-xs text-[#FFFFFF]"><span className="font-semibold">No se ejecuta todavía.</span> <span className="opacity-80">{contexto.bloqueo}</span></div>
+          )}
+          {contexto.relaciones?.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Relacionado con</span>
+              {contexto.relaciones.map((r: any) => {
+                const otro = r.a === action.id ? r.titulo_b : r.titulo_a;
+                const verbo = r.tipo === 'conflicta_con' ? 'conflicta con' : r.tipo === 'depende_de' ? (r.a === action.id ? 'depende de' : 'lo necesita antes') : r.tipo === 'bloquea_keyword' ? 'bloquearía' : r.tipo === 'comparte_causa' ? 'misma causa que' : 'reemplaza';
+                return (
+                  <div key={r.id} className="px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: r.severidad === 'bloquea' ? '2px solid var(--primary)' : '2px solid transparent' }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-xs text-[#F5F7FA]"><span className="opacity-60">{verbo}</span> <span className="text-[#FFFFFF]">{otro}</span></div>
+                      {r.severidad === 'bloquea' && <button onClick={() => resolverRelacion(r.id)} className="text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100 shrink-0" title="Marcar como resuelto o deliberado">es deliberado</button>}
+                    </div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{r.motivo}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {contexto.versiones?.length > 1 && (
+            <div className="space-y-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Qué cambió desde que se propuso · versión {contexto.actual?.version || contexto.versiones[0].version}</span>
+              {contexto.versiones.filter((v: any) => v.version > 1).slice(0, 4).map((v: any) => (
+                <div key={v.id} className="px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="text-[10px] text-[#F5F7FA] opacity-50 tabular">v{v.version} · {String(v.fecha).slice(0, 16).replace('T', ' ')}{v.motivo ? ` · ${v.motivo}` : ''}</div>
+                  {Object.entries(v.diff || {}).map(([campo, cambio]: any) => (
+                    <div key={campo} className="text-[11px] mt-1">
+                      <span className="text-[#FFFFFF]">{NOMBRE_CAMPO[campo] || campo}:</span>
+                      {campo === 'accion' ? <span className="text-[#F5F7FA] opacity-70"> {cambio.antes?.verbo || '—'} → {cambio.despues?.verbo || '—'}{cambio.despues?.objeto?.keyword ? ` · ${cambio.despues.objeto.keyword}` : ''}</span>
+                        : <span className="text-[#F5F7FA] opacity-70"> <s className="opacity-50">{String(cambio.antes ?? '—').slice(0, 120)}</s> → {String(cambio.despues ?? '—').slice(0, 160)}</span>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Si es una pregunta, decirlo claro: no hay nada que tocar en Google Ads */}
+      {esPregunta && (
+        <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">{action.accion.verbo === 'preguntar_cliente' ? `Pregunta para ${action.accion.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
+          <p className="text-xs text-[#F5F7FA] leading-relaxed">{action.accion.parametros?.pregunta}</p>
+          {action.accion.parametros?.dato_que_falta && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Lo que falta para decidir: {action.accion.parametros.dato_que_falta}</p>}
+          <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
+        </div>
+      )}
+      {action.accion_error && action.status !== 'Hecho' && action.status !== 'Descartado' && (
+        String(action.accion_error).startsWith('INVARIANTE') ? (
+          <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
+            <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Viola una regla que no se negocia</span>
+            {String(action.accion_error).replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
+            <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">El sistema no lo ejecuta y no debería ejecutarse a mano. Descartalo o pedile a la tarea del lunes que lo reformule.</p>
+          </div>
+        ) : (
+          <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({action.accion_error}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>
+        )
+      )}
+
       {/* Aprobar y ejecutar: solo negativas y pausas, que son reversibles */}
-      {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && (
+      {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && !contexto?.bloqueo && (
         <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           {ejecutado ? (
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>

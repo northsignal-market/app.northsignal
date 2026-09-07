@@ -17,6 +17,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
+import { AccionSchema, tituloDesde, VERBOS } from '../../lib/accion';
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
@@ -45,13 +46,14 @@ export const PulsoSchema = z.object({
     evidencia_texto: z.string()
   })),
   hallazgos: z.array(z.object({
-    titulo: z.string().describe('Como acción: "Pausar X", "Revisar Y", no como problema'),
+    titulo: z.string().describe('Como acción con verbo de la lista cerrada: "Pausar X en Y", "Agregar negativa Z", "Preguntar a Andrés si...". Nunca "Revisar" ni "Decidir".'),
     severidad: z.enum(['baja', 'media', 'alta', 'critica']),
     confianza: z.number().min(0).max(1),
     entidad: z.string().describe('Campaña, grupo, keyword o término con nombre exacto'),
     evidencia_texto: z.string().describe('Los números que lo sostienen, con fechas'),
     naturaleza: z.enum(['observacion', 'inferencia', 'hipotesis']),
     como_hacerlo: z.string().describe('Pasos numerados en la interfaz de Google Ads 2026 para ejecutarlo: Campañas > la campaña > el grupo > Palabras clave; pestaña Palabras clave negativas; Objetivos > Conversiones; Configuración > Puja. Uno por línea. Escrito para una persona con Google Ads abierto, no para el sistema.'),
+    accion: AccionSchema.nullable().describe('La acción estructurada, si el hallazgo es accionable. Verbo de la lista cerrada; nunca "revisar" ni "decidir": si no podés decidir, es preguntar_andres con la pregunta y el dato que falta. objeto.keyword con el texto exacto como está en la cuenta, sin corchetes ni comillas; objeto.grupo y objeto.campana con nombres exactos de grupos_ayer. Null si el hallazgo es solo informativo.'),
     donde: z.string().describe('El lugar en la cuenta, en palabras: "Grupo 7. Vergleich, keyword X". Nunca nombres de vistas.'),
     causa_raiz: z.string().describe('El problema de fondo en una frase que otro hallazgo podría compartir. Nunca "detectado por el pulso".')
   })).describe('Cobertura completa: todo lo que encontraste, incluso con confianza baja. No filtres.')

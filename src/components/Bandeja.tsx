@@ -16,6 +16,7 @@ import { nivelPulso } from '../lib/humano';
 import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
+import { tipoAutoDesde } from '../lib/accion';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
 
@@ -26,6 +27,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const [pulsos, setPulsos] = useState<any[]>([]);
   const [ciclo, setCiclo] = useState<any>(null);
   const [propuestas, setPropuestas] = useState<any[]>([]);
+  const [bloqueados, setBloqueados] = useState<Record<string, string>>({});
   const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false });
   const [filtroCuenta, setFiltroCuenta] = useState<string | null>(null);
 
@@ -34,6 +36,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/pulso?days=2', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPulsos(d.pulsos || [])).catch(() => {});
     fetch('/api/ciclo', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCiclo(d)).catch(() => {});
+    fetch('/api/relaciones-abiertas', { credentials: 'include' }).then(r => r.ok ? r.json() : {}).then(d => setBloqueados(d || {})).catch(() => {});
     fetch('/api/propuestas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setPropuestas(Array.isArray(d) ? d : [])).catch(() => {});
   };
   useEffect(() => { cargar(); const t = setInterval(cargar, 3 * 60 * 1000); return () => clearInterval(t); }, []);
@@ -91,7 +94,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="Listos para ejecutar" n={listos.length} icono={<Zap size={13} />}>
               {listos.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.priority === 'Urgente' || a.priority === 'Alta' ? `Prioridad ${a.priority.toLowerCase()}` : undefined} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{detectarTipoAuto(a.title, a.como_hacerlo) ? 'el sistema puede ejecutarlo' : 'a mano, con los pasos adentro'}</span>} />
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#0062CC]">espera: conflicto abierto</span> : a.accion?.verbo?.startsWith('preguntar') ? 'es una pregunta, no un cambio' : (a.accion ? tipoAutoDesde(a.accion) : detectarTipoAuto(a.title, a.como_hacerlo)) ? 'el sistema puede ejecutarlo' : 'a mano, con los pasos adentro'}</span>} />
               ))}
             </Grupo>
           )}

@@ -36,6 +36,8 @@ export interface Actionable {
   que_lo_confirmaria?: string;
   como_hacerlo?: string;
   origen?: string;
+  accion?: any;
+  accion_error?: string | null;
   entidad?: string;
   vence?: string | null;
   reemplazado_por?: string | null;
