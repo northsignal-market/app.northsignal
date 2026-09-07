@@ -392,6 +392,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     if (activeView === 'v_ngrams_sin_conversion') defaultOrder = 'costo_total';
     if (activeView === 'v_fuzzy_negatives') defaultOrder = 'gasto_perdido';
     if (activeView === 'v_tendencia_semanal') defaultOrder = 'week_start';
+    if (activeView === 'v_keyword_tendencia') defaultOrder = 'gasto_total';
     setOrderBy(defaultOrder);
     setOrderDir('desc');
   }, [activeView, selectedClient, debouncedSearch, dateRangeMode, customRange]);

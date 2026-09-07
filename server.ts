@@ -563,6 +563,16 @@ export function createApp() {
     }
   });
 
+  const _colsCache = new Map<string, Set<string>>();
+  async function columnasDeVista(view: string): Promise<Set<string>> {
+    if (_colsCache.has(view)) return _colsCache.get(view)!;
+    try {
+      const { data } = await supabase!.from(view).select('*').limit(1);
+      const set = new Set(Object.keys((data && data[0]) || {}));
+      if (set.size) _colsCache.set(view, set);
+      return set;
+    } catch { return new Set(); }
+  }
   app.get(["/api/metrics/:view", "/api/views/:view"], async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado', disponible: false });
     const { view } = req.params;
@@ -586,6 +596,9 @@ export function createApp() {
     } catch(e) {}
 
     
+    // Columnas reales de cada vista, cacheadas: si el orderBy pedido no existe (viene de otra vista), usar el default.
+    const cols = await columnasDeVista(view);
+    const orderValido = order_by && cols.has(order_by) ? order_by : undefined;
     const defaultOrderBy: Record<string, string> = {
       v_campaign_analisis: 'cost',
       v_adgroup_analisis: 'cost',
@@ -609,7 +622,7 @@ export function createApp() {
         if (search && search_col) {
           query = query.ilike(search_col, `%${search}%`);
         }
-        const sortCol = order_by || defaultOrderBy[view] || (view === 'v_keyword_tendencia' ? 'gasto_total' : 'cost');
+        const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : (cols.has('cost') ? 'cost' : [...cols][0]));
         query = query.order(sortCol, { ascending: order_dir === 'asc' });
         query = query.range(offset, offset + limit - 1);
 
@@ -659,7 +672,7 @@ export function createApp() {
         p_search_col: search_col || null,
         p_filters: filters,
         p_group_by: group_by || null,
-        p_order_by: order_by || defaultOrderBy[view],
+        p_order_by: orderValido || defaultOrderBy[view],
         p_order_dir: order_dir || 'desc',
         p_limit: limit,
         p_offset: offset
@@ -689,7 +702,7 @@ export function createApp() {
       if (search && search_col) {
         query = query.ilike(search_col, `%${search}%`);
       }
-      const sortCol = order_by || defaultOrderBy[view];
+      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : 'cost');
       if (sortCol) {
         query = query.order(sortCol, { ascending: order_dir === 'asc' });
       }
@@ -825,13 +838,8 @@ export function createApp() {
       const data = await Promise.all(response.results.map(async (page: any) => {
         const client = await resolveNotionClient(notion, page.properties.Cliente || page.properties.Client);
         const props = page.properties;
+        // Sin comments.list por pagina: eran 50 llamadas por carga y Notion limita a 3/s. El drawer los pide al abrir.
         let comments_count = 0;
-        try {
-          const commentRes = await notion.comments.list({ block_id: page.id });
-          comments_count = commentRes.results?.length || 0;
-        } catch (err) {
-          // ignore or default to 0
-        }
         return {
           id: page.id,
           client: client,
@@ -2281,7 +2289,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         const donde = r?.properties?.Donde?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         if (donde.trim()) props.Entidad = { rich_text: [{ text: { content: donde.trim().slice(0, 200) } }] };
       }
-      if (Object.keys(props).length) { try { await notion.pages.update({ page_id: f.notion_id, properties: props }); rellenados++; } catch (e: any) { console.error('[espejo relleno] ' + e.message); } }
+      if (Object.keys(props).length) { try { await notion.pages.update({ page_id: f.notion_id, properties: props }); rellenados++; await new Promise(r => setTimeout(r, 350)); } catch (e: any) { console.error('[espejo relleno] ' + e.message); } }
     }
     if (rellenados) console.log(`[espejo] ${rellenados} accionables con Origen/Entidad rellenados`);
     // Politicas: los Propuesto creados en las ultimas 24h que aun no tienen accion aprobada

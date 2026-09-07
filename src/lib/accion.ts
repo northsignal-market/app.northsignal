@@ -94,7 +94,10 @@ export function tipoAutoDesde(a: Accion): 'negativa_grupo' | 'negativa_campana' 
 export function parsearAccion(texto: string | null | undefined): { accion?: Accion; error?: string } {
   if (!texto || !texto.trim()) return { error: 'sin Accion JSON' };
   let raw: any;
-  try { raw = JSON.parse(texto.replace(/^```json\s*|```$/g, '').trim()); } catch { return { error: 'JSON inválido' }; }
+  // Tolerante: Notion o el modelo pueden envolverlo en ```json, "json\n", comillas o texto. Se toma de la primera { a la última }.
+  const i = texto.indexOf('{'), j = texto.lastIndexOf('}');
+  if (i < 0 || j <= i) return { error: 'JSON inválido: sin llaves' };
+  try { raw = JSON.parse(texto.slice(i, j + 1)); } catch (e: any) { return { error: 'JSON inválido: ' + String(e.message).slice(0, 80) }; }
   const r = AccionSchema.safeParse(raw);
   if (!r.success) return { error: r.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') };
   const a = r.data;

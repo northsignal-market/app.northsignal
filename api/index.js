@@ -71,13 +71,15 @@ function tipoAutoDesde(a) {
 function parsearAccion(texto) {
   if (!texto || !texto.trim()) return { error: "sin Accion JSON" };
   let raw2;
+  const i = texto.indexOf("{"), j = texto.lastIndexOf("}");
+  if (i < 0 || j <= i) return { error: "JSON inv\xE1lido: sin llaves" };
   try {
-    raw2 = JSON.parse(texto.replace(/^```json\s*|```$/g, "").trim());
-  } catch {
-    return { error: "JSON inv\xE1lido" };
+    raw2 = JSON.parse(texto.slice(i, j + 1));
+  } catch (e) {
+    return { error: "JSON inv\xE1lido: " + String(e.message).slice(0, 80) };
   }
   const r = AccionSchema.safeParse(raw2);
-  if (!r.success) return { error: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+  if (!r.success) return { error: r.error.issues.map((i2) => `${i2.path.join(".")}: ${i2.message}`).join("; ") };
   const a = r.data;
   if (["pausar_keyword", "cambiar_concordancia", "reactivar_keyword"].includes(a.verbo) && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: `${a.verbo} sin keyword` };
   if (a.verbo === "agregar_negativa" && !a.objeto.keyword) return { error: "agregar_negativa sin keyword" };
@@ -1507,6 +1509,18 @@ function createApp() {
       res.status(500).json({ error: e.message });
     }
   });
+  const _colsCache = /* @__PURE__ */ new Map();
+  async function columnasDeVista(view) {
+    if (_colsCache.has(view)) return _colsCache.get(view);
+    try {
+      const { data } = await supabase.from(view).select("*").limit(1);
+      const set = new Set(Object.keys(data && data[0] || {}));
+      if (set.size) _colsCache.set(view, set);
+      return set;
+    } catch {
+      return /* @__PURE__ */ new Set();
+    }
+  }
   app2.get(["/api/metrics/:view", "/api/views/:view"], async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado", disponible: false });
     const { view } = req.params;
@@ -1528,6 +1542,8 @@ function createApp() {
       }
     } catch (e) {
     }
+    const cols = await columnasDeVista(view);
+    const orderValido = order_by && cols.has(order_by) ? order_by : void 0;
     const defaultOrderBy = {
       v_campaign_analisis: "cost",
       v_adgroup_analisis: "cost",
@@ -1549,7 +1565,7 @@ function createApp() {
         if (search && search_col) {
           query = query.ilike(search_col, `%${search}%`);
         }
-        const sortCol = order_by || defaultOrderBy[view] || (view === "v_keyword_tendencia" ? "gasto_total" : "cost");
+        const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : cols.has("cost") ? "cost" : [...cols][0]);
         query = query.order(sortCol, { ascending: order_dir === "asc" });
         query = query.range(offset, offset + limit - 1);
         const { data: rows, count, error: qErr } = await query;
@@ -1593,7 +1609,7 @@ function createApp() {
         p_search_col: search_col || null,
         p_filters: filters,
         p_group_by: group_by || null,
-        p_order_by: order_by || defaultOrderBy[view],
+        p_order_by: orderValido || defaultOrderBy[view],
         p_order_dir: order_dir || "desc",
         p_limit: limit,
         p_offset: offset
@@ -1619,7 +1635,7 @@ function createApp() {
       if (search && search_col) {
         query = query.ilike(search_col, `%${search}%`);
       }
-      const sortCol = order_by || defaultOrderBy[view];
+      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : "cost");
       if (sortCol) {
         query = query.order(sortCol, { ascending: order_dir === "asc" });
       }
@@ -1729,11 +1745,6 @@ function createApp() {
         const client = await resolveNotionClient(notion2, page.properties.Cliente || page.properties.Client);
         const props = page.properties;
         let comments_count = 0;
-        try {
-          const commentRes = await notion2.comments.list({ block_id: page.id });
-          comments_count = commentRes.results?.length || 0;
-        } catch (err) {
-        }
         return {
           id: page.id,
           client,
@@ -3128,6 +3139,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         try {
           await notion.pages.update({ page_id: f.notion_id, properties: props });
           rellenados++;
+          await new Promise((r) => setTimeout(r, 350));
         } catch (e) {
           console.error("[espejo relleno] " + e.message);
         }
