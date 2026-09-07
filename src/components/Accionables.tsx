@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, Check, Cpu, AlertCircle, X, ChevronDown, ChevronUp,
   ArrowUpDown, Filter, Sparkles
@@ -21,6 +21,8 @@ export function Accionables({
   const { actionables, updateActionableStatus } = useAppStore();
 
   const [search, setSearch] = useState('');
+  const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
+  useEffect(() => { fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((d: any[]) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))).catch(() => {}); }, []);
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
   const [filterStatus, setFilterStatus] = useState<string>(initialStatus || 'all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -315,7 +317,8 @@ export function Accionables({
                     >
                       {/* Title & context */}
                       <td className="py-3 px-4 max-w-sm">
-                        <div className="font-semibold text-[#FFFFFF] truncate">
+                        <div className="font-semibold text-[#FFFFFF] truncate flex items-center gap-1.5">
+                          {novedadesIds.has(action.id) && <span className="w-1.5 h-1.5 rounded-full bg-[#0062CC] shrink-0" title="Un agente comentó o editó esto y no lo viste" />}
                           {action.title}
                         </div>
                         {action.why && (

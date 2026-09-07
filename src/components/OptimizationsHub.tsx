@@ -20,7 +20,7 @@ const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
   ) },
   { id: 'lunes', titulo: 'Qué hacés cada lunes', cuerpo: (
     <ol className="space-y-2 text-xs text-[#F5F7FA] leading-relaxed list-decimal pl-4">
-      <li><span className="text-[#FFFFFF]">Bandeja.</span> Es una cola: pide acción hoy, listos para ejecutar, esperan confirmación, reportes para aprobar. Trabajala de arriba a abajo hasta que diga "Nada te espera".</li>
+      <li><span className="text-[#FFFFFF]">Bandeja.</span> Arriba, Novedades: lo que los agentes comentaron, editaron o propusieron desde la última vez; un clic abre el objeto y lo marca visto. Debajo, la cola: pide acción hoy, listos para ejecutar, esperan confirmación, reportes para aprobar. Trabajala de arriba a abajo hasta que diga "Nada te espera".</li>
       <li><span className="text-[#FFFFFF]">Cuenta › Brief.</span> Leé el titular y el handoff de cada cuenta. El brief completo solo si el titular te sorprende.</li>
       <li><span className="text-[#FFFFFF]">Cada accionable.</span> Abrilo desde la Bandeja. Si es negativa o pausa, "Aprobar y que se haga" y el script lo ejecuta en la hora. Si no, seguí "Cómo hacerlo" con Google Ads en la otra pestaña y marcalo Hecho con la fecha. Los que esperan confirmación son deducciones: si tienen sentido, Confirmar; si no, Descartar con una línea en Decisión final.</li>
       <li><span className="text-[#FFFFFF]">Cuenta › Reportes.</span> Leé el borrador. Si está bien, Aprobar. Si querés cambiar una frase, Editar texto, Guardar, Aprobar. Ver PDF lo genera y lo abre.</li>

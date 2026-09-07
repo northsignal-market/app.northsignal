@@ -1152,15 +1152,10 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
       
       const response = await notion.comments.create({
         parent: { page_id: req.params.id },
-        rich_text: [
-          {
-            text: {
-              content: text
-            }
-          }
-        ]
+        rich_text: [{ text: { content: `[ANDRES ${new Date().toISOString().slice(0, 10)}] ${text}` } }]
       });
-      
+      // Espejo: los comentarios de Andres no generan novedad
+      if (supabase) { try { await supabase.from('accionable_comentarios').upsert({ comment_id: (response as any).id, notion_id: req.params.id, autor: 'andres', prefijo: 'ANDRES', texto: text, creado: new Date().toISOString() }, { onConflict: 'comment_id' }); } catch {} }
       res.json({ success: true, comment: response });
     } catch (e: any) {
       console.error(e);
@@ -1176,10 +1171,11 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
       const notion = new NotionClient({ auth: notionKey });
       const { 
         status, resolutionNote, ejecutado_el, resultado_observado,
-        naturaleza, que_lo_confirmaria, causa_raiz, confirmar_hipotesis
+        naturaleza, que_lo_confirmaria, causa_raiz, confirmar_hipotesis, prioridad
       } = req.body;
       
       const properties: any = {};
+      if (prioridad) properties['Prioridad'] = { select: { name: prioridad } };
       const targetStatus = confirmar_hipotesis ? NOTION_STATES.PROPUESTO : status;
       if (targetStatus) {
         properties['Estado'] = {
@@ -2571,6 +2567,64 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     ]);
     const { data: inv } = await supabase.from('v_accionables_invalidos').select('*').limit(30);
     res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [], invalidos: inv || [] });
+  });
+
+
+  // ================================================================
+  // NOVEDADES: lo que los agentes hicieron y Andres no vio
+  // ================================================================
+  async function sincronizarComentarios(): Promise<number> {
+    if (!supabase || !notion) return 0;
+    const { data: abiertos } = await supabase.from('accionables_espejo').select('notion_id, account, titulo').in('estado', ['Propuesto', 'Bloqueado', 'En curso']).is('reemplazado_por', null);
+    let nuevos = 0;
+    for (const a of abiertos || []) {
+      try {
+        const r: any = await notion.comments.list({ block_id: a.notion_id, page_size: 50 });
+        for (const c of r.results || []) {
+          const texto = (c.rich_text || []).map((t: any) => t.plain_text).join('');
+          const m = texto.match(/^\[([A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ .·]*?)(?:\s[\d-]+.*?)?\]/);
+          const prefijo = m ? m[1].trim() : null;
+          const esAndres = /^\[ANDRES/i.test(texto) || (!m && c.created_by?.type === 'person');
+          const autor = esAndres ? 'andres' : (m ? 'agente' : 'notion');
+          const { data: ins } = await supabase.from('accionable_comentarios').upsert({ comment_id: c.id, notion_id: a.notion_id, account: a.account, autor, prefijo, texto: texto.slice(0, 2000), creado: c.created_time }, { onConflict: 'comment_id', ignoreDuplicates: true }).select('comment_id');
+          if (ins?.length && autor !== 'andres') {
+            const { data: actorRow } = await supabase.rpc('actor_desde_prefijo', { p: prefijo });
+            await supabase.from('novedades').upsert({ tipo: 'comentario', account: a.account, ref_tipo: 'accionable', ref_id: a.notion_id, titulo: `${prefijo ? prefijo.replace(/·.*$/, '').trim() : 'Alguien'} comentó: ${String(a.titulo).slice(0, 70)}`, texto: texto.replace(/^\[[^\]]*\]\s*/, '').slice(0, 300), autor: prefijo || 'notion', actor: actorRow || 'agente', verbo: 'comento', objeto_titulo: a.titulo, creada: c.created_time, clave: 'comentario:' + c.id }, { onConflict: 'clave', ignoreDuplicates: true });
+            nuevos++;
+          }
+        }
+        await new Promise(r => setTimeout(r, 350));
+      } catch (e: any) { console.error('[comentarios] ' + a.notion_id + ': ' + e.message); }
+    }
+    return nuevos;
+  }
+  app.all("/api/cron/novedades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const comentarios = await sincronizarComentarios();
+      const { data: otras } = await supabase.rpc('novedades_generar');
+      res.json({ ok: true, comentarios_nuevos: comentarios, otras: otras });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+  app.get("/api/novedades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from(req.query.todas ? 'v_novedades_7d' : 'v_novedades').select('*').limit(req.query.todas ? 150 : 60);
+    res.json(data || []);
+  });
+  // Marcar leidas: por objeto (al abrirlo) o todas
+  app.post("/api/novedades/leer", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { ref_tipo, ref_id, todas } = req.body || {};
+    let q = supabase.from('novedades').update({ leida_el: new Date().toISOString() }).is('leida_el', null);
+    if (!todas) { if (!ref_tipo || !ref_id) return res.status(400).json({ error: 'ref_tipo y ref_id, o todas' }); q = q.eq('ref_tipo', ref_tipo).eq('ref_id', String(ref_id)); }
+    const { error } = await q; if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+  // Comentarios de un accionable desde el espejo (rapido, sin pegarle a Notion)
+  app.get("/api/accionables/:id/comentarios", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('accionable_comentarios').select('*').eq('notion_id', req.params.id).order('creado', { ascending: false });
+    res.json(data || []);
   });
 
   // ---- Doc maestro ensamblado ----

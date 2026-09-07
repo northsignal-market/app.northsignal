@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Check, Cpu, MessageSquare, Send, Clock, 
   ExternalLink, AlertCircle, ShieldAlert,
@@ -10,104 +10,79 @@ import { tipoAutoDesde } from '../lib/accion';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 import { useAppStore } from '../store/useAppStore';
+import { actorDe, haceCuanto, parsearComentario } from '../lib/actores';
+import { Avatar } from './Campana';
 
 function CommentsThread({ actionableId }: { actionableId: string }) {
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [newText, setNewText] = useState('');
   const [sending, setSending] = useState(false);
+  const fin = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const cargar = async () => {
     setLoading(true);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-    fetch(`/api/notion/actionables/${actionableId}/comments`, { credentials: 'include', headers })
-      .then(async res => {
-        if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return { comments: [] };
-        return res.json();
-      })
-      .then(data => setComments(data.comments || []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [actionableId]);
+    try {
+      // Primero el espejo (rapido); si esta vacio, Notion directo
+      let lista: any[] = [];
+      const r = await fetch(`/api/accionables/${actionableId}/comentarios`, { credentials: 'include' });
+      if (r.ok) lista = (await r.json()).map((c: any) => ({ id: c.comment_id, text: c.texto, created_at: c.creado, autor: c.autor, prefijo: c.prefijo }));
+      if (!lista.length) {
+        const r2 = await fetch(`/api/notion/actionables/${actionableId}/comments`, { credentials: 'include' });
+        if (r2.ok && r2.headers.get('content-type')?.includes('application/json')) lista = ((await r2.json()).comments || []).map((c: any) => ({ id: c.id, text: c.text, created_at: c.created_at }));
+      }
+      setComments(lista.sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime()));
+    } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+  useEffect(() => { cargar(); }, [actionableId]);
+  useEffect(() => { if (comments.length) fin.current?.scrollIntoView({ block: 'nearest' }); }, [comments.length]);
 
   const sendComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newText.trim() || sending) return;
     setSending(true);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      };
-      const res = await fetch(`/api/notion/actionables/${actionableId}/comments`, { 
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ text: newText })
-      });
-      if (!res.headers.get('content-type')?.includes('application/json')) return;
-      const data = await res.json();
-      if (data.success) {
-        setNewText('');
-        setComments([...comments, {
-          id: data.comment?.id || Date.now().toString(),
-          text: newText,
-          created_at: new Date().toISOString(),
-          author: 'Andrés (Operador)'
-        }]);
-      }
-    } catch(err) {
-      console.error(err);
-    } finally {
-      setSending(false);
-    }
+      const res = await fetch(`/api/notion/actionables/${actionableId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ text: newText }) });
+      if (res.ok) { setComments([...comments, { id: Date.now().toString(), text: `[ANDRES ${new Date().toISOString().slice(0, 10)}] ${newText}`, created_at: new Date().toISOString(), autor: 'andres' }]); setNewText(''); }
+    } catch (err) { console.error(err); } finally { setSending(false); }
   };
+
+  const parsed = comments.map(c => { const p = parsearComentario(String(c.text || '')); const actor = c.autor === 'andres' ? 'andres' : p.actor; return { ...c, actor, cuerpo: p.cuerpo || c.text }; });
+  const agentes: string[] = Array.from(new Set<string>(parsed.filter(c => c.actor !== 'andres').map(c => String(c.actor))));
 
   return (
     <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
-      <h3 className="text-xs font-semibold tracking-wider text-[#F5F7FA] opacity-70 uppercase mb-3 flex items-center gap-2">
-        <MessageSquare size={14} /> Hilo de Discusión y Comentarios
-      </h3>
-      <div className="space-y-2 mb-3">
-        {loading ? (
-          <div className="text-xs text-[#F5F7FA] opacity-50 py-2">Cargando comentarios...</div>
-        ) : comments.length === 0 ? (
-          <div className="text-xs text-[#F5F7FA] opacity-40 italic py-1">Sin comentarios registrados en Notion.</div>
-        ) : (
-          comments.map(c => (
-            <div 
-              key={c.id} 
-              className="p-3 rounded-lg text-xs"
-              style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            >
-              <div className="flex items-center justify-between text-[11px] text-[#F5F7FA] opacity-60 mb-1">
-                <span className="font-semibold text-[#FFFFFF]">{c.author}</span>
-                <span className="tabular">{new Date(c.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</span>
-              </div>
-              <p className="text-[#F5F7FA] whitespace-pre-wrap">{c.text}</p>
-            </div>
-          ))
-        )}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold tracking-wider text-[#F5F7FA] opacity-70 uppercase flex items-center gap-2"><MessageSquare size={14} /> Conversación{parsed.length ? ` · ${parsed.length}` : ''}</h3>
+        {agentes.length > 0 && <div className="flex items-center gap-1 text-[10px] text-[#F5F7FA] opacity-50"><span>participan</span><div className="flex -space-x-1">{agentes.map(a => <Avatar key={a} actor={a} chico />)}</div></div>}
       </div>
-
-      <form onSubmit={sendComment} className="flex gap-2">
-        <input 
-          type="text" 
-          placeholder="Agregar comentario a Notion..."
-          value={newText}
-          onChange={e => setNewText(e.target.value)}
-          className="flex-1 bg-transparent px-3 py-1.5 rounded-md text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC]"
-          style={{ border: '1px solid var(--border-strong)' }}
-        />
-        <button 
-          type="submit" 
-          disabled={sending || !newText.trim()}
-          className="px-3 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-40 text-[#FFFFFF] text-xs font-semibold flex items-center gap-1 transition-opacity shrink-0"
-        >
-          <Send size={12} />
-        </button>
+      <div className="space-y-2.5 mb-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+        {loading ? (
+          <div className="text-xs text-[#F5F7FA] opacity-50 py-2">Cargando…</div>
+        ) : parsed.length === 0 ? (
+          <div className="text-xs text-[#F5F7FA] opacity-40 italic py-1">Nadie comentó todavía. Lo que escribas acá lo leen los agentes en su próxima corrida.</div>
+        ) : parsed.map((c, i) => {
+          const propio = c.actor === 'andres'; const act = actorDe(c.actor);
+          const mismoAutor = i > 0 && parsed[i - 1].actor === c.actor && (new Date(c.created_at).getTime() - new Date(parsed[i - 1].created_at).getTime()) < 3600e3;
+          return (
+            <div key={c.id} className={`flex gap-2 ${propio ? 'flex-row-reverse' : ''}`}>
+              <div className="w-7 shrink-0">{!mismoAutor && <Avatar actor={c.actor} />}</div>
+              <div className={`max-w-[88%] min-w-0 ${propio ? 'items-end' : ''}`}>
+                {!mismoAutor && <div className={`text-[10px] mb-0.5 ${propio ? 'text-right' : ''}`}><span className="font-semibold text-[#FFFFFF]">{act.nombre}</span> <span className="text-[#F5F7FA] opacity-40">{haceCuanto(c.created_at)}{c.created_at ? ' · ' + new Date(c.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>}
+                <div className="px-3 py-2 rounded-xl text-xs text-[#F5F7FA] whitespace-pre-wrap leading-relaxed" style={{ backgroundColor: propio ? 'var(--primary-faint)' : 'var(--surface-2)', border: propio ? '1px solid rgba(0,98,204,0.35)' : '1px solid var(--border)', borderTopLeftRadius: propio || mismoAutor ? undefined : 4, borderTopRightRadius: propio && !mismoAutor ? 4 : undefined }}>
+                  {c.cuerpo}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={fin} />
+      </div>
+      <form onSubmit={sendComment} className="flex gap-2 items-end">
+        <textarea rows={2} placeholder="Respondé acá. Los agentes lo leen en su próxima corrida." value={newText} onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendComment(e as any); }}
+          className="flex-1 bg-transparent px-3 py-2 rounded-lg text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC] resize-none" style={{ border: '1px solid var(--border-strong)' }} />
+        <button type="submit" disabled={sending || !newText.trim()} className="px-3 py-2 rounded-lg bg-[#0062CC] hover:opacity-90 disabled:opacity-40 text-[#FFFFFF] text-xs font-semibold flex items-center gap-1 transition-opacity shrink-0" title="Enviar (Cmd+Enter)"><Send size={12} /></button>
       </form>
     </div>
   );
@@ -127,6 +102,23 @@ export function ActionableDrawerContent({
   onNavigateToKeyword?: (keyword: string) => void;
 }) {
   const { updateActionableStatus, notionBriefs, actionables } = useAppStore();
+  // Cambiar estado con lo que cada estado necesita: Descartado pide motivo, Hecho pone fecha
+  const cambiarEstado = async (nuevo: string) => {
+    if (nuevo === action.status) return;
+    let extra: any = {};
+    if (nuevo === 'Descartado') { const m = prompt('¿Por qué lo descartás? (queda en Decisión final; el sistema aprende de esto)', ''); if (m === null) return; extra.resolutionNote = m; }
+    if (nuevo === 'Hecho') { const f = prompt('¿Cuándo lo ejecutaste? (aaaa-mm-dd)', new Date().toISOString().slice(0, 10)); if (f === null) return; extra.ejecutado_el = f; }
+    if (nuevo === 'Propuesto' && action.status === 'Bloqueado') extra.confirmar_hipotesis = true;
+    await fetch(`/api/notion/actionables/${action.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nuevo, ...extra }) });
+    updateActionableStatus(action.id, nuevo);
+    if (onActionChange) onActionChange({ ...action, status: nuevo });
+  };
+  const cambiarPrioridad = async (p: string) => {
+    await fetch(`/api/notion/actionables/${action.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prioridad: p }) });
+    if (onActionChange) onActionChange({ ...action, priority: p });
+  };
+  // Al abrir, marcar como leidas las novedades de este accionable
+  useEffect(() => { fetch('/api/novedades/leer', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref_tipo: 'accionable', ref_id: action.id }) }).catch(() => {}); }, [action.id]);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [geminiResult, setGeminiResult] = useState<{
@@ -389,9 +381,14 @@ export function ActionableDrawerContent({
           <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30">
             {action.client}
           </span>
-          <span className="px-2 py-0.5 rounded text-[11px]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            Prioridad: <strong className="text-[#FFFFFF]">{action.priority}</strong>
-          </span>
+          <select value={action.status} onChange={e => cambiarEstado(e.target.value)} title="Estado. Descartar pide el motivo; Hecho pone la fecha de hoy."
+            className="px-2 py-0.5 rounded text-[11px] text-[#FFFFFF] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
+            {['Propuesto', 'Bloqueado', 'En curso', 'Hecho', 'Descartado'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={action.priority || 'Media'} onChange={e => cambiarPrioridad(e.target.value)} title="Prioridad"
+            className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
+            {['Urgente', 'Alta', 'Media', 'Baja'].map(p => <option key={p} value={p}>Prioridad: {p}</option>)}
+          </select>
           {action.origen && action.origen !== 'Semanal' && (
             <span className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] opacity-80" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }} title="Lo propuso un proceso automático; la tarea del lunes lo confirma o descarta">
               Propuesto por {action.origen === 'Pulso diario' ? 'el análisis diario' : action.origen === 'Anomalias' ? 'el detector de anomalías' : action.origen}
@@ -405,13 +402,9 @@ export function ActionableDrawerContent({
           </span>
         </div>
 
-        {/* Quick Done Toggle */}
+        {/* Atajo: Hecho / volver a Propuesto */}
         <button
-          onClick={() => {
-            const next = isDone ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO;
-            updateActionableStatus(action.id, next);
-            if (onActionChange) onActionChange({ ...action, status: next });
-          }}
+          onClick={() => cambiarEstado(isDone ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO)}
           className={`px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
             isDone ? 'bg-white/15 text-[#FFFFFF]' : 'bg-[#0062CC] text-[#FFFFFF]'
           }`}

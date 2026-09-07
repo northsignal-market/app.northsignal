@@ -3,6 +3,7 @@ import { TerminoProvider } from './components/Termino';
 import { Ayuda } from './components/Ayuda';
 import { Bandeja } from './components/Bandeja';
 import { Cuenta, type SegmentoCuenta } from './components/Cuenta';
+import { Campana, type Novedad } from './components/Campana';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
 import { Inicio } from './components/Inicio';
@@ -63,7 +64,10 @@ function App() {
     const cargar = () => fetch('/api/briefing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((b: any) => {
       if (!b) return;
       const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
-      setSalud({ ok: b.datos_al_dia !== false, texto: b.datos_al_dia === false ? 'Datos con problema' : pend === 0 ? 'Datos al día · nada pendiente' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}` });
+      fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((nv: any[]) => {
+        const n = Array.isArray(nv) ? nv.length : 0;
+        setSalud({ ok: b.datos_al_dia !== false, texto: (b.datos_al_dia === false ? 'Datos con problema' : pend === 0 ? 'Datos al día · nada pendiente' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}`)  });
+      }).catch(() => setSalud({ ok: b.datos_al_dia !== false, texto: b.datos_al_dia === false ? 'Datos con problema' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}` }));
     }).catch(() => {});
     cargar(); const t = setInterval(cargar, 5 * 60 * 1000); return () => clearInterval(t);
   }, []);
@@ -162,6 +166,12 @@ function App() {
             </span>
             <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               {salud && <span className="text-[10px] mr-3 tabular" style={{ color: salud.ok ? 'rgba(245,247,250,0.5)' : '#0062CC' }} title="Estado de los datos y lo que espera tu criterio">{salud.texto}</span>}
+              <div className="mr-3"><Campana onAbrir={(n: Novedad) => {
+                if (n.ref_tipo === 'accionable') { const f = actionables.find(x => x.id === n.ref_id); if (f) { setSelectedClient(f.client); setSelectedAction(f); } else irA('cuenta', n.account || undefined, 'accionables'); }
+                else if (n.ref_tipo === 'propuesta') irA('cuenta', n.account || undefined, 'diagnostico');
+                else if (n.ref_tipo === 'alerta') irA('bandeja');
+                else irA('sistema');
+              }} /></div>
               {clients.map(client => {
                 const isSelected = (selectedClient || '360').toUpperCase() === client;
                 return (

@@ -844,13 +844,13 @@ var GLOSARIO = {
 var anthropic2 = process.env.ANTHROPIC_API_KEY ? new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 var MAPA_APP = `
 SECCIONES DE LA APP (men\xFA izquierdo, cinco \xEDtems):
-- Bandeja: la pantalla de inicio. Una cola con lo que espera el criterio de Andr\xE9s, en orden: pide acci\xF3n hoy, listos para ejecutar, esperan confirmaci\xF3n, reportes para aprobar. Cada fila se abre ah\xED. Cuando est\xE1 vac\xEDa dice "Nada te espera". Debajo, colapsados: ayer en cada cuenta (una l\xEDnea por cuenta) y qu\xE9 pas\xF3 despu\xE9s (impacto de cambios a 14 d\xEDas, predicciones acertadas o falladas).
+- Bandeja: la pantalla de inicio. Arriba, Novedades: comentarios y ediciones de los agentes en accionables, propuestas nuevas, tickets respondidos, ejecuciones autom\xE1ticas; se marcan vistas al abrir. Debajo, una cola con lo que espera el criterio de Andr\xE9s, en orden: pide acci\xF3n hoy, listos para ejecutar, esperan confirmaci\xF3n, reportes para aprobar. Cada fila se abre ah\xED. Cuando est\xE1 vac\xEDa dice "Nada te espera". Debajo, colapsados: ayer en cada cuenta (una l\xEDnea por cuenta) y qu\xE9 pas\xF3 despu\xE9s (impacto de cambios a 14 d\xEDas, predicciones acertadas o falladas).
 - Cuenta: todo lo de una cuenta, con el selector arriba (Karedo, BHI, 360) y seis pesta\xF1as. Semana: gr\xE1fico de 14 d\xEDas con lentes gasto/CPA, conversiones/clics, CTR/CPC; rango 7, 14 o fechas a elecci\xF3n; el plan de la semana con sus indicadores y cu\xE1ntos d\xEDas llevan cumpli\xE9ndose; qu\xE9 encontr\xF3 el an\xE1lisis diario d\xEDa por d\xEDa; colapsados: conversiones por grupo, cu\xE1ndo convierte (hora y d\xEDa), b\xFAsquedas nuevas, cambios en la cuenta. Diagn\xF3stico: ficha, objetivos y headroom, por qu\xE9 est\xE1 donde est\xE1 (los tres componentes del Quality Score ponderados por gasto), escalera de valor, accionables abiertos, decisiones estructurales. Brief: el an\xE1lisis completo del lunes con handoff. Accionables: todos, con filtros, incluidos hechos y descartados. Memoria: hip\xF3tesis abiertas, aprendizajes, doc maestro editable. Reportes: borradores al cliente para aprobar, editar, ver PDF.
 - Datos: tablas por campa\xF1a, grupo, keyword, t\xE9rmino de b\xFAsqueda y conversiones, agrupadas en Por semana, Por d\xEDa y Diagn\xF3stico; cualquier rango de fechas; exportar PDF.
 - Herramientas: RSA Factory (escribir anuncios desde los t\xE9rminos que convierten) y Gu\xEDa de operaci\xF3n (c\xF3mo funciona el ciclo, qu\xE9 hacer cada lunes, ejecutar un accionable, aprobar un reporte, cuando algo no cuadra).
 - Sistema, cuatro grupos: Salud (datos por cuenta, integridad, tama\xF1o); Aprendizaje (calidad de cada an\xE1lisis, qu\xE9 pas\xF3 despu\xE9s de cada accionable, reflexiones, qui\xE9n escribe qu\xE9 y lo que el reconciliador corrigi\xF3); Automatizaci\xF3n (alertas, ejecuciones aprobadas, cambios de configuraci\xF3n); Soporte (tickets para Claude, bit\xE1cora de lo que Andr\xE9s cambi\xF3 a mano, ajustes).
 - Cmd+K abre la paleta para saltar a cualquier lado. El bot\xF3n flotante abajo a la derecha: Preguntar (este asistente) y Reportar (ticket).
-- Al abrir un accionable: Por qu\xE9, C\xF3mo hacerlo (pasos en Google Ads), D\xF3nde, y si es negativa o pausa, "Aprobar y que se haga" para que un script lo ejecute en la pr\xF3xima hora.
+- Al abrir un accionable: selectores de Estado (Propuesto, Bloqueado, En curso, Hecho, Descartado) y Prioridad arriba; Por qu\xE9, C\xF3mo hacerlo (pasos en Google Ads), D\xF3nde, qu\xE9 cambi\xF3 desde que se propuso, con qu\xE9 se relaciona, y si es negativa, pausa o cambio de concordancia con acci\xF3n estructurada v\xE1lida, "Aprobar y que se haga" para que un script lo ejecute en la pr\xF3xima hora.
 
 C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:00, semanal lunes 7:00). Centinela cada 4 horas dentro de Google Ads: el \xFAnico que ve el d\xEDa en curso. Cada ma\xF1ana 6:45 Sonnet 5 lee el d\xEDa anterior contra el plan de la semana y escribe el pulso, buscando en la memoria sem\xE1ntica episodios parecidos. Cada lunes Opus 5 en Cowork analiza la semana, escribe el brief, accionables con pasos, reporte al cliente, el plan siguiente y dos predicciones con rango y probabilidad. Un reconciliador en SQL cada ma\xF1ana vence lo que nadie toc\xF3, deduplica por entidad y cierra alertas que cesaron. Andr\xE9s ejecuta los accionables (o aprueba que el script ejecute negativas y pausas) y aprueba los reportes. Nada cambia en Google Ads sin que \xE9l lo decida.
 
@@ -2040,14 +2040,14 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
       if (!text) return res.status(400).json({ error: "Text is required" });
       const response = await notion2.comments.create({
         parent: { page_id: req.params.id },
-        rich_text: [
-          {
-            text: {
-              content: text
-            }
-          }
-        ]
+        rich_text: [{ text: { content: `[ANDRES ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] ${text}` } }]
       });
+      if (supabase) {
+        try {
+          await supabase.from("accionable_comentarios").upsert({ comment_id: response.id, notion_id: req.params.id, autor: "andres", prefijo: "ANDRES", texto: text, creado: (/* @__PURE__ */ new Date()).toISOString() }, { onConflict: "comment_id" });
+        } catch {
+        }
+      }
       res.json({ success: true, comment: response });
     } catch (e) {
       console.error(e);
@@ -2067,9 +2067,11 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
         naturaleza,
         que_lo_confirmaria,
         causa_raiz,
-        confirmar_hipotesis
+        confirmar_hipotesis,
+        prioridad
       } = req.body;
       const properties = {};
+      if (prioridad) properties["Prioridad"] = { select: { name: prioridad } };
       const targetStatus = confirmar_hipotesis ? NOTION_STATES.PROPUESTO : status;
       if (targetStatus) {
         properties["Estado"] = {
@@ -3471,6 +3473,65 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     ]);
     const { data: inv } = await supabase.from("v_accionables_invalidos").select("*").limit(30);
     res.json({ lecciones: lec.data || [], conocimiento: con.data || [], acierto_por_tipo: tipo.data || [], brecha: brecha.data || [], invalidos: inv || [] });
+  });
+  async function sincronizarComentarios() {
+    if (!supabase || !notion) return 0;
+    const { data: abiertos } = await supabase.from("accionables_espejo").select("notion_id, account, titulo").in("estado", ["Propuesto", "Bloqueado", "En curso"]).is("reemplazado_por", null);
+    let nuevos = 0;
+    for (const a of abiertos || []) {
+      try {
+        const r = await notion.comments.list({ block_id: a.notion_id, page_size: 50 });
+        for (const c of r.results || []) {
+          const texto = (c.rich_text || []).map((t) => t.plain_text).join("");
+          const m = texto.match(/^\[([A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ .·]*?)(?:\s[\d-]+.*?)?\]/);
+          const prefijo = m ? m[1].trim() : null;
+          const esAndres = /^\[ANDRES/i.test(texto) || !m && c.created_by?.type === "person";
+          const autor = esAndres ? "andres" : m ? "agente" : "notion";
+          const { data: ins } = await supabase.from("accionable_comentarios").upsert({ comment_id: c.id, notion_id: a.notion_id, account: a.account, autor, prefijo, texto: texto.slice(0, 2e3), creado: c.created_time }, { onConflict: "comment_id", ignoreDuplicates: true }).select("comment_id");
+          if (ins?.length && autor !== "andres") {
+            const { data: actorRow } = await supabase.rpc("actor_desde_prefijo", { p: prefijo });
+            await supabase.from("novedades").upsert({ tipo: "comentario", account: a.account, ref_tipo: "accionable", ref_id: a.notion_id, titulo: `${prefijo ? prefijo.replace(/·.*$/, "").trim() : "Alguien"} coment\xF3: ${String(a.titulo).slice(0, 70)}`, texto: texto.replace(/^\[[^\]]*\]\s*/, "").slice(0, 300), autor: prefijo || "notion", actor: actorRow || "agente", verbo: "comento", objeto_titulo: a.titulo, creada: c.created_time, clave: "comentario:" + c.id }, { onConflict: "clave", ignoreDuplicates: true });
+            nuevos++;
+          }
+        }
+        await new Promise((r2) => setTimeout(r2, 350));
+      } catch (e) {
+        console.error("[comentarios] " + a.notion_id + ": " + e.message);
+      }
+    }
+    return nuevos;
+  }
+  app2.all("/api/cron/novedades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const comentarios = await sincronizarComentarios();
+      const { data: otras } = await supabase.rpc("novedades_generar");
+      res.json({ ok: true, comentarios_nuevos: comentarios, otras });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/novedades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from(req.query.todas ? "v_novedades_7d" : "v_novedades").select("*").limit(req.query.todas ? 150 : 60);
+    res.json(data || []);
+  });
+  app2.post("/api/novedades/leer", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { ref_tipo, ref_id, todas } = req.body || {};
+    let q = supabase.from("novedades").update({ leida_el: (/* @__PURE__ */ new Date()).toISOString() }).is("leida_el", null);
+    if (!todas) {
+      if (!ref_tipo || !ref_id) return res.status(400).json({ error: "ref_tipo y ref_id, o todas" });
+      q = q.eq("ref_tipo", ref_tipo).eq("ref_id", String(ref_id));
+    }
+    const { error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  });
+  app2.get("/api/accionables/:id/comentarios", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("accionable_comentarios").select("*").eq("notion_id", req.params.id).order("creado", { ascending: false });
+    res.json(data || []);
   });
   app2.get("/api/doc-maestro/:account", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
