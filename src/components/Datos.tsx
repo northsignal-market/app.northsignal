@@ -1,3 +1,4 @@
+import { DatosCadena } from './DatosCadena';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LineChart, Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { 
@@ -176,6 +177,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
   const monedaDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
   const presupuestoDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.presupuesto_diario ?? (acc === 'KAREDO' ? 135 : 20000);
   const currency = monedaDe(selectedClient);
+  const perfilDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.perfil_analisis || 'negocio_unico';
+  const esCadena = perfilDe(selectedClient) === 'cadena';
   
   const [activeView, setActiveView] = useState('v_keywords_analisis');
   const [weeks, setWeeks] = useState<string[]>([]);
@@ -725,6 +728,27 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
       setLoading(false);
     }
   };
+
+  // Cuentas cadena: cinco niveles con navegacion en vez de once tablas planas.
+  // Con 46 locales y 35.771 terminos, una tabla plana no se puede leer.
+  if (esCadena) {
+    return (
+      <div className="flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] h-full">
+        <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 shrink-0">
+          <div className="flex items-center gap-3">
+            <Database size={20} className="text-[#0062CC]" />
+            <div>
+              <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Datos</h1>
+              <p className="text-[10px] text-[#F5F7FA] opacity-50">{selectedClient} · cuenta multi-local</p>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+          <DatosCadena account={selectedClient} moneda={currency} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] ${isFullscreen ? 'fixed inset-0 z-[200]' : 'h-full'}`}>

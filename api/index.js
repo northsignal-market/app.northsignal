@@ -58,6 +58,8 @@ function tituloDesde(a) {
       return `Preguntar a ${p.a_quien || "cliente"}: ${(p.pregunta || "").slice(0, 80)}`;
     case "preguntar_andres":
       return `Decidir: ${(p.pregunta || "").slice(0, 90)}`;
+    case "tarea_externa":
+      return `${(p.que_hacer || "Tarea").slice(0, 80)}${p.donde ? ` en ${p.donde}` : ""}`;
   }
 }
 function tipoAutoDesde(a) {
@@ -84,6 +86,7 @@ function parsearAccion(texto) {
   if (a.verbo === "agregar_negativa" && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: "agregar_negativa sin keyword" };
   if (a.verbo === "cambiar_concordancia" && !a.parametros?.match_type_destino) return { error: "cambiar_concordancia sin match_type_destino" };
   if (a.verbo.startsWith("preguntar") && !a.parametros?.pregunta) return { error: `${a.verbo} sin pregunta` };
+  if (a.verbo === "tarea_externa" && !a.parametros?.que_hacer) return { error: "tarea_externa sin que_hacer" };
   return { accion: a };
 }
 var VERBOS, VERBOS_EJECUTABLES, AccionSchema, MT, fmtKw, donde;
@@ -106,7 +109,9 @@ var init_accion = __esm({
       "cambiar_programacion",
       "desactivar_automatizacion",
       "preguntar_cliente",
-      "preguntar_andres"
+      "preguntar_andres",
+      "tarea_externa"
+      // trabajo real fuera de Google Ads: un Sheet, el CRM, la landing, GTM
     ];
     VERBOS_EJECUTABLES = ["pausar_keyword", "agregar_negativa", "cambiar_concordancia", "pausar_anuncio"];
     AccionSchema = z2.object({
@@ -128,6 +133,10 @@ var init_accion = __esm({
         valor_actual: z2.union([z2.number(), z2.string()]).nullable().optional(),
         a_quien: z2.string().nullable().optional(),
         // preguntar_*
+        donde: z2.string().nullable().optional(),
+        // tarea_externa: que sistema
+        que_hacer: z2.string().nullable().optional(),
+        // tarea_externa: la tarea
         pregunta: z2.string().nullable().optional(),
         dato_que_falta: z2.string().nullable().optional()
       }).default({}),
@@ -667,6 +676,8 @@ var AccionPlanaSchema = z3.object({
   match_type_destino: z3.string().nullable().describe("Solo para cambiar_concordancia: EXACT, PHRASE o BROAD"),
   nivel: z3.string().nullable().describe("Solo para agregar_negativa: grupo, campana o lista"),
   pregunta: z3.string().nullable().describe("Solo para preguntar_andres o preguntar_cliente"),
+  donde: z3.string().nullable().describe("Solo para tarea_externa: en que sistema (Sheet, CRM, landing, GTM)"),
+  que_hacer: z3.string().nullable().describe("Solo para tarea_externa: la tarea concreta"),
   verificar_metrica: z3.string().nullable().describe("Que metrica confirma que funciono"),
   verificar_fecha: z3.string().nullable().describe("Cuando revisarlo, AAAA-MM-DD"),
   verificar_esperado: z3.string().nullable().describe("Que numero se espera")
@@ -1166,9 +1177,20 @@ async function resolveNotionClient(notion2, relationProp) {
   const pageId = relationProp.relation[0].id;
   if (notionClientCache[pageId]) return notionClientCache[pageId];
   try {
+    const porFicha = (await cuentasActivas()).find((c) => c.notion_ficha_id && c.notion_ficha_id.replace(/-/g, "") === String(pageId).replace(/-/g, ""));
+    if (porFicha) {
+      notionClientCache[pageId] = porFicha.account;
+      return porFicha.account;
+    }
+  } catch {
+  }
+  try {
     const page = await notion2.pages.retrieve({ page_id: pageId });
     const name = page.properties.Cliente?.title?.[0]?.plain_text || page.properties.Name?.title?.[0]?.plain_text || "Unknown";
-    const normalized = name.split(" ")[0].toUpperCase();
+    const cts = await cuentasActivas();
+    const nm = String(name).toLowerCase().trim();
+    const encontrada = cts.find((c) => (c.nombre_cliente || "").toLowerCase() === nm) || cts.find((c) => nm === c.account.toLowerCase().replace(/_/g, " ")) || cts.find((c) => nm.startsWith((c.nombre_cliente || "").toLowerCase().split(" ")[0]) && (c.nombre_cliente || "").split(" ").length > 1 && nm.includes((c.nombre_cliente || "").toLowerCase().split(" ")[1]));
+    const normalized = encontrada ? encontrada.account : name.split(" ")[0].toUpperCase();
     notionClientCache[pageId] = normalized;
     return normalized;
   } catch (e) {
@@ -3657,6 +3679,31 @@ Reporte completo: ${url}`;
     res.json({ ok: true });
   });
   app2.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
+  app2.get("/api/cadena/:nivel", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { nivel } = req.params;
+    const q = req.query;
+    const account = q.account || q.client;
+    if (!account) return res.status(400).json({ error: "falta account" });
+    const semanas = Math.min(26, Math.max(1, parseInt(q.semanas) || 4));
+    const nulo = (v) => v === void 0 || v === "" || v === "todos" ? null : String(v);
+    const fns = {
+      objetivos: { fn: "nav_objetivos", args: { p_account: account, p_semanas: semanas } },
+      locales: { fn: "v_location_ranking_bayes", args: { p_account: account, p_semanas: semanas } },
+      campanas: { fn: "nav_campanas", args: { p_account: account, p_location: nulo(q.local), p_objetivo: nulo(q.objetivo), p_semanas: semanas } },
+      grupos: { fn: "nav_grupos", args: { p_account: account, p_location: nulo(q.local), p_campana: nulo(q.campana), p_semanas: semanas } },
+      keywords: { fn: "nav_keywords", args: { p_account: account, p_location: nulo(q.local), p_campana: nulo(q.campana), p_grupo: nulo(q.grupo), p_semanas: semanas } },
+      terminos: { fn: "nav_terminos", args: { p_account: account, p_location: nulo(q.local), p_campana: nulo(q.campana), p_grupo: nulo(q.grupo), p_semanas: semanas } },
+      contadores: { fn: "nav_contadores", args: { p_account: account, p_semanas: semanas } },
+      transversal: { fn: "v_keywords_entre_locales", args: { p_account: account, p_semanas: semanas } },
+      corporativas: { fn: "v_corporativas", args: { p_account: account, p_semanas: semanas } }
+    };
+    const cfg = fns[nivel];
+    if (!cfg) return res.status(400).json({ error: "nivel invalido: " + nivel });
+    const { data, error } = await supabase.rpc(cfg.fn, cfg.args);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ nivel, filas: data || [], semanas });
+  });
   app2.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data } = await supabase.rpc("get_briefing");
@@ -3864,7 +3911,7 @@ Reporte completo: ${url}`;
         const accionCanonica = pl ? {
           verbo: pl.verbo,
           objeto: { campana: pl.campana || null, grupo: pl.grupo || null, keyword: pl.keyword || null, match_type: pl.match_type || null },
-          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null },
+          parametros: { match_type_destino: pl.match_type_destino || null, nivel: pl.nivel || null, pregunta: pl.pregunta || null, donde: pl.donde || null, que_hacer: pl.que_hacer || null },
           verificar: pl.verificar_metrica ? { metrica: pl.verificar_metrica, fecha: pl.verificar_fecha || "", esperado: pl.verificar_esperado || "" } : null
         } : null;
         const tituloBase = accionCanonica ? tituloDesde3(accionCanonica) : h.titulo;

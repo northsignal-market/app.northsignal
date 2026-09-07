@@ -32,6 +32,8 @@ const AccionPlanaSchema = z.object({
   match_type_destino: z.string().nullable().describe('Solo para cambiar_concordancia: EXACT, PHRASE o BROAD'),
   nivel: z.string().nullable().describe('Solo para agregar_negativa: grupo, campana o lista'),
   pregunta: z.string().nullable().describe('Solo para preguntar_andres o preguntar_cliente'),
+  donde: z.string().nullable().describe('Solo para tarea_externa: en que sistema (Sheet, CRM, landing, GTM)'),
+  que_hacer: z.string().nullable().describe('Solo para tarea_externa: la tarea concreta'),
   verificar_metrica: z.string().nullable().describe('Que metrica confirma que funciono'),
   verificar_fecha: z.string().nullable().describe('Cuando revisarlo, AAAA-MM-DD'),
   verificar_esperado: z.string().nullable().describe('Que numero se espera'),

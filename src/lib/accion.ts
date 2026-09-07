@@ -17,6 +17,7 @@ export const VERBOS = [
   'pausar_anuncio', 'crear_anuncio', 'cambiar_puja', 'cambiar_presupuesto', 'cambiar_estrategia_puja',
   'cambiar_conversion', 'cambiar_landing', 'cambiar_programacion', 'desactivar_automatizacion',
   'preguntar_cliente', 'preguntar_andres',
+  'tarea_externa',   // trabajo real fuera de Google Ads: un Sheet, el CRM, la landing, GTM
 ] as const;
 export type Verbo = typeof VERBOS[number];
 
@@ -40,6 +41,8 @@ export const AccionSchema = z.object({
     valor_nuevo: z.union([z.number(), z.string()]).nullable().optional(),
     valor_actual: z.union([z.number(), z.string()]).nullable().optional(),
     a_quien: z.string().nullable().optional(),               // preguntar_*
+    donde: z.string().nullable().optional(),                 // tarea_externa: que sistema
+    que_hacer: z.string().nullable().optional(),             // tarea_externa: la tarea
     pregunta: z.string().nullable().optional(),
     dato_que_falta: z.string().nullable().optional(),
   }).default({}),
@@ -77,6 +80,7 @@ export function tituloDesde(a: Accion): string {
     case 'desactivar_automatizacion': return `Desactivar ${p.valor_actual || 'automatización de Google'}${o.campana ? ` en ${o.campana}` : ''}`;
     case 'preguntar_cliente': return `Preguntar a ${p.a_quien || 'cliente'}: ${(p.pregunta || '').slice(0, 80)}`;
     case 'preguntar_andres': return `Decidir: ${(p.pregunta || '').slice(0, 90)}`;
+    case 'tarea_externa': return `${(p.que_hacer || 'Tarea').slice(0, 80)}${p.donde ? ` en ${p.donde}` : ''}`;
   }
 }
 
@@ -104,5 +108,6 @@ export function parsearAccion(texto: string | null | undefined): { accion?: Acci
   if (a.verbo === 'agregar_negativa' && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: 'agregar_negativa sin keyword' };
   if (a.verbo === 'cambiar_concordancia' && !a.parametros?.match_type_destino) return { error: 'cambiar_concordancia sin match_type_destino' };
   if (a.verbo.startsWith('preguntar') && !a.parametros?.pregunta) return { error: `${a.verbo} sin pregunta` };
+  if (a.verbo === 'tarea_externa' && !a.parametros?.que_hacer) return { error: 'tarea_externa sin que_hacer' };
   return { accion: a };
 }
