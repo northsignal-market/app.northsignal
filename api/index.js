@@ -1291,7 +1291,8 @@ async function resolveNotionClient(notion2, relationProp) {
     const cts = await cuentasActivas();
     const nm = String(name).toLowerCase().trim();
     const encontrada = cts.find((c) => (c.nombre_cliente || "").toLowerCase() === nm) || cts.find((c) => nm === c.account.toLowerCase().replace(/_/g, " ")) || cts.find((c) => nm.startsWith((c.nombre_cliente || "").toLowerCase().split(" ")[0]) && (c.nombre_cliente || "").split(" ").length > 1 && nm.includes((c.nombre_cliente || "").toLowerCase().split(" ")[1]));
-    const normalized = encontrada ? encontrada.account : name.split(" ")[0].toUpperCase();
+    if (!encontrada) console.warn(`[notion] cliente sin cuenta: "${name}" (pagina ${pageId})`);
+    const normalized = encontrada ? encontrada.account : "Unknown";
     notionClientCache[pageId] = normalized;
     return normalized;
   } catch (e) {

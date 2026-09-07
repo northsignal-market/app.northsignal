@@ -63,7 +63,11 @@ async function resolveNotionClient(notion: any, relationProp: any): Promise<stri
     const encontrada = cts.find((c: any) => (c.nombre_cliente || '').toLowerCase() === nm)
                     || cts.find((c: any) => nm === c.account.toLowerCase().replace(/_/g, ' '))
                     || cts.find((c: any) => nm.startsWith((c.nombre_cliente || '').toLowerCase().split(' ')[0]) && (c.nombre_cliente || '').split(' ').length > 1 && nm.includes((c.nombre_cliente || '').toLowerCase().split(' ')[1]));
-    const normalized = encontrada ? encontrada.account : name.split(' ')[0].toUpperCase();
+    // Si no se puede resolver contra una cuenta real, NO se inventa un nombre.
+    // El corte en el primer espacio daba basura como "FRESH" o "ZZ", que despues
+    // aparecia como cuenta huerfana en el espejo. Mejor 'Unknown' y una alerta.
+    if (!encontrada) console.warn(`[notion] cliente sin cuenta: "${name}" (pagina ${pageId})`);
+    const normalized = encontrada ? encontrada.account : 'Unknown';
     notionClientCache[pageId] = normalized;
     return normalized;
   } catch (e) {
