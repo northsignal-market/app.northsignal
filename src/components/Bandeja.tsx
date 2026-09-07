@@ -15,6 +15,7 @@ import { useAppStore } from '../store/useAppStore';
 import { nivelPulso } from '../lib/humano';
 import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
+import { detectarTipoAuto } from '../lib/tipoAuto';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
 
@@ -90,7 +91,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="Listos para ejecutar" n={listos.length} icono={<Zap size={13} />}>
               {listos.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.priority === 'Urgente' || a.priority === 'Alta' ? `Prioridad ${a.priority.toLowerCase()}` : undefined} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{/negativ|pausar/i.test(a.title) ? 'se puede aprobar y ejecutar' : 'cómo hacerlo adentro'}</span>} />
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{detectarTipoAuto(a.title, a.como_hacerlo) ? 'el sistema puede ejecutarlo' : 'a mano, con los pasos adentro'}</span>} />
               ))}
             </Grupo>
           )}

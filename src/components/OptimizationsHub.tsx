@@ -15,7 +15,7 @@ const SECCIONES: { id: string; titulo: string; cuerpo: React.ReactNode }[] = [
       <p><span className="text-[#FFFFFF] font-medium">Cada 4 horas</span> el centinela mira gasto intradía, cambios automáticos de Google y la conversión primaria. Si algo cruza un umbral, manda un mail y crea una alerta que ves en Hoy.</p>
       <p><span className="text-[#FFFFFF] font-medium">Cada lunes a las 7:00</span> el script semanal trae la semana cerrada con simulaciones de presupuesto y historial de cambios. Entre 7:45 y 8:45, Opus 5 en Cowork analiza cada cuenta: escribe el brief, propone accionables con sus pasos, redacta el reporte al cliente y deja el plan de la semana que empieza. A las 9:15 el sistema arma el borrador del reporte en PDF.</p>
       <p><span className="text-[#FFFFFF] font-medium">Vos entrás a las 9:30.</span> Leés Hoy, ejecutás los accionables Propuestos en Google Ads, confirmás o descartás los Bloqueados, aprobás el reporte al cliente. Media hora por cuenta, menos si la semana fue tranquila.</p>
-      <p className="opacity-70">Nada cambia en Google Ads sin que lo hagas vos. El sistema propone, registra y aprende; no ejecuta.</p>
+      <p className="opacity-70">Nada cambia en Google Ads sin que lo decidas vos: o lo hacés a mano, o aprobás con un clic, o dejás una regla en Sistema › Automatización que diga "las pausas de keyword con confianza alta, hacelas sin preguntar". Presupuesto, puja y conversiones siempre a mano.</p>
     </div>
   ) },
   { id: 'lunes', titulo: 'Qué hacés cada lunes', cuerpo: (

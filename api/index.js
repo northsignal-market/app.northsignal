@@ -216,6 +216,35 @@ var init_reporte_pdf = __esm({
   }
 });
 
+// src/lib/tipoAuto.ts
+var tipoAuto_exports = {};
+__export(tipoAuto_exports, {
+  detectarTipoAuto: () => detectarTipoAuto,
+  extraerKeyword: () => extraerKeyword
+});
+function detectarTipoAuto(titulo, comoHacerlo) {
+  const t = `${titulo} ${comoHacerlo || ""}`.toLowerCase();
+  if (/negativ/.test(t)) return /nivel (de )?campa|a la campa|lista/.test(t) ? "negativa_campana" : "negativa_grupo";
+  if (/pausar|pausa\b|desactivar/.test(t)) {
+    if (/anuncio|rsa\b|\bad\b/.test(t)) return "pausar_anuncio";
+    if (/grupo de anuncios|ad group|campa[ñn]a completa|toda la campa/.test(t)) return null;
+    return "pausar_keyword";
+  }
+  return null;
+}
+function extraerKeyword(titulo, entidad) {
+  const m = titulo.match(/["“'‘\[]([^"”'’\]]+)["”'’\]]/);
+  if (m) return m[1].trim();
+  const k = titulo.match(/(?:keyword|término|termino|palabra clave|negativa)\s+(?:de\s+)?([a-z0-9äöüß][^,;:()]{2,60}?)(?:\s+(?:en|del|de la|a nivel|como)\b|$)/i);
+  if (k) return k[1].trim();
+  const partes = String(entidad || "").split("|").map((x) => x.trim());
+  return partes[2] || "";
+}
+var init_tipoAuto = __esm({
+  "src/lib/tipoAuto.ts"() {
+  }
+});
+
 // server.ts
 import "dotenv/config";
 
@@ -2823,6 +2852,17 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       }
     }
     if (rellenados) console.log(`[espejo] ${rellenados} accionables con Origen/Entidad rellenados`);
+    const hace24 = new Date(Date.now() - 864e5).toISOString();
+    const { data: yaAprobados } = await supabase.from("acciones_aprobadas").select("notion_id");
+    const setAprob = new Set((yaAprobados || []).map((x) => x.notion_id));
+    for (const f of filas) {
+      if (f.estado !== "Propuesto" || setAprob.has(f.notion_id) || !f.ultima_edicion || f.ultima_edicion < hace24) continue;
+      try {
+        await aplicarPoliticaAuto(f.account, f.notion_id, f.titulo, f.entidad || "", f.origen || "Semanal", null, null);
+      } catch (e) {
+        console.error("[politica espejo] " + e.message);
+      }
+    }
     return filas.length;
   }
   app2.all("/api/cron/espejo", async (req, res) => {
@@ -2864,6 +2904,26 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     }
     res.json({ ok: true, resumen, aplicadas, errores });
   });
+  async function aplicarPoliticaAuto(account, notionId, titulo, entidad, origen, confianza, comoHacerlo) {
+    if (!supabase) return null;
+    const { detectarTipoAuto: detectarTipoAuto2, extraerKeyword: extraerKeyword2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
+    const tipo = detectarTipoAuto2(titulo, comoHacerlo);
+    if (!tipo) return null;
+    const { data: modo } = await supabase.rpc("politica_aplica", { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
+    if (!modo) return null;
+    const partes = String(entidad || "").split("|").map((x) => x.trim());
+    const kw = extraerKeyword2(titulo, entidad);
+    if (!partes[0] || !kw && tipo !== "pausar_anuncio") return null;
+    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: partes[0], grupo: partes[1] || null, keyword: kw || null, match_type: /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", modo, aprobada_por: "politica", por_politica: true });
+    if (notion) {
+      try {
+        await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
+        await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POL\xCDTICA ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Cumple la regla de ejecuci\xF3n autom\xE1tica para ${tipo.replace("_", " ")} (${modo}). El script lo aplica en la pr\xF3xima hora. Si no quer\xEDas esto, desactiv\xE1 la pol\xEDtica en Sistema \u203A Automatizaci\xF3n.` } }] });
+      } catch {
+      }
+    }
+    return modo;
+  }
   app2.post("/api/accionables/:id/aprobar-ejecutar", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { account, tipo, campana, grupo, keyword, match_type, ad_id, modo } = req.body || {};
@@ -2903,6 +2963,31 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data } = await supabase.from("v_por_que_limitada").select("*").eq("account", req.query.client).maybeSingle();
     res.json(data || null);
+  });
+  app2.get("/api/politicas", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const [p, g] = await Promise.all([supabase.from("politicas_auto").select("*").order("tipo"), supabase.from("ajustes_sistema").select("valor").eq("clave", "auto_ejecucion").maybeSingle()]);
+    res.json({ politicas: p.data || [], general: g.data?.valor?.activa === true });
+  });
+  app2.put("/api/politicas/general", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { activa } = req.body || {};
+    await supabase.from("ajustes_sistema").update({ valor: { activa: !!activa, nota: "Interruptor general. Si esta en false, ninguna politica ejecuta aunque este activa." }, actualizado: (/* @__PURE__ */ new Date()).toISOString() }).eq("clave", "auto_ejecucion");
+    res.json({ ok: true });
+  });
+  app2.put("/api/politicas/:tipo", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { activa, modo, confianza_min, gasto_max, solo_origen, cuentas } = req.body || {};
+    const upd = { actualizada: (/* @__PURE__ */ new Date()).toISOString() };
+    if (activa !== void 0) upd.activa = !!activa;
+    if (modo) upd.modo = modo;
+    if (confianza_min != null) upd.confianza_min = confianza_min;
+    if (gasto_max !== void 0) upd.gasto_max = gasto_max;
+    if (solo_origen) upd.solo_origen = solo_origen;
+    if (cuentas) upd.cuentas = cuentas;
+    const { error } = await supabase.from("politicas_auto").update(upd).eq("tipo", req.params.tipo);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
   });
   app2.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -3066,8 +3151,13 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
         };
         props["Que lo confirmaria"] = { rich_text: [{ text: { content: `Propuesto por el an\xE1lisis diario con confianza ${h.confianza}. La tarea del lunes lo confirma con 7 d\xEDas de evidencia, o lo descarta. Vence el ${vence} si nadie lo toca.` } }] };
         if (clienteId) props.Cliente = { relation: [{ id: clienteId }] };
-        await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
+        const creada = await notion.pages.create({ parent: { database_id: actionablesDbSafe() }, properties: props });
         creados++;
+        try {
+          await aplicarPoliticaAuto(cuenta, creada.id, title, entidadClave, "Pulso diario", Number(h.confianza), h.como_hacerlo);
+        } catch (e) {
+          console.error("[politica] " + e.message);
+        }
       }
       return { cuenta, nivel: p.nivel, hallazgo: p.hallazgo_principal, hallazgos_detectados: p.hallazgos.length, accionables_creados: creados, tokens_in: r.tokens_in, tokens_out: r.tokens_out, costo_usd: Number(r.costo_usd.toFixed(5)) };
     }));

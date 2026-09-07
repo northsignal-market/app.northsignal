@@ -5,6 +5,7 @@ import {
   ArrowRight, Plus, History, Sparkles, HelpCircle
 } from 'lucide-react';
 import { receta } from '../lib/recetas';
+import { detectarTipoAuto, extraerKeyword } from '../lib/tipoAuto';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 import { useAppStore } from '../store/useAppStore';
@@ -149,17 +150,11 @@ export function ActionableDrawerContent({
   const [ejecutando, setEjecutando] = useState(false);
   const [ejecutado, setEjecutado] = useState<string | null>(null);
   // Que tipo de accion automatica es, si alguna. Solo negativas y pausas.
-  const tipoAuto = (() => {
-    const t = action.title.toLowerCase();
-    if (/negativ/.test(t)) return /campa/.test(t) ? 'negativa_campana' : 'negativa_grupo';
-    if (/pausar/.test(t) && /keyword|palabra/.test(t)) return 'pausar_keyword';
-    if (/pausar/.test(t) && /anuncio/.test(t)) return 'pausar_anuncio';
-    return null;
-  })();
+  const tipoAuto = detectarTipoAuto(action.title, action.como_hacerlo);
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
-    const kw = (action.title.match(/["“'‘]([^"”'’]+)["”'’]/) || [])[1] || entidadPartes[2] || '';
+    const kw = extraerKeyword(action.title, action.entidad || action.where);
     if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término en el título. Ejecutalo a mano con "Cómo hacerlo".'); return; }
     setEjecutando(true);
     try {

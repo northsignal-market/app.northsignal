@@ -22,7 +22,7 @@ export function Sistema() {
   const GRUPOS: { id: string; label: string; tabs: string[]; ayuda: string }[] = [
     { id: 'salud', label: 'Salud', tabs: ['salud', 'integridad', 'tamano'], ayuda: 'Si los datos están al día y cuadran' },
     { id: 'aprendizaje', label: 'Aprendizaje', tabs: ['scorecard', 'aprendizaje', 'coherencia'], ayuda: 'Qué tan bien analiza el sistema y cómo se corrige' },
-    { id: 'automatizacion', label: 'Automatización', tabs: ['alertas', 'ejecuciones', 'cambios'], ayuda: 'Alertas, ejecuciones aprobadas, cambios de configuración' },
+    { id: 'automatizacion', label: 'Automatización', tabs: ['alertas', 'ejecuciones', 'cambios'], ayuda: 'Alertas, qué puede hacer el sistema solo, ejecuciones, cambios de configuración' },
     { id: 'soporte', label: 'Soporte', tabs: ['tickets', 'bitacora', 'ajustes'], ayuda: 'Tickets para Claude, tu bitácora, ajustes' },
   ];
   const [grupo, setGrupo] = useState<string>('salud');
@@ -30,6 +30,10 @@ export function Sistema() {
   const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia' | 'ejecuciones'>('salud');
   const [ejecuciones, setEjecuciones] = useState<any[]>([]);
   const [aprendido, setAprendido] = useState<any>(null);
+  const [politicas, setPoliticas] = useState<{ politicas: any[]; general: boolean }>({ politicas: [], general: false });
+  const cargarPoliticas = () => fetch('/api/politicas', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPoliticas(d)).catch(() => {});
+  const guardarPolitica = async (tipo: string, cambios: any) => { await fetch(`/api/politicas/${tipo}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cambios) }); cargarPoliticas(); };
+  const guardarGeneral = async (activa: boolean) => { if (activa && !confirm('Con esto encendido, el sistema ejecuta en Google Ads las negativas y pausas que cumplan las reglas de abajo, sin preguntarte. ¿Seguro?')) return; await fetch('/api/politicas/general', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activa }) }); cargarPoliticas(); };
   const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
@@ -37,6 +41,7 @@ export function Sistema() {
     fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/coherencia', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCoherencia(d)).catch(() => {});
+    cargarPoliticas();
     fetch('/api/aprendido', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {});
     fetch('/api/acciones-aprobadas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setEjecuciones(Array.isArray(d) ? d : [])).catch(() => {});
   }, [grupo]);
@@ -223,6 +228,49 @@ export function Sistema() {
         </div>
       )}
 
+
+      {/* TAB: POLÍTICAS DE EJECUCIÓN AUTOMÁTICA */}
+      {enGrupo('ejecuciones') && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: politicas.general ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué puede hacer el sistema sin preguntarte</h2>
+              <p className="text-xs text-[#F5F7FA] opacity-60">Solo negativas y pausas, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
+            </div>
+            <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+              <span className="text-xs text-[#F5F7FA]">{politicas.general ? 'Encendido' : 'Apagado'}</span>
+              <button onClick={() => guardarGeneral(!politicas.general)} className="w-10 h-5 rounded-full relative transition-colors" style={{ backgroundColor: politicas.general ? 'var(--primary)' : 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <span className="absolute top-0.5 w-4 h-4 rounded-full bg-[#FFFFFF] transition-all" style={{ left: politicas.general ? 20 : 2 }} />
+              </button>
+            </label>
+          </div>
+          <div className="space-y-2">
+            {politicas.politicas.map((p: any) => (
+              <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-70' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#FFFFFF]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios' } as any)[p.tipo]}</span></label>
+                  <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+                    {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-[#F5F7FA]">
+                  <label className="flex items-center gap-1.5">Confianza mínima <input type="number" step="0.05" min="0.5" max="1" value={p.confianza_min} onChange={e => guardarPolitica(p.tipo, { confianza_min: Number(e.target.value) })} className="w-14 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /></label>
+                  {p.tipo === 'pausar_keyword' && <label className="flex items-center gap-1.5">Solo si gastó menos de <input type="number" value={p.gasto_max ?? ''} placeholder="sin tope" onChange={e => guardarPolitica(p.tipo, { gasto_max: e.target.value === '' ? null : Number(e.target.value) })} className="w-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /> en 14 días</label>}
+                  <div className="flex items-center gap-1.5">Lo puede proponer: {['Semanal', 'Pulso diario', 'Anomalias'].map(o => (
+                    <label key={o} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.solo_origen || []).includes(o)} onChange={e => guardarPolitica(p.tipo, { solo_origen: e.target.checked ? [...(p.solo_origen || []), o] : (p.solo_origen || []).filter((x: string) => x !== o) })} className="accent-[#0062CC]" />{o === 'Pulso diario' ? 'análisis diario' : o === 'Anomalias' ? 'anomalías' : 'semanal'}</label>
+                  ))}</div>
+                  <div className="flex items-center gap-1.5">Cuentas: {['KAREDO', 'BHI', '360'].map(c => (
+                    <label key={c} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.cuentas || []).includes(c)} onChange={e => guardarPolitica(p.tipo, { cuentas: e.target.checked ? [...(p.cuentas || []), c] : (p.cuentas || []).filter((x: string) => x !== c) })} className="accent-[#0062CC]" />{c}</label>
+                  ))}</div>
+                </div>
+                {p.nota && <p className="text-[10px] text-[#F5F7FA] opacity-40">{p.nota}</p>}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-[#F5F7FA] opacity-40">Cada ejecución automática queda en Ejecuciones con la marca "por política", en tu bitácora, y como comentario en el accionable. Presupuesto, puja y conversiones nunca entran acá.</p>
+        </div>
+      )}
+
       {/* TAB: EJECUCIONES */}
       {enGrupo('ejecuciones') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
@@ -235,7 +283,7 @@ export function Sistema() {
               {ejecuciones.map((e: any) => (
                 <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(e.aprobada_el).slice(5, 16).replace('T', ' ')}</span>
-                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-20 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}</span>
+                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
                   <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace('_', ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
                   {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
                 </div>
