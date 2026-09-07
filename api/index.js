@@ -81,7 +81,7 @@ function parsearAccion(texto) {
   if (!r.success) return { error: r.error.issues.map((i2) => `${i2.path.join(".")}: ${i2.message}`).join("; ") };
   const a = r.data;
   if (["pausar_keyword", "cambiar_concordancia", "reactivar_keyword"].includes(a.verbo) && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: `${a.verbo} sin keyword` };
-  if (a.verbo === "agregar_negativa" && !a.objeto.keyword) return { error: "agregar_negativa sin keyword" };
+  if (a.verbo === "agregar_negativa" && !a.objeto.keyword && !a.objeto.keywords?.length) return { error: "agregar_negativa sin keyword" };
   if (a.verbo === "cambiar_concordancia" && !a.parametros?.match_type_destino) return { error: "cambiar_concordancia sin match_type_destino" };
   if (a.verbo.startsWith("preguntar") && !a.parametros?.pregunta) return { error: `${a.verbo} sin pregunta` };
   return { accion: a };
