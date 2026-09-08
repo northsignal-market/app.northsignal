@@ -1003,7 +1003,7 @@ C\xD3MO FUNCIONA EL SISTEMA: scripts en Google Ads extraen a Supabase (diario 6:
 REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es una deducci\xF3n o lo propuso un proceso autom\xE1tico; espera confirmaci\xF3n. En curso = aprobado para ejecuci\xF3n autom\xE1tica. Hecho = ejecutado, con fecha. Descartado = decidi\xF3 no hacerlo. Origen: Semanal, Pulso diario, Anomalias, Andres, Reconciliador. Naturaleza: Observaci\xF3n, Inferencia, Hip\xF3tesis.
 `;
 function construirHerramientas(cuentas) {
-  const ENUM = cuentas.length ? cuentas : ["KAREDO", "BHI", "360"];
+  const ENUM = cuentas;
   return [
     { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },

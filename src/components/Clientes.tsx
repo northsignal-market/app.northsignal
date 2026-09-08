@@ -1,5 +1,4 @@
-import { useCuentas } from '../lib/useCuentas';
-import { avisar } from '../lib/useCuentas';
+import { useCuentaActiva, useCuentas, avisar } from '../lib/useCuentas';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
 import { 
@@ -21,7 +20,10 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const { moneda: monedaDe, nombreCliente, zona: zonaDe, locale: localeDe } = useCuentas();
   const ver = (z: 'diagnostico' | 'memoria' | 'reportes') => zona === 'todo' || zona === z;
   const { selectedClient, setSelectedClient, actionables, notionBriefs } = useAppStore();
-  const activeClient = selectedClient || '360';
+  // La cuenta activa sale de las cuentas reales, no de un default cableado.
+  // Antes esto era '360' fijo y no coincidia con el header cuando no habia eleccion.
+  const { nombres: cuentasActivas } = useCuentas();
+  const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
   const [clientsInfo, setClientsInfo] = useState<NotionClientInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [objetivos, setObjetivos] = useState<any>({ targets: [], headroom: [], proyeccion: [] });
@@ -287,7 +289,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
         {/* Client switcher pills */}
         <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          {['360', 'BHI', 'KAREDO'].map(c => (
+          {cuentasActivas.map(c => (
             <button
               key={c}
               onClick={() => setSelectedClient(c)}

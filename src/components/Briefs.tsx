@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useCuentaActiva } from '../lib/useCuentas';
 import { 
   FileText, ChevronLeft, ChevronRight, Calendar, ArrowRight,
   ExternalLink, Clock, RefreshCw, Layers, Check
@@ -13,7 +14,9 @@ interface BriefsProps {
 
 export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
   const { notionBriefs, selectedClient, setSelectedClient, actionables } = useAppStore();
-  const activeClient = selectedClient || '360';
+  // La cuenta activa sale de las cuentas reales, no de un default cableado.
+  // Antes esto era '360' fijo y no coincidia con el header cuando no habia eleccion.
+  const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
 
   const [selectedBrief, setSelectedBrief] = useState<NotionBrief | null>(null);
   const [briefBlocks, setBriefBlocks] = useState<any[]>([]);

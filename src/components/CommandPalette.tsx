@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useCuentas } from '../lib/useCuentas';
 import { useAppStore } from '../store/useAppStore';
 import { Search, ChevronRight, X } from 'lucide-react';
 import type { Actionable } from '../types';
@@ -18,7 +19,9 @@ export function CommandPalette({
   const actionables = useAppStore(state => state.actionables);
   const notionBriefs = useAppStore(state => state.notionBriefs);
   
-  const clients = ['360', 'BHI', 'KAREDO'];
+  // Las cuentas salen de la base. Con la lista fija, Fresh Monkee no aparecía
+  // al buscar y no se podía cambiar a ella desde la paleta.
+  const { nombres: clients } = useCuentas();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

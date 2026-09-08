@@ -1,4 +1,5 @@
 import { useCuentas } from '../lib/useCuentas';
+import { useCuentaActiva } from '../lib/useCuentas';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   AlertCircle, ShieldAlert, Check, Clock, ArrowRight, 
@@ -59,7 +60,9 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   }, []);
   const cuentasConDecision = headroomAll.filter((h: any) => /^(HEADROOM|TECHO)/.test(h.veredicto || ''));
 
-  const activeClient = selectedClient || '360';
+  // La cuenta activa sale de las cuentas reales, no de un default cableado.
+  // Antes esto era '360' fijo y no coincidia con el header cuando no habia eleccion.
+  const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
 
   const fetchPulse = async () => {
     setLoadingPulse(true);
@@ -304,7 +307,7 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
       {(() => {
         const ultimoPorCuenta: Record<string, any> = {};
         pulsoDiario.forEach(p => { if (!ultimoPorCuenta[p.account] || p.fecha > ultimoPorCuenta[p.account].fecha) ultimoPorCuenta[p.account] = p; });
-        const cuenta = selectedClient || 'KAREDO';
+        const cuenta = useCuentaActiva(selectedClient) || selectedClient || '';
         const principal = ultimoPorCuenta[cuenta];
         const otras = nombresCuentas.filter(a => a !== cuenta);
         const ayer = new Date(); ayer.setDate(ayer.getDate() - 1); const ayerStr = ayer.toISOString().slice(0, 10);

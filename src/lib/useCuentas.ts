@@ -33,13 +33,15 @@ async function traer(): Promise<CuentaActiva[]> {
   return _enVuelo;
 }
 
-/** Respaldo mientras carga: las tres históricas, para que nada quede en blanco. */
-const RESPALDO = ['KAREDO', 'BHI', '360'];
+// SIN respaldo cableado. Antes eran las tres históricas "para que nada quede en
+// blanco", y el resultado fue que Fresh Monkee desapareció del selector durante
+// días sin que nada avisara: la lista se veía completa y no lo estaba.
+// Mientras carga, vacío; si falla, vacío y la pantalla lo dice.
 
 export function useCuentas() {
   const [cuentas, setCuentas] = useState<CuentaActiva[]>(_cache || []);
   useEffect(() => { let vivo = true; traer().then(c => { if (vivo) setCuentas(c); }); return () => { vivo = false; }; }, []);
-  const nombres = cuentas.length ? cuentas.map(c => c.account) : RESPALDO;
+  const nombres = cuentas.map(c => c.account);
   return {
     cuentas,
     nombres,
@@ -71,4 +73,23 @@ export function avisar(mensaje: string, tipo: 'ok' | 'error' | 'info' = 'ok', ti
   } catch { /* cae al alert de abajo */ }
   // Respaldo: si el store no está montado todavía, mejor un alert que un silencio.
   if (typeof window !== 'undefined') window.alert(mensaje);
+}
+
+/**
+ * La cuenta activa, resuelta contra las cuentas reales.
+ *
+ * Antes cada sección tenía su propio valor por defecto cableado: Briefs, Clientes,
+ * Hoy y Semana caían en '360'; Cuenta caía en 'KAREDO'; Ayuda decía 'Karedo'. Si no
+ * había cuenta elegida, cada pantalla mostraba una cuenta distinta y el header no
+ * coincidía con lo que se veía abajo.
+ *
+ * Ahora hay un solo criterio: la elegida si existe de verdad, y si no la primera
+ * de la lista. Devuelve null mientras las cuentas cargan, para que una pantalla
+ * pueda esperar en vez de mostrar datos de la cuenta equivocada.
+ */
+export function useCuentaActiva(seleccionada?: string | null): string | null {
+  const { nombres, cuentas } = useCuentas();
+  if (!cuentas.length) return null;
+  if (seleccionada && nombres.includes(seleccionada)) return seleccionada;
+  return nombres[0] ?? null;
 }

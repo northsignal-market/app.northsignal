@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useCuentaActiva } from '../lib/useCuentas';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend } from 'recharts';
@@ -38,7 +39,9 @@ function Plegable({ titulo, resumen, children }: { titulo: string; resumen: stri
 
 export function Semana({ onOpenActionable }: SemanaProps) {
   const { selectedClient } = useAppStore();
-  const activeClient = selectedClient || '360';
+  // La cuenta activa sale de las cuentas reales, no de un default cableado.
+  // Antes esto era '360' fijo y no coincidia con el header cuando no habia eleccion.
+  const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
 
   // La capa diaria cubre 14 días (ventana móvil del script). Dos rangos: 7 y 14.
   const [range, setRange] = useState<'7d' | '14d' | 'custom'>('14d');

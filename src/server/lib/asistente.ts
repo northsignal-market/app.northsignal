@@ -30,7 +30,10 @@ REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es
 `;
 
 function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
-  const ENUM = cuentas.length ? cuentas : ['KAREDO', 'BHI', '360'];
+  // Sin respaldo cableado. Si las cuentas no cargan, el enum queda vacío y las
+  // herramientas lo dicen, en vez de ofrecer tres de cuatro: el asistente
+  // afirmaría que Fresh Monkee no existe, que es peor que decir que no sabe.
+  const ENUM = cuentas;
   return [
   { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },

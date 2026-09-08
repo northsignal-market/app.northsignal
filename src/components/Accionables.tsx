@@ -26,6 +26,11 @@ export function Accionables({
   const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
   useEffect(() => { fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((d: any[]) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))).catch(() => {}); }, []);
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
+  // El filtro SIGUE al selector del header. Antes initialClient solo se leía al
+  // montar: si cambiabas de cuenta arriba con esta pestaña ya abierta, la lista
+  // se quedaba en la cuenta anterior y parecía que el selector no hacía nada.
+  // Se puede seguir poniendo "todas" a mano; lo que cambia es el punto de partida.
+  useEffect(() => { if (initialClient) setFilterClient(initialClient); }, [initialClient]);
   const [filterStatus, setFilterStatus] = useState<string>(initialStatus || 'all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterNaturaleza, setFilterNaturaleza] = useState<string>('all');
