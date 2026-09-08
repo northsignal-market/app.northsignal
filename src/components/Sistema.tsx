@@ -12,10 +12,15 @@ export function Sistema() {
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
   const [tamano, setTamano] = useState<any[]>([]);
+  // Salud completa: las 32 verificaciones, tareas caidas y cuarentena.
+  const [saludSistema, setSaludSistema] = useState<any>(null);
+  const [respaldo, setRespaldo] = useState<any>(null);
 
   useEffect(() => {
     fetch('/api/aprendizaje', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setAprendizaje(d)).catch(() => {});
     fetch('/api/salud-sistema', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setTamano(d)).catch(() => {});
+    fetch('/api/salud', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setSaludSistema(d)).catch(() => {});
+    fetch('/api/respaldo', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setRespaldo(d)).catch(() => {});
   }, []);
   const [loading, setLoading] = useState(false);
 
@@ -149,7 +154,7 @@ export function Sistema() {
           </p>
         </div>
 
-        <button
+        <button aria-label="Actualizar" title="Actualizar"
           onClick={fetchHealth}
           className="px-3 py-1.5 rounded text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1.5 transition-colors shrink-0"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-1)' }}
@@ -273,7 +278,7 @@ export function Sistema() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-[#F5F7FA]">
-                  <label className="flex items-center gap-1.5">Confianza mínima <input type="number" step="0.05" min="0.5" max="1" value={p.confianza_min} onChange={e => guardarPolitica(p.tipo, { confianza_min: Number(e.target.value) })} className="w-14 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /></label>
+                  <label className="flex items-center gap-1.5">Confianza mínima <input aria-label="P" type="number" step="0.05" min="0.5" max="1" value={p.confianza_min} onChange={e => guardarPolitica(p.tipo, { confianza_min: Number(e.target.value) })} className="w-14 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /></label>
                   {p.tipo === 'pausar_keyword' && <label className="flex items-center gap-1.5">Solo si gastó menos de <input type="number" value={p.gasto_max ?? ''} placeholder="sin tope" onChange={e => guardarPolitica(p.tipo, { gasto_max: e.target.value === '' ? null : Number(e.target.value) })} className="w-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /> en 14 días</label>}
                   <div className="flex items-center gap-1.5">Lo puede proponer: {['Semanal', 'Pulso diario', 'Anomalias'].map(o => (
                     <label key={o} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.solo_origen || []).includes(o)} onChange={e => guardarPolitica(p.tipo, { solo_origen: e.target.checked ? [...(p.solo_origen || []), o] : (p.solo_origen || []).filter((x: string) => x !== o) })} className="accent-[#0062CC]" />{o === 'Pulso diario' ? 'análisis diario' : o === 'Anomalias' ? 'anomalías' : 'semanal'}</label>
@@ -412,6 +417,66 @@ export function Sistema() {
       {/* TAB 1: SALUD DE DATOS */}
       {enGrupo('salud') && (
         <div className="space-y-4">
+          {/* Veredicto del sistema. Reune las 32 verificaciones, las tareas caidas y
+              la cuarentena. Antes esto solo se veia consultando SQL a mano. */}
+          {saludSistema && (
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Estado del sistema</h2>
+                <span className="text-[11px] px-2 py-0.5 rounded-full" style={{
+                  backgroundColor: saludSistema.veredicto === 'todo bien' ? '#16653433' : saludSistema.veredicto === 'hay algo roto' ? '#b4231833' : '#b4530933',
+                  color: saludSistema.veredicto === 'todo bien' ? '#4ade80' : saludSistema.veredicto === 'hay algo roto' ? '#fca5a5' : '#fcd34d' }}>
+                  {saludSistema.veredicto} · {saludSistema.ok} verificaciones
+                </span>
+              </div>
+              {(saludSistema.fallas || []).map((f: any, i: number) => (
+                <div key={'f'+i} className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#b4231815', border: '1px solid #b4231840' }}>
+                  <span className="text-[#fca5a5] font-medium">{f.area} · {f.cuenta}</span>
+                  <p className="text-[#F5F7FA] opacity-80 mt-0.5">{f.detalle}</p>
+                </div>
+              ))}
+              {(saludSistema.atencion || []).map((a: any, i: number) => (
+                <div key={'a'+i} className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[#fcd34d]">{a.area} · {a.cuenta}</span>
+                  <p className="text-[#F5F7FA] opacity-70 mt-0.5">{a.detalle}</p>
+                </div>
+              ))}
+              {!(saludSistema.fallas || []).length && !(saludSistema.atencion || []).length && (
+                <p className="text-xs text-[#F5F7FA] opacity-60">Nada roto y nada para mirar.</p>
+              )}
+              {(saludSistema.esperando_despliegue || []).length > 0 && (
+                <p className="text-[11px] text-[#F5F7FA] opacity-50">
+                  Esperando despliegue del script: {(saludSistema.esperando_despliegue || []).join(', ')}. No cuentan como caidas hasta su primer latido.
+                </p>
+              )}
+              {Number(saludSistema.en_cuarentena) > 0 && (
+                <p className="text-[11px] text-[#F5F7FA] opacity-50">
+                  {saludSistema.en_cuarentena} registro(s) en cuarentena: escritos sobre datos que después resultaron falsos. Los agentes no los reciben.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Respaldo del esquema. Sin esto habia que escribir la URL a mano. */}
+          {respaldo && (
+            <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                Respaldo del esquema
+              </h2>
+              <p className="text-[11px] text-[#F5F7FA] opacity-60">
+                Se generan frescos en cada descarga. Van a <span className="tabular">supabase/migrations/</span> en el repo: son lo que permite reconstruir la base entera si se pierde.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(respaldo.archivos || []).map((a: any) => (
+                  <a key={a.nombre} href={a.url} download
+                    className="px-3 py-1.5 rounded-lg text-[11px] text-[#FFFFFF] hover:opacity-80"
+                    style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    {a.nombre} <span className="opacity-50">{a.kb} KB</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Datos por cuenta
@@ -642,7 +707,7 @@ export function Sistema() {
                 <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
                   Cuenta
                 </label>
-                <select
+                <select aria-label="Log Account"
                   value={logAccount}
                   onChange={e => setLogAccount(e.target.value)}
                   className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none"

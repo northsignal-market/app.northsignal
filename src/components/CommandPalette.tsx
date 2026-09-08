@@ -40,11 +40,12 @@ export function CommandPalette({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery('');
-    }
+    if (!isOpen) { setQuery(''); return; }
+    // El temporizador se limpia al cerrar: si no, queda pendiente e intenta enfocar
+    // un campo que ya no está montado. React avisa por consola y en el peor caso
+    // el foco salta a otro lado 50 ms después de cerrar.
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -69,6 +70,20 @@ export function CommandPalette({
       results.push({ type: 'Vista', title: v.label, onSelect: () => { onTabChange(v.id); setIsOpen(false); } });
     }
   });
+
+  // Cerrar sesión: en la barra lateral solo aparece en escritorio, porque en móvil
+  // la barra es horizontal y el espacio es para navegar. Acá queda siempre accesible.
+  if ('cerrar sesion salir logout'.includes(q) && q.length >= 2) {
+    results.push({
+      type: 'Sesión', title: 'Cerrar sesión',
+      onSelect: async () => {
+        setIsOpen(false);
+        try { await fetch('/api/logout', { method: 'POST', credentials: 'include' }); } catch { }
+        try { localStorage.removeItem('auth_token'); } catch { }
+        window.location.reload();
+      }
+    });
+  }
 
   // 2. Clients
   clients.forEach(c => {

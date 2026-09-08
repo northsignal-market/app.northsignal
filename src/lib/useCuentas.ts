@@ -14,6 +14,8 @@ export interface CuentaActiva {
   moneda?: string | null;
   perfil_analisis?: string | null;
   presupuesto_diario?: number | null;
+  zona_horaria?: string | null;
+  locale?: string | null;
 }
 
 let _cache: CuentaActiva[] | null = null;
@@ -44,6 +46,29 @@ export function useCuentas() {
     moneda: (acc: string) => cuentas.find(c => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP'),
     perfil: (acc: string) => cuentas.find(c => c.account === acc)?.perfil_analisis || 'negocio_unico',
     presupuesto: (acc: string) => cuentas.find(c => c.account === acc)?.presupuesto_diario ?? null,
+  /** Zona horaria de la cuenta. Fresh Monkee opera en Nueva York y Karedo en Berlín:
+      mostrar todo en Santiago corre las fechas y hace ilegible un análisis por horario. */
+  zona: (acc: string) => cuentas.find(c => c.account === acc)?.zona_horaria
+    || (acc === 'KAREDO' ? 'Europe/Berlin' : acc === 'FRESH_MONKEE' ? 'America/New_York' : 'America/Santiago'),
+  /** Locale para formatear fechas y números de esa cuenta. */
+  locale: (acc: string) => cuentas.find(c => c.account === acc)?.locale
+    || (acc === 'KAREDO' ? 'de-DE' : acc === 'FRESH_MONKEE' ? 'en-US' : 'es-CL'),
     nombreCliente: (acc: string) => cuentas.find(c => c.account === acc)?.nombre_cliente || acc,
   };
+}
+
+/**
+ * Aviso al usuario, sin bloquear la pantalla.
+ *
+ * Reemplaza a alert(), que congela la interfaz, no se puede estilar, y en algunos
+ * navegadores se silencia sin que el usuario se entere de que hubo un error.
+ */
+export function avisar(mensaje: string, tipo: 'ok' | 'error' | 'info' = 'ok', titulo?: string) {
+  try {
+    // Import diferido para no acoplar el hook al store.
+    const store = (window as any).__northsignalStore;
+    if (store?.getState) { store.getState().addNotification({ message: mensaje, tipo, title: titulo }); return; }
+  } catch { /* cae al alert de abajo */ }
+  // Respaldo: si el store no está montado todavía, mejor un alert que un silencio.
+  if (typeof window !== 'undefined') window.alert(mensaje);
 }

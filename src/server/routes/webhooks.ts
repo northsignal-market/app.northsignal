@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as crypto from 'crypto';
+import { verifyHmacSha256, comparacionSegura } from '../lib/signatures';
 import { supabase } from '../lib/supabase';
 import { AsanaWebhookPayload } from '../domain/contracts';
 
@@ -34,12 +35,7 @@ webhooksRouter.post('/asana', async (req, res) => {
         return res.status(401).json({ error: 'Missing signature or raw body' });
     }
     
-    const hash = crypto.createHmac('sha256', asanaSecret).update(rawBody).digest('hex');
-    
-    const sigBuf = Buffer.from(signature as string, 'utf8');
-    const hashBuf = Buffer.from(hash, 'utf8');
-    
-    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+    if (!verifyHmacSha256(asanaSecret, signature as string, rawBody)) {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
@@ -150,7 +146,11 @@ webhooksRouter.post('/gohighlevel', async (req, res) => {
       return res.status(503).json({ error: 'Webhook no configurado' });
     }
     
-    if (req.headers['authorization'] !== `Bearer ${ghlSecret}`) {
+    // Comparacion en tiempo constante. Un !== compara caracter por caracter y corta
+    // al primero distinto: el tiempo de respuesta revela cuantos acerto, y con eso
+    // el secreto se adivina de a un caracter.
+    const auth = String(req.headers['authorization'] || '');
+    if (!comparacionSegura(auth, `Bearer ${ghlSecret}`)) {
        return res.status(401).json({ error: 'Invalid signature' });
     }
 

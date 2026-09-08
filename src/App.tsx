@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { LimiteDeError } from './components/LimiteDeError';
+import { GlobalToast } from './components/GlobalToast';
 import { TerminoProvider } from './components/Termino';
 import { Ayuda } from './components/Ayuda';
 import { Bandeja } from './components/Bandeja';
@@ -72,6 +74,15 @@ function App() {
     cargar(); const t = setInterval(cargar, 5 * 60 * 1000); return () => clearInterval(t);
   }, []);
   const [urlBriefId, setUrlBriefId] = useState<string | undefined>(undefined);
+  // Banda de aviso cuando NO estás en producción. Sin esto es imposible saber a
+  // simple vista si lo que estás mirando escribe en la cuenta real o no.
+  const [bandaEntorno, setBandaEntorno] = useState<{ color: string; texto: string } | null>(null);
+  useEffect(() => {
+    fetch('/api/entorno', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setBandaEntorno(d?.banda || null))
+      .catch(() => {});
+  }, []);
   
   const { 
     fetchData, isAuthenticated, authChecked, 
@@ -127,17 +138,37 @@ function App() {
     wasAuth.current = isAuthenticated;
   }, [isAuthenticated, authChecked]);
 
-  // Sync active page & client with URL
+  // La URL refleja donde estas. Con pushState y no replaceState: con replaceState
+  // el boton atras del navegador no volvia a la pantalla anterior sino que SALIA
+  // de la app, porque no habia historial que recorrer.
+  const ultimaUrl = React.useRef<string>('');
   useEffect(() => {
     if (!isAuthenticated) return;
     const url = new URL(window.location.href);
     url.searchParams.set('page', activeTab);
     if (activeTab === 'cuenta') url.searchParams.set('seg', segmento); else url.searchParams.delete('seg');
-    if (selectedClient) {
-      url.searchParams.set('cliente', selectedClient);
-    }
-    window.history.replaceState({}, '', url.toString());
+    if (selectedClient) url.searchParams.set('cliente', selectedClient);
+    const nueva = url.toString();
+    if (nueva === ultimaUrl.current) return;
+    // La primera vez reemplaza; los cambios de pantalla apilan.
+    if (ultimaUrl.current) window.history.pushState({ page: activeTab }, '', nueva);
+    else window.history.replaceState({ page: activeTab }, '', nueva);
+    ultimaUrl.current = nueva;
   }, [activeTab, segmento, selectedClient, isAuthenticated]);
+
+  // El boton atras vuelve a la pantalla anterior en vez de salir de la app.
+  useEffect(() => {
+    const alVolver = () => {
+      const p = new URLSearchParams(window.location.search);
+      const page = p.get('page'); const seg = p.get('seg'); const cli = p.get('cliente');
+      ultimaUrl.current = window.location.href;
+      if (page) setActiveTab(page as any);
+      if (seg) setSegmento(seg as any);
+      if (cli) setSelectedClient(cli);
+    };
+    window.addEventListener('popstate', alVolver);
+    return () => window.removeEventListener('popstate', alVolver);
+  }, []);
 
   if (!authChecked) {
     return (
@@ -153,10 +184,17 @@ function App() {
 
   return (
     <TerminoProvider>
-    <div className="flex min-h-screen overflow-hidden select-none">
+    <GlobalToast />
+    {bandaEntorno && (
+      <div style={{ backgroundColor: bandaEntorno.color }}
+        className="fixed top-0 left-0 right-0 z-[300] text-white text-[11px] font-medium text-center py-1 tracking-wide">
+        {bandaEntorno.texto}
+      </div>
+    )}
+    <div className={`flex min-h-screen overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
       <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} />
       
-      <div className="ml-16 flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 pb-14 sm:pb-0 sm:ml-16">
         
         {/* Global Persistent Header */}
         <header 
@@ -238,24 +276,31 @@ function App() {
 
         {/* Main View Area */}
         <main className="flex-1 overflow-y-auto relative custom-scrollbar">
+          {/* Cada pantalla con su propio límite: si una falla, las demás siguen. */}
           {activeTab === 'bandeja' && (
-            <Bandeja onOpenActionable={(act) => setSelectedAction(act)} onGoTo={irA} />
+            <LimiteDeError nombre="Bandeja">
+              <Bandeja onOpenActionable={(act) => setSelectedAction(act)} onGoTo={irA} />
+            </LimiteDeError>
           )}
 
           {activeTab === 'cuenta' && (
-            <Cuenta segmento={segmento} onSegmento={setSegmento} onOpenActionable={(act) => setSelectedAction(act)} briefId={urlBriefId} onNavigateToBrief={(id) => { setUrlBriefId(id); setSegmento('brief'); }} />
+            <LimiteDeError nombre="Cuenta">
+              <Cuenta segmento={segmento} onSegmento={setSegmento} onOpenActionable={(act) => setSelectedAction(act)} briefId={urlBriefId} onNavigateToBrief={(id) => { setUrlBriefId(id); setSegmento('brief'); }} />
+            </LimiteDeError>
           )}
 
           {activeTab === 'datos' && (
-            <Datos initialSearch={datosInicial.search} initialView={datosInicial.view} />
+            <LimiteDeError nombre="Datos">
+              <Datos initialSearch={datosInicial.search} initialView={datosInicial.view} />
+            </LimiteDeError>
           )}
 
           {activeTab === 'herramientas' && (
-            <Herramientas />
+            <LimiteDeError nombre="Herramientas"><Herramientas /></LimiteDeError>
           )}
 
           {activeTab === 'sistema' && (
-            <Sistema />
+            <LimiteDeError nombre="Sistema"><Sistema /></LimiteDeError>
           )}
         </main>
       </div>

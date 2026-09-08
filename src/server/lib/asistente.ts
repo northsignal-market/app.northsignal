@@ -34,6 +34,16 @@ function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
   return [
   { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
+  { name: 'explicar_accionable', description: 'Todo el razonamiento detras de un accionable: quien lo propuso, con que evidencia, que invariantes toca, si se puede ejecutar y por que no, y que paso con cambios parecidos. Usar SIEMPRE que pregunten por que se propuso algo, si conviene hacerlo, o que pasa si lo hago.', input_schema: { type: 'object', properties: { notion_id: { type: 'string', description: 'El id del accionable. Si no lo tenes, buscalo primero con buscar_accionable.' } }, required: ['notion_id'] } },
+  { name: 'ejecutar_accionable', description: 'Encola un accionable para que el ejecutor lo aplique en Google Ads. SOLO usar cuando Andres lo pide explicitamente ("ejecutalo", "dale", "hacelo"). Nunca por iniciativa propia. Antes de llamarla, explicar que va a hacer y esperar confirmacion en el mismo mensaje.', input_schema: { type: 'object', properties: { notion_id: { type: 'string' }, modo: { type: 'string', enum: ['simular','ejecutar'], description: 'simular muestra que haria sin tocar nada; ejecutar lo aplica de verdad' } }, required: ['notion_id','modo'] } },
+  { name: 'dejar_nota_para_agente', description: 'Deja una nota que el agente de esa cuenta va a leer en su proxima corrida. Usar cuando Andres pregunta algo que el agente deberia investigar, da una instruccion que cambia como analizar, o corrige algo que el agente asumio mal. Asi la conversacion no muere aca.', input_schema: { type: 'object', properties: { contenido: { type: 'string', description: 'Que tiene que saber el agente, en una o dos frases claras' }, cuenta: { type: 'string', enum: ENUM }, para: { type: 'string', enum: ['semanal','pulso','mensual','cualquiera'] }, tipo: { type: 'string', enum: ['pregunta','instruccion','contexto','correccion'] } }, required: ['contenido'] } },
+  { name: 'que_pregunte_andres', description: 'Las notas que Andres ya dejo para los agentes y todavia no fueron atendidas. Usar cuando pregunte si ya avisó algo, o para no repetir una nota que ya existe.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'consultar_datos', description: 'Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos.', input_schema: { type: 'object', properties: { vista: { type: 'string', description: 'Nombre exacto de la vista, tal como aparece en que_datos_hay' }, cuenta: { type: 'string', enum: ENUM }, limite: { type: 'number' } }, required: ['vista'] } },
+  { name: 'que_datos_hay', description: 'Catalogo de las 119 vistas y funciones del sistema con para que sirve cada una y que cuidado tener. Usar cuando pregunten donde esta un dato, si existe algo, o cuando haga falta explorar mas alla de lo obvio.', input_schema: { type: 'object', properties: { buscar: { type: 'string', description: 'Palabra a buscar, por ejemplo "conversiones" o "landing". Vacio devuelve el catalogo entero.' } }, required: [] } },
+  { name: 'completitud_de_cuenta', description: 'Que le falta a una cuenta para operar bien: doc maestro, reglas, nucleo, terminos protegidos, objetivo, datos frescos, destinatarios de reporte. Usar cuando pregunten si una cuenta esta lista, que falta cargar, o por que algo no funciona en una cuenta puntual.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
+  { name: 'estado_de_los_flujos', description: 'Cada flujo de datos del sistema: quien lo escribe, cuando fue el ultimo dato, si esta vivo o cortado. Usar SIEMPRE antes de decir que un dato no existe: puede que el flujo que lo trae nunca se haya conectado, que es distinto de que no haya habido nada.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'salud_del_sistema', description: 'Estado del sistema: fallas, cosas para mirar, tareas que dejaron de correr. Usar cuando pregunten si algo anda mal, por que algo no corrio, o para un chequeo general.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'por_que_limitada', description: 'Descompone por que una cuenta pierde subastas: CTR esperado, relevancia del anuncio o experiencia de landing, ponderado por gasto, con las peores keywords. Usar cuando pregunten por que no escala, por que se pierde cuota, o que hacer para mejorar.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'buscar_accionable', description: 'Busca accionables de una cuenta por palabras del título o del "por qué", en cualquier estado. Usar cuando pregunten por un accionable puntual ("la propuesta de agrupar campañas", "el de las negativas") y haga falta el detalle completo.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM }, texto: { type: 'string', description: 'Palabras a buscar, por ejemplo "agrupar campañas" o "negativas competidores"' } }, required: ['cuenta', 'texto'] } },
   { name: 'propuestas_estrategicas', description: 'Propuestas estratégicas de una cuenta con su estado, qué se propuso, qué se hizo realmente y el resultado esperado. Usar cuando pregunten por una propuesta o una estrategia, que NO son accionables.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'salud_datos', description: 'Estado de los datos: última extracción, semana disponible, integridad, crons. Usar cuando pregunten si los datos están al día o por qué falta algo.', input_schema: { type: 'object', properties: {} } },
@@ -55,10 +65,34 @@ export async function responderAsistente(supabase: any, mensajes: { role: 'user'
   const msgs: Anthropic.MessageParam[] = [...historial, { role: 'user', content: primerTurno }];
 
   let costo = 0; let vueltas = 0;
-  while (vueltas++ < 4) {
-    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 1500, system: `Sos el asistente de NorthSignal, la app de operación de cuentas de Google Ads de Andrés. Ayudás a navegar la app y a entender los datos. No ejecutás cambios.
+  // 7 vueltas: una consulta real puede ser buscar el accionable, explicarlo,
+  // verificar invariantes, simular y dejar nota. Con 4 se cortaba a la mitad.
+  while (vueltas++ < 7) {
+    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 2500, system: `Sos el asistente de NorthSignal, la app con la que Andrés opera cuentas de Google Ads. Hablás con Andrés, que es quien construyó el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
 
-Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sale de la base en cada consulta, así que es la buena: si alguien nombra una cuenta que está ahí, existe. Nunca digas que una cuenta no existe sin haberla buscado en esa lista, y nunca sugieras abrir un ticket porque una cuenta "debería estar cargada" si figura ahí.`, messages: msgs, tools: TOOLS, output_config: { effort: 'low' } as any });
+Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sale de la base en cada consulta, así que es la buena. Nunca digas que una cuenta no existe sin buscarla ahí, ni sugieras abrir un ticket porque una cuenta "debería estar cargada" si figura.
+
+QUÉ PODÉS HACER
+
+Antes de decir que algo no existe, mirá si el flujo que lo trae está vivo con estado_de_los_flujos. Caso concreto y activo: los webhooks de cierres reales nunca recibieron un evento, así que v_cierres_totales y v_win_rates_reales están vacías y van a seguir así hasta que se conecte GoHighLevel y Asana. Eso no es "no hubo cierres": es un flujo sin conectar, y decirlo mal lleva a la conclusión opuesta.
+
+Responder con datos. Todo número, nombre de campaña, keyword o fecha sale de una herramienta. Si no lo trajiste de una herramienta, no lo digas: "no lo tengo, lo busco" es una respuesta correcta y "creo que era alrededor de" no lo es. Cuando una herramienta devuelve vacío, mirá si trae una explicación del porqué antes de concluir nada: no es lo mismo "no hay datos" que "todavía no se puede saber".
+
+Explicar el razonamiento de un accionable. Para eso está explicar_accionable: trae quién lo propuso, con qué evidencia, qué invariantes toca, si se puede ejecutar y por qué no, y qué pasó con cambios parecidos. Si Andrés pregunta por qué se propuso algo o si conviene hacerlo, esa es la herramienta, siempre, antes de opinar.
+
+Ejecutar, si te lo pide. ejecutar_accionable encola un cambio por el mismo camino que el botón de la app: mismo pre-vuelo, mismos guardarraíles, mismo registro. Reglas: solo cuando lo pide explícitamente, nunca por iniciativa propia, y antes de encolar decí en una línea qué va a pasar. Si dudás de si lo está pidiendo, ofrecé simular primero.
+
+Hablarle a los agentes. Si Andrés pregunta algo que el agente debería investigar, da una instrucción que cambia cómo analizar, o corrige algo que un agente asumió mal, usá dejar_nota_para_agente. Sin eso la conversación muere acá y el agente del lunes vuelve a analizar lo de siempre. Decíselo en una línea cuando lo hagas: "le dejé nota al agente semanal de 360".
+
+CÓMO RESPONDER
+
+Directo y conversacional. Sin encabezados ni viñetas salvo que la respuesta sea naturalmente una lista. Castellano rioplatense.
+
+Cuando algo no se puede, decí por qué y de quién es el límite. "Los RSA no se crean por script, eso es de Google" sirve; "no puedo hacer eso" no.
+
+Un número siempre con su ventana: "5,44 USD en las últimas 4 semanas", no "5,44 USD".
+
+Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas propias y promediarlas da un número que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: 'low' } as any });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[];
     if (!toolUses.length || res.stop_reason !== 'tool_use') {
@@ -103,6 +137,73 @@ Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sal
             })),
             nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Podés citar títulos y el "por qué" textual.' : 'Esta cuenta no tiene accionables abiertos ahora mismo.'
           };
+        } else if (tu.name === 'explicar_accionable') {
+          const { data: exp } = await supabase.rpc('explicar_accionable', { p_notion_id: inp.notion_id });
+          out = exp || { error: 'No encontré ese accionable. Buscalo primero con buscar_accionable.' };
+        } else if (tu.name === 'ejecutar_accionable') {
+          // Pasa por el mismo endpoint que el botón de la app: mismos guardarraíles,
+          // mismo pre-vuelo, mismo registro. No hay un camino paralelo sin control.
+          // Mismo endpoint que el botón de la app: mismo pre-vuelo, mismos
+          // guardarraíles, mismo registro. No hay un camino paralelo sin control.
+          const base = process.env.APP_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
+          let j: any = null, ok = false;
+          try {
+            const r = await fetch(`${base}/api/accionables/${encodeURIComponent(inp.notion_id)}/aprobar-ejecutar`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.APP_ACCESS_TOKEN}` },
+              body: JSON.stringify({ modo: inp.modo === 'ejecutar' ? 'ejecutar' : 'simular' })
+            });
+            ok = r.ok; j = await r.json().catch(() => null);
+          } catch (e: any) { j = { error: e?.message || 'no se pudo llamar al endpoint' }; }
+          out = ok
+            ? { ok: true, modo: inp.modo, resultado: j,
+                nota: inp.modo === 'simular'
+                  ? 'Simulado: no se tocó nada. El resultado muestra qué haría.'
+                  : 'Encolado. El ejecutor de Google Ads lo aplica dentro de la hora.' }
+            : { ok: false, error: j?.error || 'No se pudo encolar',
+                motivo: j?.por_que || j?.conflicto,
+                que_hacer: 'Si dice que no tiene acción estructurada válida, hay que ejecutarlo a mano con los pasos de "Cómo hacerlo".' };
+        } else if (tu.name === 'dejar_nota_para_agente') {
+          const { data: id } = await supabase.rpc('dejar_nota_para_agente', {
+            p_contenido: inp.contenido, p_account: inp.cuenta || null,
+            p_para: inp.para || 'semanal', p_tipo: inp.tipo || 'pregunta' });
+          out = { ok: true, id, nota: `Anotado para el agente ${inp.para || 'semanal'}${inp.cuenta ? ' de ' + inp.cuenta : ''}. Lo va a leer en su próxima corrida.` };
+        } else if (tu.name === 'que_pregunte_andres') {
+          const { data: notas } = await supabase.from('v_notas_pendientes').select('*').limit(20);
+          out = { pendientes: notas || [] };
+        } else if (tu.name === 'consultar_datos') {
+          // Solo vistas del catálogo: no se acepta SQL libre.
+          const { data: dic } = await supabase.rpc('diccionario_datos');
+          const existe = (dic || []).some((d: any) => d.objeto === inp.vista);
+          if (!existe) { out = { error: `La vista "${inp.vista}" no existe. Mirá que_datos_hay para el catálogo.` }; }
+          else {
+            let q = supabase.from(inp.vista).select('*').limit(Math.min(inp.limite || 30, 100));
+            if (inp.cuenta) q = q.eq('account', inp.cuenta);
+            const { data: filas, error: e } = await q;
+            out = e ? { error: e.message, nota: 'Puede que esa vista no filtre por cuenta.' }
+                    : { vista: inp.vista, filas: filas || [], cuantas: (filas || []).length };
+          }
+        } else if (tu.name === 'que_datos_hay') {
+          const { data: dic } = await supabase.rpc('diccionario_datos');
+          const q = String(inp.buscar || '').toLowerCase().trim();
+          const filas = (dic || []).filter((d: any) => !q
+            || `${d.objeto} ${d.usar_para} ${d.cuidado || ''}`.toLowerCase().includes(q));
+          out = { encontrados: filas.length, objetos: filas.slice(0, 40),
+            nota: filas.length > 40 ? 'Se muestran los primeros 40. Afiná la búsqueda.' : undefined };
+        } else if (tu.name === 'completitud_de_cuenta') {
+          const { data: comp } = await supabase.rpc('completitud_de_cuenta', { p_account: inp.cuenta });
+          out = { cuenta: inp.cuenta, requisitos: comp || [],
+            faltan: (comp || []).filter((r: any) => !r.cumple).map((r: any) => r.requisito) };
+        } else if (tu.name === 'estado_de_los_flujos') {
+          const { data: fl } = await supabase.rpc('estado_de_los_flujos');
+          out = { flujos: fl || [],
+            cortados: (fl || []).filter((f: any) => f.estado === 'CORTADO' || f.estado === 'NUNCA RECIBIO NADA') };
+        } else if (tu.name === 'salud_del_sistema') {
+          const { data: s } = await supabase.rpc('get_salud_sistema');
+          out = s || { error: 'no disponible' };
+        } else if (tu.name === 'por_que_limitada') {
+          const { data: p } = await supabase.from('v_por_que_limitada').select('*').eq('account', inp.cuenta).maybeSingle();
+          out = p || { cuenta: inp.cuenta, nota: 'Sin datos de cuota perdida para esta cuenta en el periodo.' };
         } else if (tu.name === 'buscar_accionable') {
           const q = String(inp.texto || '').trim();
           const { data: acc } = await supabase.from('accionables_espejo')

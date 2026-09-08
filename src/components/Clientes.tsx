@@ -1,3 +1,5 @@
+import { useCuentas } from '../lib/useCuentas';
+import { avisar } from '../lib/useCuentas';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
 import { 
@@ -16,6 +18,7 @@ interface ClientesProps {
 }
 
 export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }: ClientesProps) {
+  const { moneda: monedaDe, nombreCliente, zona: zonaDe, locale: localeDe } = useCuentas();
   const ver = (z: 'diagnostico' | 'memoria' | 'reportes') => zona === 'todo' || zona === z;
   const { selectedClient, setSelectedClient, actionables, notionBriefs } = useAppStore();
   const activeClient = selectedClient || '360';
@@ -99,7 +102,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       const r = await fetch('/api/reportes/generar', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account: activeClient, desde: formGenerar.desde, hasta: formGenerar.hasta }) });
       const d = await r.json();
-      if (!r.ok) alert(d.error || 'Error'); else { setGenerandoDesde(false); setOrigenReporte(d.origen); cargarReportes(); }
+      if (!r.ok) avisar(d.error || 'Ocurrió un error', 'error'); else { setGenerandoDesde(false); setOrigenReporte(d.origen); cargarReportes(); }
     } finally { setTrabajandoReporte(null); }
   };
   useEffect(() => {
@@ -198,7 +201,14 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
     } finally { setSavingTargets(false); }
   };
 
-  const fmtMoney = (v: any) => v == null ? '—' : new Intl.NumberFormat(activeClient === 'KAREDO' ? 'de-DE' : 'es-CL', { style: 'currency', currency: activeClient === 'KAREDO' ? 'EUR' : 'CLP', maximumFractionDigits: activeClient === 'KAREDO' ? 2 : 0 }).format(Number(v));
+  // La moneda sale de la cuenta, no de un condicional: Fresh Monkee se mostraba
+  // en pesos chilenos porque el ternario solo distinguia Karedo del resto.
+  const fmtMoney = (v: any) => {
+    if (v == null) return '—';
+    const mon = monedaDe(activeClient);
+    const loc = mon === 'EUR' ? 'de-DE' : mon === 'USD' ? 'en-US' : 'es-CL';
+    return new Intl.NumberFormat(loc, { style: 'currency', currency: mon, maximumFractionDigits: mon === 'CLP' ? 0 : 2 }).format(Number(v));
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -218,8 +228,8 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
     return clientsInfo.find(c => c.name.toLowerCase() === activeClient.toLowerCase()) || {
       id: 'default',
       name: activeClient,
-      currency: activeClient === 'KAREDO' ? 'EUR' : 'CLP',
-      timezone: 'America/Santiago',
+      currency: monedaDe(activeClient),
+      timezone: zonaDe(activeClient),
       created_at: new Date().toISOString()
     };
   }, [clientsInfo, activeClient]);
@@ -331,10 +341,10 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
             <div className="text-[11px] text-[#F5F7FA] opacity-60">Moneda Operativa</div>
             <div className="text-base font-bold text-[#FFFFFF] mt-0.5">
-              {currentInfo.currency || (activeClient === 'KAREDO' ? 'EUR' : 'CLP')}
+              {currentInfo.currency || monedaDe(activeClient)}
             </div>
             <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
-              Zona: {currentInfo.timezone || 'America/Santiago'}
+              Zona: {currentInfo.timezone || zonaDe(activeClient)}
             </div>
           </div>
 
@@ -404,7 +414,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                     <div className="text-sm text-[#FFFFFF] font-medium mt-0.5">{p.titulo}</div>
                   </div>
                   <div className="shrink-0">
-                    <select value={p.estado} onChange={e => cambiarEstado(p, e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]" title="Cambiar estado. Se puede volver atrás; todo queda en el historial.">
+                    <select aria-label="P" value={p.estado} onChange={e => cambiarEstado(p, e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]" title="Cambiar estado. Se puede volver atrás; todo queda en el historial.">
                       {ESTADOS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
                     </select>
                   </div>
@@ -451,7 +461,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           ) : (
             <div className="flex gap-2">
               <button onClick={() => setEditTargets(null)} className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Cancelar</button>
-              <button onClick={saveTargets} disabled={savingTargets} className="text-xs px-3 py-1 rounded bg-[#0062CC] text-[#FFFFFF] flex items-center gap-1"><Save size={12} /> {savingTargets ? 'Guardando…' : 'Guardar'}</button>
+              <button aria-label="Guardar" title="Guardar" onClick={saveTargets} disabled={savingTargets} className="text-xs px-3 py-1 rounded bg-[#0062CC] text-[#FFFFFF] flex items-center gap-1"><Save size={12} /> {savingTargets ? 'Guardando…' : 'Guardar'}</button>
             </div>
           )}
         </div>
@@ -469,7 +479,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                   {f.origen && <span className={`text-[10px] px-1.5 rounded-full ${f.origen === 'negocio' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`} style={{ border: '1px solid var(--border)' }}>{f.origen}</span>}
                 </div>
                 {editTargets ? (
-                  <input type="number" value={editTargets[f.k] ?? ''} onChange={e => setEditTargets({ ...editTargets, [f.k]: Number(e.target.value) })}
+                  <input aria-label="Edit Targets" type="number" value={editTargets[f.k] ?? ''} onChange={e => setEditTargets({ ...editTargets, [f.k]: Number(e.target.value) })}
                     className="mt-1 w-full bg-transparent text-base font-bold text-[#FFFFFF] tabular outline-none" style={{ borderBottom: '1px solid var(--border-strong)' }} />
                 ) : (
                   <div className="text-base font-bold text-[#FFFFFF] tabular mt-1">{f.fmt(target[f.k])}</div>
@@ -804,10 +814,10 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                 </div>
                 {editandoSeccion === sec.seccion ? (
                   <div className="space-y-2">
-                    <textarea value={textoEdicion} onChange={e => setTextoEdicion(e.target.value)} rows={14}
+                    <textarea aria-label="Texto Edicion" value={textoEdicion} onChange={e => setTextoEdicion(e.target.value)} rows={14}
                       className="w-full text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-3 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC] tabular" style={{ fontFamily: 'inherit' }} />
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditandoSeccion(null)} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
+                      <button onClick={() => setEditandoSeccion(null)} className="px-3 py-1 rounded-none text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
                       <button onClick={() => guardarSeccion(sec.seccion)} disabled={guardandoDoc} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-50">{guardandoDoc ? 'Guardando…' : 'Guardar como nueva versión'}</button>
                     </div>
                   </div>

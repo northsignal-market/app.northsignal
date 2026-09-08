@@ -17,7 +17,9 @@ import type { ReporteInput } from './src/server/lib/reporte-pdf';
 const cargarPdf = () => import('./src/server/lib/reporte-pdf');
 import { supabase } from './src/server/lib/supabase';
 import { authMiddleware } from './src/server/auth/middleware';
-import { authRouter } from './src/server/auth/routes';
+import { crearAuthRouter } from './src/server/auth/routes';
+import { ipDe, verificarLimite, registrarIntento } from './src/server/auth/limite';
+import { entornoActual, esProduccion, puedeEscribirAfuera, banda } from './src/server/entorno';
 import { CLIENT_RULES, getClientContext } from './src/server/domain/clientRules';
 
 
@@ -38,7 +40,7 @@ let _cuentasCache: { at: number; data: any[] } = { at: 0, data: [] };
 async function cuentasActivas(): Promise<any[]> {
   if (Date.now() - _cuentasCache.at < 300000 && _cuentasCache.data.length) return _cuentasCache.data;
   if (!supabase) return [];
-  const { data } = await supabase.from('cuentas').select('account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario, notion_ficha_id').eq('activa', true).order('account');
+  const { data } = await supabase.from('cuentas').select('account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas').eq('activa', true).order('account');
   if (data?.length) _cuentasCache = { at: Date.now(), data };
   return data || [];
 }
@@ -88,7 +90,7 @@ export function createApp() {
     }
   }));
   app.use(cookieParser());
-  app.use('/api', authRouter);
+  app.use('/api', crearAuthRouter(supabase));
 
 
 // Auth routes extracted to auth/routes.ts
@@ -101,8 +103,19 @@ export function createApp() {
   // ================================================================
   app.get("/r/:token", async (req, res) => {
     if (!supabase) return res.status(503).send('No disponible');
+    // Única superficie realmente pública. Sin límite, un bot puede enumerar
+    // tokens hasta encontrar uno válido y leer el reporte de un cliente.
+    // 30 pedidos cada 10 minutos por IP: un cliente abre el suyo dos o tres veces.
+    const ip = ipDe(req);
+    const lim = await verificarLimite(supabase, ip, '/r', 30, 10);
+    if (!lim.permitido) return res.status(429).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Demasiados pedidos. Probá de nuevo en unos minutos.</body></html>');
     const { data: r } = await supabase.from('v_reporte_publico').select('*').eq('token', req.params.token).maybeSingle();
-    if (!r) return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no está disponible.</body></html>');
+    if (!r) {
+      // Un token que no existe cuenta como fallo: cinco seguidos y la espera crece.
+      await registrarIntento(supabase, ip, '/r', false, 'token inexistente');
+      return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no está disponible.</body></html>');
+    }
+    await registrarIntento(supabase, ip, '/r', true);
     await supabase.from('reportes_cliente').update({ vistas: (r as any).vistas ? (r as any).vistas + 1 : 1, visto_el: (r as any).visto_el || new Date().toISOString() }).eq('token', req.params.token);
     const en = r.idioma === 'en';
     const t = en ? { titulo: 'Performance Report', periodo: 'Period', inv: 'Spend', conv: 'Conversions', cpa: 'CPA', clics: 'Clicks', ctr: 'CTR', vs: 'vs previous period', camp: 'Campaigns', grp: 'Ad groups', pdf: 'Download PDF', by: 'Prepared by' } : { titulo: 'Reporte de rendimiento', periodo: 'Período', inv: 'Inversión', conv: 'Conversiones', cpa: 'CPA', clics: 'Clics', ctr: 'CTR', vs: 'vs período anterior', camp: 'Campañas', grp: 'Grupos de anuncios', pdf: 'Descargar PDF', by: 'Preparado por' };
@@ -135,8 +148,15 @@ export function createApp() {
   // PDF publico por token (solo aprobados/enviados)
   app.get("/api/publico/reportes/:token/pdf", async (req, res) => {
     if (!supabase) return res.status(503).send('No disponible');
+    // Superficie publica y CARA: si el PDF no existe, lo genera. Sin limite, un bot
+    // que enumere tokens puede agotar memoria y tiempo de funcion. 20 cada 10 minutos
+    // por IP: un cliente abre su PDF una o dos veces.
+    const ipPdf = ipDe(req);
+    const limPdf = await verificarLimite(supabase, ipPdf, '/publico-pdf', 20, 10);
+    if (!limPdf.permitido) return res.status(429).send('Demasiados pedidos. Probá de nuevo en unos minutos.');
     const { data: r } = await supabase.from('reportes_cliente').select('id, pdf_path, estado, account, periodo_desde').eq('token', req.params.token).in('estado', ['aprobado', 'enviado']).maybeSingle();
-    if (!r) return res.status(404).send('No disponible');
+    if (!r) { await registrarIntento(supabase, ipPdf, '/publico-pdf', false, 'token inexistente'); return res.status(404).send('No disponible'); }
+    await registrarIntento(supabase, ipPdf, '/publico-pdf', true);
     let ruta = r.pdf_path;
     if (!ruta) { try { ruta = (await generarYGuardarPdf(r.id)).pdf_path; } catch {} }
     if (!ruta) return res.status(404).send('PDF no disponible');
@@ -2331,6 +2351,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     res.json({ ok: true });
   });
   app.post("/api/reportes/:id/aprobar", async (req, res) => {
+    // Aprobar pone el reporte en la cola que el briefing envía AL CLIENTE.
+    // Desde local eso mandaría un mail real a un franquiciado por una prueba.
+    {
+      const a = puedeEscribirAfuera();
+      if (!a.permitido) return res.status(403).json({ error: a.motivo, entorno: entornoActual() });
+    }
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const { data, error } = await supabase.from('reportes_cliente').update({ estado: 'aprobado', aprobado_el: new Date().toISOString(), aprobado_por: 'andres' }).eq('id', req.params.id).eq('estado', 'borrador').select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -2385,6 +2411,17 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // ASISTENTE, TICKETS Y ALERTAS
   // ================================================================
   app.post("/api/asistente", async (req, res) => {
+    // Este endpoint llama a la API de Anthropic: cada pedido cuesta plata.
+    // Está detrás de sesión, así que no es una superficie abierta, pero una
+    // sesión robada o un bucle en el frontend pueden generar una factura.
+    // 40 mensajes por hora es mucho más de lo que una persona escribe.
+    {
+      const lim = await verificarLimite(supabase, ipDe(req), '/asistente', 40, 60);
+      if (!lim.permitido) return res.status(429).json({
+        error: `Demasiados mensajes seguidos. Probá de nuevo en ${Math.ceil((lim.esperar || 60) / 60)} minuto(s).`
+      });
+      await registrarIntento(supabase, ipDe(req), '/asistente', true);
+    }
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     try {
       const { mensajes, pagina, cuenta } = req.body || {};
@@ -2419,7 +2456,9 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Alertas: listar, marcar vista/resuelta, silenciar con motivo
   app.get("/api/alertas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data, error } = await supabase.from('v_alertas_abiertas').select('*').limit(100);
+    // Agrupadas: 16 avisos de AI Max del mismo día son UN hecho en 16 campañas,
+    // no 16 problemas. Verlas sueltas tapaba todo lo demás.
+    const { data, error } = await supabase.from('v_alertas_agrupadas').select('*').limit(100);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -2529,6 +2568,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   app.all("/api/cron/reconciliar", async (req, res) => {
     if (!supabase || !notion) return res.status(503).json({ error: 'Supabase o Notion no configurados' });
     try { await sincronizarEspejo(); } catch (e: any) { console.error('[espejo] ' + e.message); }
+    // Los embeddings se calculan TODOS LOS DÍAS, no solo los lunes. Antes vivían
+    // en el cron de aprendizaje, que corre lunes 10:20: una lección escrita un
+    // martes tardaba seis días en ser buscable por parecido, justo cuando más
+    // sirve, que es en las corridas de esa misma semana.
+    try {
+      await supabase.rpc('memoria_ingestar');
+      const n = await embeberPendientes(supabase);
+      if (n) console.log(`[memoria] ${n} embebidos`);
+    } catch (e: any) { console.error('[memoria] ' + e.message); }
     const { data: resumen } = await supabase.rpc('reconciliar');
     const { data: pendientes } = await supabase.from('reconciliaciones').select('*').eq('aplicada', false).order('corrida').limit(50);
     let aplicadas = 0; const errores: string[] = [];
@@ -2584,7 +2632,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data: bloqueo, error: errPv } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
     if (errPv) { console.error('[politica] prevuelo fallo: ' + errPv.message); return null; }
     if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
-    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo, aprobada_por: 'politica', por_politica: true });
+    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : 'simular', aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
       await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.` } }] });
@@ -2659,6 +2707,11 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       else if (grupo) { const { data: g } = await supabase.from('keywords').select('campaign, ad_group').eq('account', account).ilike('ad_group', `%${grupo}%`).limit(1).maybeSingle(); if (g) { camp = g.campaign; grp = g.ad_group; } }
       if (!camp) return res.status(422).json({ error: 'No pude determinar la campaña. Ejecutalo a mano.' });
     }
+    // Desde local o desde una rama, una accion aprobada NO se encola en modo
+    // ejecutar: el ejecutor de Google Ads la aplicaria en la cuenta real dentro
+    // de la hora. Se degrada a simular, que muestra que haria sin tocar nada.
+    const afuera = puedeEscribirAfuera();
+    const modoReal = afuera.permitido ? modo : 'simular';
     const p = (body.parametros || {}) as any;
     const { data, error } = await supabase.from('acciones_aprobadas').insert({
       account, notion_id: req.params.id, tipo, campana: camp, grupo: grp || null,
@@ -2667,7 +2720,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       match_type: mt || 'PHRASE', match_type_destino: match_type_destino || null, ad_id: ad_id || null,
       nivel: p.nivel || null, estrategia_destino: p.estrategia_destino || null,
       valor_actual: p.valor_actual ?? null, valor_nuevo: p.valor_nuevo ?? null, etiqueta: p.etiqueta || null,
-      modo: modo === 'ejecutar' ? 'ejecutar' : 'simular'
+      modo: modoReal === 'ejecutar' ? 'ejecutar' : 'simular'
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
@@ -2755,6 +2808,104 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
 
   // Salud del sistema en una consulta. El punto: que Andres no descubra que algo
   // se rompio leyendo la salida de un agente tres dias despues.
+
+  // ---- Respaldo del esquema: los tres archivos que reconstruyen la base ----
+  // Se generan frescos en cada pedido, asi nunca quedan viejos. El volcado sale del
+  // catalogo de Postgres, no del CLI de Supabase, porque el CLI necesita token y
+  // Docker y esto tiene que poder correrse desde el navegador.
+  app.get("/api/respaldo/:que", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const mapa: Record<string, { fn: string; archivo: string }> = {
+      esquema:  { fn: 'volcar_esquema',  archivo: '00000000000001_linea_base.sql' },
+      semillas: { fn: 'volcar_semillas', archivo: '00000000000002_datos_semilla.sql' },
+      crons:    { fn: 'volcar_crons',    archivo: '00000000000003_tareas_programadas.sql' },
+    };
+    const cfg = mapa[req.params.que];
+    if (!cfg) return res.status(400).json({ error: 'Pedí esquema, semillas o crons' });
+    const { data, error } = await supabase.rpc(cfg.fn);
+    if (error) return res.status(500).json({ error: error.message });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${cfg.archivo}"`);
+    res.send(data || '');
+  });
+
+  // Los tres de una, para no bajar tres veces
+  app.get("/api/respaldo", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const [e, s, c] = await Promise.all([
+      supabase.rpc('volcar_esquema'), supabase.rpc('volcar_semillas'), supabase.rpc('volcar_crons')
+    ]);
+    const err = e.error || s.error || c.error;
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({
+      generado: new Date().toISOString(),
+      archivos: [
+        { nombre: '00000000000001_linea_base.sql', kb: Math.round((e.data || '').length / 1024), url: '/api/respaldo/esquema' },
+        { nombre: '00000000000002_datos_semilla.sql', kb: Math.round((s.data || '').length / 1024), url: '/api/respaldo/semillas' },
+        { nombre: '00000000000003_tareas_programadas.sql', kb: Math.round((c.data || '').length / 1024), url: '/api/respaldo/crons' },
+      ],
+      donde_van: 'supabase/migrations/ en el repo northsignal-market/app.northsignal',
+    });
+  });
+
+  // La interfaz pregunta en que entorno esta para mostrar la banda de aviso
+  app.get("/api/entorno", (_req, res) => {
+    res.json({ entorno: entornoActual(), es_produccion: esProduccion(), banda: banda() });
+  });
+
+  // Lo que espera decisión de Andrés, ordenado por lo que cuesta decidirlo.
+  // El canal con los agentes: lo que les preguntaste y lo que respondieron.
+  // Cada flujo de datos con quién lo escribe y si está vivo.
+  // Resuelve de una vez todas las alertas del mismo hecho.
+  // Marca leídas de una vez todas las novedades del mismo hecho.
+  app.post("/api/novedades/grupo/leer", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { cuenta, tipo, actor, dia } = req.body || {};
+    if (!cuenta || !tipo || !actor || !dia) return res.status(400).json({ error: 'Faltan cuenta, tipo, actor o dia' });
+    const { data, error } = await supabase.rpc('marcar_grupo_leido', { p_cuenta: cuenta, p_tipo: tipo, p_actor: actor, p_dia: dia });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, marcadas: data });
+  });
+
+  app.post("/api/alertas/grupo/resolver", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { cuenta, tipo, dia } = req.body || {};
+    if (!cuenta || !tipo || !dia) return res.status(400).json({ error: 'Faltan cuenta, tipo o dia' });
+    const { data, error } = await supabase.rpc('resolver_grupo_alertas', { p_account: cuenta, p_tipo: tipo, p_dia: dia });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, resueltas: data });
+  });
+
+  app.get("/api/flujos", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.rpc('estado_de_los_flujos');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ flujos: data || [], cortados: (data || []).filter((f: any) => f.estado === 'CORTADO' || f.estado === 'NUNCA RECIBIO NADA') });
+  });
+
+  app.get("/api/notas-agentes", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const [{ data: pend }, { data: resp }] = await Promise.all([
+      supabase.from('v_notas_pendientes').select('*').limit(20),
+      supabase.from('v_respuestas_de_agentes').select('*').limit(20),
+    ]);
+    res.json({ pendientes: pend || [], respuestas: resp || [] });
+  });
+
+  app.get("/api/orden-del-dia", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.rpc('orden_del_dia');
+    if (error) return res.status(500).json({ error: error.message });
+    const filas = data || [];
+    const bloques: Record<string, any[]> = {};
+    for (const f of filas) { (bloques[f.bloque] ||= []).push(f); }
+    res.json({
+      total: filas.length,
+      un_clic: (bloques['Un clic'] || []).length,
+      bloques: Object.entries(bloques).map(([nombre, items]) => ({ nombre, cuantos: items.length, items })),
+    });
+  });
+
   app.get("/api/salud", async (_req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const { data, error } = await supabase.rpc('get_salud_sistema');
@@ -2852,7 +3003,9 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const client = req.query.client as string | undefined;
     const [lec, con, tipo, brecha] = await Promise.all([
-      client ? supabase.from('lecciones').select('*').or(`account.eq.${client},account.is.null`).order('confianza', { ascending: false }).limit(30) : supabase.from('lecciones').select('*').order('confianza', { ascending: false }).limit(40),
+      // v_lecciones_vigentes, no la tabla: excluye lo que quedo en cuarentena por
+      // haberse escrito sobre datos que despues resultaron falsos.
+      client ? supabase.from('v_lecciones_vigentes').select('*').or(`account.eq.${client},account.is.null`).order('confianza', { ascending: false }).limit(30) : supabase.from('v_lecciones_vigentes').select('*').order('confianza', { ascending: false }).limit(40),
       supabase.from('conocimiento_externo').select('*').order('fecha', { ascending: false }).limit(30),
       client ? supabase.from('v_acierto_por_tipo').select('*').eq('account', client) : supabase.from('v_acierto_por_tipo').select('*'),
       supabase.from('v_brecha_objetivo').select('*'),
@@ -2937,7 +3090,10 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   });
   app.get("/api/novedades", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data } = await supabase.from(req.query.todas ? 'v_novedades_7d' : 'v_novedades').select('*').limit(req.query.todas ? 150 : 60);
+    // Agrupadas: 32 novedades sin leer eran DOS hechos (AI Max en 16 campañas y
+    // el agente editando 14 accionables). Un evento por entidad cuando el hecho
+    // es uno solo es lo que más satura la bandeja.
+    const { data } = await supabase.from(req.query.todas ? 'v_novedades_7d' : 'v_novedades_agrupadas').select('*').limit(req.query.todas ? 150 : 60);
     res.json(data || []);
   });
   // Marcar leidas: por objeto (al abrirlo) o todas
@@ -3158,6 +3314,22 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Catch-all SIEMPRE al final: cualquier ruta agregada después de esto no existe.
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
+  });
+
+  // Última red. Sin esto, una excepción que se escape de un handler hace que Vercel
+  // devuelva su página de error en HTML: el frontend intenta parsearla como JSON,
+  // falla, y el usuario ve una pantalla en blanco sin saber qué pasó.
+  // Siempre JSON, siempre con un mensaje que se pueda leer.
+  app.use('/api', (err: any, req: any, res: any, _next: any) => {
+    const detalle = err?.message || String(err);
+    console.error(`[error no capturado] ${req?.method} ${req?.originalUrl} — ${detalle}`);
+    if (res.headersSent) return;
+    res.status(500).json({
+      error: 'Algo falló en el servidor procesando este pedido.',
+      detalle,
+      ruta: req?.originalUrl,
+      que_hacer: 'Si se repite, mirá Sistema > Salud o revisá los registros de Vercel.'
+    });
   });
 
   return app;

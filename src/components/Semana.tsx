@@ -258,9 +258,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
             </div>
             {range === 'custom' && (
               <div className="flex items-center gap-1.5">
-                <input type="date" value={customDesde} max={customHasta || undefined} onChange={e => setCustomDesde(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+                <input aria-label="Custom Desde" type="date" value={customDesde} max={customHasta || undefined} onChange={e => setCustomDesde(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
                 <span className="text-xs text-[#F5F7FA] opacity-50">a</span>
-                <input type="date" value={customHasta} min={customDesde || undefined} onChange={e => setCustomHasta(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+                <input aria-label="Custom Hasta" type="date" value={customHasta} min={customDesde || undefined} onChange={e => setCustomHasta(e.target.value)} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
                 <span className="text-[10px] text-[#F5F7FA] opacity-40">La capa diaria guarda 14 días; antes de eso, usá Datos con rango.</span>
               </div>
             )}

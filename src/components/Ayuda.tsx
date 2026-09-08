@@ -87,8 +87,8 @@ export function Ayuda({ pagina }: { pagina: string }) {
                 <div ref={fin} />
               </div>
               <div className="flex gap-2 p-3" style={{ borderTop: '1px solid var(--border)' }}>
-                <input value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => e.key === 'Enter' && preguntar()} placeholder="Escribí tu pregunta…" className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
-                <button onClick={preguntar} disabled={!texto.trim() || pensando} className="px-3 rounded-lg bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40"><Send size={14} /></button>
+                <input aria-label="Texto" value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => e.key === 'Enter' && preguntar()} placeholder="Escribí tu pregunta…" className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
+                <button aria-label="Enviar la pregunta" title="Enviar la pregunta" onClick={preguntar} disabled={!texto.trim() || pensando} className="px-3 rounded-lg bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40"><Send size={14} /></button>
               </div>
             </>
           ) : (
@@ -107,8 +107,8 @@ export function Ayuda({ pagina }: { pagina: string }) {
                       <button key={t} onClick={() => setTicket(k => ({ ...k, tipo: t }))} className={`px-2 py-1 rounded-md text-[11px] ${ticket.tipo === t ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`} style={ticket.tipo !== t ? { border: '1px solid var(--border)' } : {}}>{t === 'bug' ? 'Algo falla' : t === 'dato_incorrecto' ? 'Un dato está mal' : t === 'mejora' ? 'Idea' : 'Pregunta'}</button>
                     ))}
                   </div>
-                  <input value={ticket.titulo} onChange={e => setTicket(k => ({ ...k, titulo: e.target.value }))} placeholder="Qué pasa, en una línea" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
-                  <textarea value={ticket.descripcion} onChange={e => setTicket(k => ({ ...k, descripcion: e.target.value }))} rows={4} placeholder="Detalle si querés: qué esperabas ver, qué viste, qué número no cuadra." className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
+                  <input aria-label="Ticket" value={ticket.titulo} onChange={e => setTicket(k => ({ ...k, titulo: e.target.value }))} placeholder="Qué pasa, en una línea" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
+                  <textarea aria-label="Ticket" value={ticket.descripcion} onChange={e => setTicket(k => ({ ...k, descripcion: e.target.value }))} rows={4} placeholder="Detalle si querés: qué esperabas ver, qué viste, qué número no cuadra." className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
                   <button onClick={enviarTicket} disabled={!ticket.titulo.trim() || enviando} className="w-full py-2 rounded-lg bg-[#0062CC] text-[#FFFFFF] text-xs font-medium disabled:opacity-40">{enviando ? 'Guardando…' : 'Enviar a Claude'}</button>
                 </>
               )}

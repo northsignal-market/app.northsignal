@@ -51,7 +51,7 @@ function tituloDesde(a) {
     case "cambiar_presupuesto":
       return `Cambiar presupuesto${p.valor_actual != null ? ` de ${p.valor_actual}` : ""}${p.valor_nuevo != null ? ` a ${p.valor_nuevo}` : ""}${o.campana ? ` de ${o.campana}` : ""}`;
     case "cambiar_estrategia_puja":
-      return `Cambiar estrategia de puja${p.valor_actual ? ` de ${p.valor_actual}` : ""}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}${o.campana ? ` en ${o.campana}` : ""}`;
+      return `Cambiar estrategia de puja${p.valor_actual ? ` de ${p.valor_actual}` : ""}${p.estrategia_destino ? ` a ${p.estrategia_destino}` : p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}${o.campana ? ` en ${o.campana}` : ""}`;
     case "cambiar_conversion":
       return `Cambiar ${o.accion_conversion || "acci\xF3n de conversi\xF3n"}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ""}`;
     case "cambiar_landing":
@@ -66,22 +66,14 @@ function tituloDesde(a) {
       return `Decidir: ${(p.pregunta || "").slice(0, 90)}`;
     case "tarea_externa":
       return `${(p.que_hacer || "Tarea").slice(0, 80)}${p.donde ? ` en ${p.donde}` : ""}`;
-    case "quitar_negativa":
-      return `Quitar la negativa ${o.keyword} de ${p.nivel === "grupo" ? o.grupo : o.campana}`;
-    case "reactivar_keyword":
-      return `Reactivar ${o.keyword} en ${o.grupo || o.campana}`;
     case "pausar_grupo":
       return `Pausar el grupo ${o.grupo} en ${o.campana}`;
     case "pausar_campana":
       return `Pausar la campa\xF1a ${o.campana}`;
     case "reactivar_campana":
       return `Reactivar la campa\xF1a ${o.campana}`;
-    case "cambiar_estrategia_puja":
-      return `Cambiar la puja de ${o.campana} a ${p.estrategia_destino}`;
     case "cambiar_objetivo_puja":
       return p.valor_nuevo == null ? `Quitar el objetivo de puja en ${o.campana}` : `Poner el objetivo de puja de ${o.campana} en ${p.valor_nuevo}`;
-    case "cambiar_presupuesto":
-      return `Cambiar el presupuesto de ${o.campana} de ${p.valor_actual} a ${p.valor_nuevo}`;
     case "cambiar_cpc_keyword":
       return `Cambiar el CPC de ${o.keyword} de ${p.valor_actual} a ${p.valor_nuevo}`;
     case "aplicar_etiqueta":
@@ -515,7 +507,31 @@ import "dotenv/config";
 
 // src/server/routes/webhooks.ts
 import { Router } from "express";
+
+// src/server/lib/signatures.ts
 import * as crypto from "crypto";
+function verifyHmacSha256(secret, signature, payload) {
+  if (!secret || !signature || !payload) return false;
+  try {
+    const hash = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+    const sigBuf = Buffer.from(signature, "utf8");
+    const hashBuf = Buffer.from(hash, "utf8");
+    if (sigBuf.length !== hashBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, hashBuf);
+  } catch (e) {
+    return false;
+  }
+}
+function comparacionSegura(a, b) {
+  if (!a || !b) return false;
+  const ba = Buffer.from(a, "utf8"), bb = Buffer.from(b, "utf8");
+  if (ba.length !== bb.length) return false;
+  try {
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
 
 // src/server/lib/supabase.ts
 import { createClient } from "@supabase/supabase-js";
@@ -567,10 +583,7 @@ webhooksRouter.post("/asana", async (req, res) => {
     if (!signature || !rawBody) {
       return res.status(401).json({ error: "Missing signature or raw body" });
     }
-    const hash = crypto.createHmac("sha256", asanaSecret).update(rawBody).digest("hex");
-    const sigBuf = Buffer.from(signature, "utf8");
-    const hashBuf = Buffer.from(hash, "utf8");
-    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+    if (!verifyHmacSha256(asanaSecret, signature, rawBody)) {
       return res.status(401).json({ error: "Invalid signature" });
     }
     res.status(200).json({ received: true });
@@ -659,7 +672,8 @@ webhooksRouter.post("/gohighlevel", async (req, res) => {
       console.error("GHL_WEBHOOK_SECRET no configurado. Webhook rechazado.");
       return res.status(503).json({ error: "Webhook no configurado" });
     }
-    if (req.headers["authorization"] !== `Bearer ${ghlSecret}`) {
+    const auth = String(req.headers["authorization"] || "");
+    if (!comparacionSegura(auth, `Bearer ${ghlSecret}`)) {
       return res.status(401).json({ error: "Invalid signature" });
     }
     res.status(200).json({ received: true });
@@ -993,6 +1007,16 @@ function construirHerramientas(cuentas) {
   return [
     { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "explicar_accionable", description: "Todo el razonamiento detras de un accionable: quien lo propuso, con que evidencia, que invariantes toca, si se puede ejecutar y por que no, y que paso con cambios parecidos. Usar SIEMPRE que pregunten por que se propuso algo, si conviene hacerlo, o que pasa si lo hago.", input_schema: { type: "object", properties: { notion_id: { type: "string", description: "El id del accionable. Si no lo tenes, buscalo primero con buscar_accionable." } }, required: ["notion_id"] } },
+    { name: "ejecutar_accionable", description: 'Encola un accionable para que el ejecutor lo aplique en Google Ads. SOLO usar cuando Andres lo pide explicitamente ("ejecutalo", "dale", "hacelo"). Nunca por iniciativa propia. Antes de llamarla, explicar que va a hacer y esperar confirmacion en el mismo mensaje.', input_schema: { type: "object", properties: { notion_id: { type: "string" }, modo: { type: "string", enum: ["simular", "ejecutar"], description: "simular muestra que haria sin tocar nada; ejecutar lo aplica de verdad" } }, required: ["notion_id", "modo"] } },
+    { name: "dejar_nota_para_agente", description: "Deja una nota que el agente de esa cuenta va a leer en su proxima corrida. Usar cuando Andres pregunta algo que el agente deberia investigar, da una instruccion que cambia como analizar, o corrige algo que el agente asumio mal. Asi la conversacion no muere aca.", input_schema: { type: "object", properties: { contenido: { type: "string", description: "Que tiene que saber el agente, en una o dos frases claras" }, cuenta: { type: "string", enum: ENUM }, para: { type: "string", enum: ["semanal", "pulso", "mensual", "cualquiera"] }, tipo: { type: "string", enum: ["pregunta", "instruccion", "contexto", "correccion"] } }, required: ["contenido"] } },
+    { name: "que_pregunte_andres", description: "Las notas que Andres ya dejo para los agentes y todavia no fueron atendidas. Usar cuando pregunte si ya avis\xF3 algo, o para no repetir una nota que ya existe.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "consultar_datos", description: "Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos.", input_schema: { type: "object", properties: { vista: { type: "string", description: "Nombre exacto de la vista, tal como aparece en que_datos_hay" }, cuenta: { type: "string", enum: ENUM }, limite: { type: "number" } }, required: ["vista"] } },
+    { name: "que_datos_hay", description: "Catalogo de las 119 vistas y funciones del sistema con para que sirve cada una y que cuidado tener. Usar cuando pregunten donde esta un dato, si existe algo, o cuando haga falta explorar mas alla de lo obvio.", input_schema: { type: "object", properties: { buscar: { type: "string", description: 'Palabra a buscar, por ejemplo "conversiones" o "landing". Vacio devuelve el catalogo entero.' } }, required: [] } },
+    { name: "completitud_de_cuenta", description: "Que le falta a una cuenta para operar bien: doc maestro, reglas, nucleo, terminos protegidos, objetivo, datos frescos, destinatarios de reporte. Usar cuando pregunten si una cuenta esta lista, que falta cargar, o por que algo no funciona en una cuenta puntual.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "estado_de_los_flujos", description: "Cada flujo de datos del sistema: quien lo escribe, cuando fue el ultimo dato, si esta vivo o cortado. Usar SIEMPRE antes de decir que un dato no existe: puede que el flujo que lo trae nunca se haya conectado, que es distinto de que no haya habido nada.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "salud_del_sistema", description: "Estado del sistema: fallas, cosas para mirar, tareas que dejaron de correr. Usar cuando pregunten si algo anda mal, por que algo no corrio, o para un chequeo general.", input_schema: { type: "object", properties: {}, required: [] } },
+    { name: "por_que_limitada", description: "Descompone por que una cuenta pierde subastas: CTR esperado, relevancia del anuncio o experiencia de landing, ponderado por gasto, con las peores keywords. Usar cuando pregunten por que no escala, por que se pierde cuota, o que hacer para mejorar.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "buscar_accionable", description: 'Busca accionables de una cuenta por palabras del t\xEDtulo o del "por qu\xE9", en cualquier estado. Usar cuando pregunten por un accionable puntual ("la propuesta de agrupar campa\xF1as", "el de las negativas") y haga falta el detalle completo.', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM }, texto: { type: "string", description: 'Palabras a buscar, por ejemplo "agrupar campa\xF1as" o "negativas competidores"' } }, required: ["cuenta", "texto"] } },
     { name: "propuestas_estrategicas", description: "Propuestas estrat\xE9gicas de una cuenta con su estado, qu\xE9 se propuso, qu\xE9 se hizo realmente y el resultado esperado. Usar cuando pregunten por una propuesta o una estrategia, que NO son accionables.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "salud_datos", description: "Estado de los datos: \xFAltima extracci\xF3n, semana disponible, integridad, crons. Usar cuando pregunten si los datos est\xE1n al d\xEDa o por qu\xE9 falta algo.", input_schema: { type: "object", properties: {} } },
@@ -1020,10 +1044,32 @@ PREGUNTA: ${mensajes[mensajes.length - 1]?.content || ""}`;
   const msgs = [...historial, { role: "user", content: primerTurno }];
   let costo = 0;
   let vueltas = 0;
-  while (vueltas++ < 4) {
-    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 1500, system: `Sos el asistente de NorthSignal, la app de operaci\xF3n de cuentas de Google Ads de Andr\xE9s. Ayud\xE1s a navegar la app y a entender los datos. No ejecut\xE1s cambios.
+  while (vueltas++ < 7) {
+    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 2500, system: `Sos el asistente de NorthSignal, la app con la que Andr\xE9s opera cuentas de Google Ads. Habl\xE1s con Andr\xE9s, que es quien construy\xF3 el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
 
-Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sale de la base en cada consulta, as\xED que es la buena: si alguien nombra una cuenta que est\xE1 ah\xED, existe. Nunca digas que una cuenta no existe sin haberla buscado en esa lista, y nunca sugieras abrir un ticket porque una cuenta "deber\xEDa estar cargada" si figura ah\xED.`, messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
+Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sale de la base en cada consulta, as\xED que es la buena. Nunca digas que una cuenta no existe sin buscarla ah\xED, ni sugieras abrir un ticket porque una cuenta "deber\xEDa estar cargada" si figura.
+
+QU\xC9 POD\xC9S HACER
+
+Antes de decir que algo no existe, mir\xE1 si el flujo que lo trae est\xE1 vivo con estado_de_los_flujos. Caso concreto y activo: los webhooks de cierres reales nunca recibieron un evento, as\xED que v_cierres_totales y v_win_rates_reales est\xE1n vac\xEDas y van a seguir as\xED hasta que se conecte GoHighLevel y Asana. Eso no es "no hubo cierres": es un flujo sin conectar, y decirlo mal lleva a la conclusi\xF3n opuesta.
+
+Responder con datos. Todo n\xFAmero, nombre de campa\xF1a, keyword o fecha sale de una herramienta. Si no lo trajiste de una herramienta, no lo digas: "no lo tengo, lo busco" es una respuesta correcta y "creo que era alrededor de" no lo es. Cuando una herramienta devuelve vac\xEDo, mir\xE1 si trae una explicaci\xF3n del porqu\xE9 antes de concluir nada: no es lo mismo "no hay datos" que "todav\xEDa no se puede saber".
+
+Explicar el razonamiento de un accionable. Para eso est\xE1 explicar_accionable: trae qui\xE9n lo propuso, con qu\xE9 evidencia, qu\xE9 invariantes toca, si se puede ejecutar y por qu\xE9 no, y qu\xE9 pas\xF3 con cambios parecidos. Si Andr\xE9s pregunta por qu\xE9 se propuso algo o si conviene hacerlo, esa es la herramienta, siempre, antes de opinar.
+
+Ejecutar, si te lo pide. ejecutar_accionable encola un cambio por el mismo camino que el bot\xF3n de la app: mismo pre-vuelo, mismos guardarra\xEDles, mismo registro. Reglas: solo cuando lo pide expl\xEDcitamente, nunca por iniciativa propia, y antes de encolar dec\xED en una l\xEDnea qu\xE9 va a pasar. Si dud\xE1s de si lo est\xE1 pidiendo, ofrec\xE9 simular primero.
+
+Hablarle a los agentes. Si Andr\xE9s pregunta algo que el agente deber\xEDa investigar, da una instrucci\xF3n que cambia c\xF3mo analizar, o corrige algo que un agente asumi\xF3 mal, us\xE1 dejar_nota_para_agente. Sin eso la conversaci\xF3n muere ac\xE1 y el agente del lunes vuelve a analizar lo de siempre. Dec\xEDselo en una l\xEDnea cuando lo hagas: "le dej\xE9 nota al agente semanal de 360".
+
+C\xD3MO RESPONDER
+
+Directo y conversacional. Sin encabezados ni vi\xF1etas salvo que la respuesta sea naturalmente una lista. Castellano rioplatense.
+
+Cuando algo no se puede, dec\xED por qu\xE9 y de qui\xE9n es el l\xEDmite. "Los RSA no se crean por script, eso es de Google" sirve; "no puedo hacer eso" no.
+
+Un n\xFAmero siempre con su ventana: "5,44 USD en las \xFAltimas 4 semanas", no "5,44 USD".
+
+Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene reglas propias y promediarlas da un n\xFAmero que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter((b) => b.type === "tool_use");
     if (!toolUses.length || res.stop_reason !== "tool_use") {
@@ -1069,6 +1115,84 @@ Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sal
             })),
             nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Pod\xE9s citar t\xEDtulos y el "por qu\xE9" textual.' : "Esta cuenta no tiene accionables abiertos ahora mismo."
           };
+        } else if (tu.name === "explicar_accionable") {
+          const { data: exp } = await supabase2.rpc("explicar_accionable", { p_notion_id: inp.notion_id });
+          out = exp || { error: "No encontr\xE9 ese accionable. Buscalo primero con buscar_accionable." };
+        } else if (tu.name === "ejecutar_accionable") {
+          const base = process.env.APP_URL || `http://127.0.0.1:${process.env.PORT || 3e3}`;
+          let j = null, ok = false;
+          try {
+            const r = await fetch(`${base}/api/accionables/${encodeURIComponent(inp.notion_id)}/aprobar-ejecutar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.APP_ACCESS_TOKEN}` },
+              body: JSON.stringify({ modo: inp.modo === "ejecutar" ? "ejecutar" : "simular" })
+            });
+            ok = r.ok;
+            j = await r.json().catch(() => null);
+          } catch (e) {
+            j = { error: e?.message || "no se pudo llamar al endpoint" };
+          }
+          out = ok ? {
+            ok: true,
+            modo: inp.modo,
+            resultado: j,
+            nota: inp.modo === "simular" ? "Simulado: no se toc\xF3 nada. El resultado muestra qu\xE9 har\xEDa." : "Encolado. El ejecutor de Google Ads lo aplica dentro de la hora."
+          } : {
+            ok: false,
+            error: j?.error || "No se pudo encolar",
+            motivo: j?.por_que || j?.conflicto,
+            que_hacer: 'Si dice que no tiene acci\xF3n estructurada v\xE1lida, hay que ejecutarlo a mano con los pasos de "C\xF3mo hacerlo".'
+          };
+        } else if (tu.name === "dejar_nota_para_agente") {
+          const { data: id } = await supabase2.rpc("dejar_nota_para_agente", {
+            p_contenido: inp.contenido,
+            p_account: inp.cuenta || null,
+            p_para: inp.para || "semanal",
+            p_tipo: inp.tipo || "pregunta"
+          });
+          out = { ok: true, id, nota: `Anotado para el agente ${inp.para || "semanal"}${inp.cuenta ? " de " + inp.cuenta : ""}. Lo va a leer en su pr\xF3xima corrida.` };
+        } else if (tu.name === "que_pregunte_andres") {
+          const { data: notas } = await supabase2.from("v_notas_pendientes").select("*").limit(20);
+          out = { pendientes: notas || [] };
+        } else if (tu.name === "consultar_datos") {
+          const { data: dic } = await supabase2.rpc("diccionario_datos");
+          const existe = (dic || []).some((d) => d.objeto === inp.vista);
+          if (!existe) {
+            out = { error: `La vista "${inp.vista}" no existe. Mir\xE1 que_datos_hay para el cat\xE1logo.` };
+          } else {
+            let q = supabase2.from(inp.vista).select("*").limit(Math.min(inp.limite || 30, 100));
+            if (inp.cuenta) q = q.eq("account", inp.cuenta);
+            const { data: filas2, error: e } = await q;
+            out = e ? { error: e.message, nota: "Puede que esa vista no filtre por cuenta." } : { vista: inp.vista, filas: filas2 || [], cuantas: (filas2 || []).length };
+          }
+        } else if (tu.name === "que_datos_hay") {
+          const { data: dic } = await supabase2.rpc("diccionario_datos");
+          const q = String(inp.buscar || "").toLowerCase().trim();
+          const filas2 = (dic || []).filter((d) => !q || `${d.objeto} ${d.usar_para} ${d.cuidado || ""}`.toLowerCase().includes(q));
+          out = {
+            encontrados: filas2.length,
+            objetos: filas2.slice(0, 40),
+            nota: filas2.length > 40 ? "Se muestran los primeros 40. Afin\xE1 la b\xFAsqueda." : void 0
+          };
+        } else if (tu.name === "completitud_de_cuenta") {
+          const { data: comp } = await supabase2.rpc("completitud_de_cuenta", { p_account: inp.cuenta });
+          out = {
+            cuenta: inp.cuenta,
+            requisitos: comp || [],
+            faltan: (comp || []).filter((r) => !r.cumple).map((r) => r.requisito)
+          };
+        } else if (tu.name === "estado_de_los_flujos") {
+          const { data: fl } = await supabase2.rpc("estado_de_los_flujos");
+          out = {
+            flujos: fl || [],
+            cortados: (fl || []).filter((f) => f.estado === "CORTADO" || f.estado === "NUNCA RECIBIO NADA")
+          };
+        } else if (tu.name === "salud_del_sistema") {
+          const { data: s2 } = await supabase2.rpc("get_salud_sistema");
+          out = s2 || { error: "no disponible" };
+        } else if (tu.name === "por_que_limitada") {
+          const { data: p } = await supabase2.from("v_por_que_limitada").select("*").eq("account", inp.cuenta).maybeSingle();
+          out = p || { cuenta: inp.cuenta, nota: "Sin datos de cuota perdida para esta cuenta en el periodo." };
         } else if (tu.name === "buscar_accionable") {
           const q = String(inp.texto || "").trim();
           const { data: acc } = await supabase2.from("accionables_espejo").select("titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, ejecutado_el, url").eq("account", inp.cuenta).or(`titulo.ilike.%${q}%,por_que.ilike.%${q}%,entidad.ilike.%${q}%`).limit(10);
@@ -1166,9 +1290,9 @@ var authMiddleware = (req, res, next) => {
   }
   const headerToken = req.headers.authorization?.split(" ")[1];
   if (headerToken) {
-    if (headerToken === process.env.APP_ACCESS_TOKEN) return next();
+    if (comparacionSegura(headerToken, process.env.APP_ACCESS_TOKEN || "")) return next();
     if (verifySessionToken(headerToken)) return next();
-    if (req.path.startsWith("/cron/") && process.env.CRON_SECRET && headerToken === process.env.CRON_SECRET) return next();
+    if (req.path.startsWith("/cron/") && process.env.CRON_SECRET && comparacionSegura(headerToken, process.env.CRON_SECRET)) return next();
   }
   if (verifySessionToken(req.cookies?.auth_token)) return next();
   return res.status(401).json({ error: "Unauthorized" });
@@ -1176,59 +1300,120 @@ var authMiddleware = (req, res, next) => {
 
 // src/server/auth/routes.ts
 import { Router as Router2 } from "express";
-var authRouter = Router2();
-var loginAttempts = /* @__PURE__ */ new Map();
-authRouter.post("/login", (req, res) => {
-  const { password } = req.body;
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  const now = Date.now();
-  const attempt = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1e3 };
-  if (now > attempt.resetAt) {
-    attempt.count = 0;
-    attempt.resetAt = now + 15 * 60 * 1e3;
+
+// src/server/auth/limite.ts
+function ipDe(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd) return fwd.split(",")[0].trim();
+  return req.ip || req.socket?.remoteAddress || "desconocida";
+}
+async function verificarLimite(supabase2, clave, ruta, max = 20, ventanaMin = 15) {
+  if (!supabase2) return { permitido: true };
+  try {
+    const { data, error } = await supabase2.rpc("limite_de_tasa", {
+      p_clave: clave,
+      p_ruta: ruta,
+      p_max: max,
+      p_ventana: `${ventanaMin} minutes`
+    });
+    if (error) return { permitido: true };
+    return {
+      permitido: !!data?.permitido,
+      motivo: data?.motivo,
+      esperar: data?.esperar_segundos
+    };
+  } catch {
+    return { permitido: true };
   }
-  if (attempt.count >= 5) {
-    return res.status(429).json({ error: "Demasiados intentos fallidos. Intente de nuevo en 15 minutos." });
+}
+async function registrarIntento(supabase2, clave, ruta, exito, detalle) {
+  if (!supabase2) return;
+  try {
+    await supabase2.rpc("registrar_intento", {
+      p_clave: clave,
+      p_ruta: ruta,
+      p_exito: exito,
+      p_detalle: detalle || null
+    });
+  } catch {
   }
-  if (!process.env.APP_ACCESS_TOKEN) {
-    return res.status(500).json({ error: "APP_ACCESS_TOKEN no est\xE1 configurado en el servidor" });
-  }
-  if (password === process.env.APP_ACCESS_TOKEN) {
-    const sessionToken = createSessionToken();
-    loginAttempts.delete(ip);
+}
+
+// src/server/auth/routes.ts
+function crearAuthRouter(supabase2) {
+  const authRouter = Router2();
+  authRouter.post("/login", async (req, res) => {
+    const { password } = req.body;
+    const ip = ipDe(req);
+    const v = await verificarLimite(supabase2, ip, "/login", 10, 15);
+    if (!v.permitido) {
+      return res.status(429).json({
+        error: v.motivo === "demasiados intentos fallidos" ? `Demasiados intentos fallidos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).` : `Demasiados intentos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`,
+        esperar_segundos: v.esperar
+      });
+    }
+    if (!process.env.APP_ACCESS_TOKEN) {
+      return res.status(500).json({ error: "APP_ACCESS_TOKEN no est\xE1 configurado en el servidor" });
+    }
+    if (comparacionSegura(String(password || ""), process.env.APP_ACCESS_TOKEN)) {
+      const sessionToken = createSessionToken();
+      await registrarIntento(supabase2, ip, "/login", true);
+      const isProd = process.env.NODE_ENV === "production" || process.env.FORCE_SECURE_COOKIE === "true";
+      res.cookie("auth_token", sessionToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1e3,
+        path: "/"
+      });
+      return res.json({ success: true, token: sessionToken });
+    }
+    await registrarIntento(supabase2, ip, "/login", false, "contrase\xF1a incorrecta");
+    return res.status(401).json({ error: "Contrase\xF1a incorrecta" });
+  });
+  authRouter.post("/logout", (_req, res) => {
     const isProd = process.env.NODE_ENV === "production" || process.env.FORCE_SECURE_COOKIE === "true";
-    res.cookie("auth_token", sessionToken, {
+    res.clearCookie("auth_token", {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1e3,
       path: "/"
     });
-    return res.json({ success: true, token: sessionToken });
-  }
-  attempt.count++;
-  loginAttempts.set(ip, attempt);
-  return res.status(401).json({ error: "Contrase\xF1a incorrecta" });
-});
-authRouter.post("/logout", (_req, res) => {
-  const isProd = process.env.NODE_ENV === "production" || process.env.FORCE_SECURE_COOKIE === "true";
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-    path: "/"
+    res.json({ success: true });
   });
-  res.json({ success: true });
-});
-authRouter.get("/me", (req, res) => {
-  const headerToken = req.headers.authorization?.split(" ")[1];
-  if (headerToken) {
-    if (process.env.APP_ACCESS_TOKEN && headerToken === process.env.APP_ACCESS_TOKEN) return res.json({ authenticated: true });
-    if (verifySessionToken(headerToken)) return res.json({ authenticated: true });
-  }
-  if (verifySessionToken(req.cookies?.auth_token)) return res.json({ authenticated: true });
-  return res.status(401).json({ error: "Unauthorized" });
-});
+  authRouter.get("/me", (req, res) => {
+    const headerToken = req.headers.authorization?.split(" ")[1];
+    if (headerToken) {
+      if (process.env.APP_ACCESS_TOKEN && comparacionSegura(headerToken, process.env.APP_ACCESS_TOKEN)) return res.json({ authenticated: true });
+      if (verifySessionToken(headerToken)) return res.json({ authenticated: true });
+    }
+    if (verifySessionToken(req.cookies?.auth_token)) return res.json({ authenticated: true });
+    return res.status(401).json({ error: "Unauthorized" });
+  });
+  return authRouter;
+}
+
+// src/server/entorno.ts
+function entornoActual() {
+  const v = process.env.VERCEL_ENV;
+  if (v === "production") return "produccion";
+  if (v === "preview") return "rama";
+  if (v) return "local";
+  return process.env.NODE_ENV === "production" && process.env.FORZAR_PRODUCCION === "true" ? "produccion" : "local";
+}
+var esProduccion = () => entornoActual() === "produccion";
+function puedeEscribirAfuera() {
+  if (esProduccion()) return { permitido: true };
+  return {
+    permitido: false,
+    motivo: `Est\xE1s en entorno "${entornoActual()}" y esto escribe hacia afuera. Queda en modo simulaci\xF3n: ves qu\xE9 har\xEDa, pero no sale. Si de verdad quer\xE9s ejecutar contra la cuenta real, hacelo desde la app desplegada.`
+  };
+}
+function banda() {
+  const e = entornoActual();
+  if (e === "produccion") return null;
+  return e === "rama" ? { entorno: e, color: "#b45309", texto: "RAMA DE PRUEBA \xB7 las acciones no se ejecutan" } : { entorno: e, color: "#b42318", texto: "LOCAL contra la base REAL \xB7 las acciones no se ejecutan" };
+}
 
 // src/server/domain/clientRules.ts
 var CLIENT_RULES = {
@@ -1314,7 +1499,7 @@ var _cuentasCache = { at: 0, data: [] };
 async function cuentasActivas() {
   if (Date.now() - _cuentasCache.at < 3e5 && _cuentasCache.data.length) return _cuentasCache.data;
   if (!supabase) return [];
-  const { data } = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario, notion_ficha_id").eq("activa", true).order("account");
+  const { data } = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas").eq("activa", true).order("account");
   if (data?.length) _cuentasCache = { at: Date.now(), data };
   return data || [];
 }
@@ -1352,11 +1537,18 @@ function createApp() {
     }
   }));
   app2.use(cookieParser());
-  app2.use("/api", authRouter);
+  app2.use("/api", crearAuthRouter(supabase));
   app2.get("/r/:token", async (req, res) => {
     if (!supabase) return res.status(503).send("No disponible");
+    const ip = ipDe(req);
+    const lim = await verificarLimite(supabase, ip, "/r", 30, 10);
+    if (!lim.permitido) return res.status(429).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Demasiados pedidos. Prob\xE1 de nuevo en unos minutos.</body></html>');
     const { data: r } = await supabase.from("v_reporte_publico").select("*").eq("token", req.params.token).maybeSingle();
-    if (!r) return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no est\xE1 disponible.</body></html>');
+    if (!r) {
+      await registrarIntento(supabase, ip, "/r", false, "token inexistente");
+      return res.status(404).send('<html><body style="font-family:Helvetica;padding:40px;color:#333">Este reporte no est\xE1 disponible.</body></html>');
+    }
+    await registrarIntento(supabase, ip, "/r", true);
     await supabase.from("reportes_cliente").update({ vistas: r.vistas ? r.vistas + 1 : 1, visto_el: r.visto_el || (/* @__PURE__ */ new Date()).toISOString() }).eq("token", req.params.token);
     const en = r.idioma === "en";
     const t = en ? { titulo: "Performance Report", periodo: "Period", inv: "Spend", conv: "Conversions", cpa: "CPA", clics: "Clicks", ctr: "CTR", vs: "vs previous period", camp: "Campaigns", grp: "Ad groups", pdf: "Download PDF", by: "Prepared by" } : { titulo: "Reporte de rendimiento", periodo: "Per\xEDodo", inv: "Inversi\xF3n", conv: "Conversiones", cpa: "CPA", clics: "Clics", ctr: "CTR", vs: "vs per\xEDodo anterior", camp: "Campa\xF1as", grp: "Grupos de anuncios", pdf: "Descargar PDF", by: "Preparado por" };
@@ -1396,8 +1588,15 @@ function createApp() {
   });
   app2.get("/api/publico/reportes/:token/pdf", async (req, res) => {
     if (!supabase) return res.status(503).send("No disponible");
+    const ipPdf = ipDe(req);
+    const limPdf = await verificarLimite(supabase, ipPdf, "/publico-pdf", 20, 10);
+    if (!limPdf.permitido) return res.status(429).send("Demasiados pedidos. Prob\xE1 de nuevo en unos minutos.");
     const { data: r } = await supabase.from("reportes_cliente").select("id, pdf_path, estado, account, periodo_desde").eq("token", req.params.token).in("estado", ["aprobado", "enviado"]).maybeSingle();
-    if (!r) return res.status(404).send("No disponible");
+    if (!r) {
+      await registrarIntento(supabase, ipPdf, "/publico-pdf", false, "token inexistente");
+      return res.status(404).send("No disponible");
+    }
+    await registrarIntento(supabase, ipPdf, "/publico-pdf", true);
     let ruta = r.pdf_path;
     if (!ruta) {
       try {
@@ -3330,6 +3529,10 @@ Reporte completo: ${url}`;
     res.json({ ok: true });
   });
   app2.post("/api/reportes/:id/aprobar", async (req, res) => {
+    {
+      const a = puedeEscribirAfuera();
+      if (!a.permitido) return res.status(403).json({ error: a.motivo, entorno: entornoActual() });
+    }
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data, error } = await supabase.from("reportes_cliente").update({ estado: "aprobado", aprobado_el: (/* @__PURE__ */ new Date()).toISOString(), aprobado_por: "andres" }).eq("id", req.params.id).eq("estado", "borrador").select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -3394,6 +3597,13 @@ Reporte completo: ${url}`;
     res.json({ ok: true, semana: desde, resultados: out });
   });
   app2.post("/api/asistente", async (req, res) => {
+    {
+      const lim = await verificarLimite(supabase, ipDe(req), "/asistente", 40, 60);
+      if (!lim.permitido) return res.status(429).json({
+        error: `Demasiados mensajes seguidos. Prob\xE1 de nuevo en ${Math.ceil((lim.esperar || 60) / 60)} minuto(s).`
+      });
+      await registrarIntento(supabase, ipDe(req), "/asistente", true);
+    }
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
       const { mensajes, pagina, cuenta } = req.body || {};
@@ -3425,7 +3635,7 @@ Reporte completo: ${url}`;
   });
   app2.get("/api/alertas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { data, error } = await supabase.from("v_alertas_abiertas").select("*").limit(100);
+    const { data, error } = await supabase.from("v_alertas_agrupadas").select("*").limit(100);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
@@ -3590,6 +3800,13 @@ Reporte completo: ${url}`;
     } catch (e) {
       console.error("[espejo] " + e.message);
     }
+    try {
+      await supabase.rpc("memoria_ingestar");
+      const n = await embeberPendientes(supabase);
+      if (n) console.log(`[memoria] ${n} embebidos`);
+    } catch (e) {
+      console.error("[memoria] " + e.message);
+    }
     const { data: resumen } = await supabase.rpc("reconciliar");
     const { data: pendientes } = await supabase.from("reconciliaciones").select("*").eq("aplicada", false).order("corrida").limit(50);
     let aplicadas = 0;
@@ -3655,7 +3872,7 @@ Reporte completo: ${url}`;
       }
       return null;
     }
-    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo, aprobada_por: "politica", por_politica: true });
+    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : "simular", aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
         await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
@@ -3749,6 +3966,8 @@ Reporte completo: ${url}`;
       }
       if (!camp) return res.status(422).json({ error: "No pude determinar la campa\xF1a. Ejecutalo a mano." });
     }
+    const afuera = puedeEscribirAfuera();
+    const modoReal = afuera.permitido ? modo : "simular";
     const p = body.parametros || {};
     const { data, error } = await supabase.from("acciones_aprobadas").insert({
       account,
@@ -3766,7 +3985,7 @@ Reporte completo: ${url}`;
       valor_actual: p.valor_actual ?? null,
       valor_nuevo: p.valor_nuevo ?? null,
       etiqueta: p.etiqueta || null,
-      modo: modo === "ejecutar" ? "ejecutar" : "simular"
+      modo: modoReal === "ejecutar" ? "ejecutar" : "simular"
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     if (notion) {
@@ -3860,6 +4079,88 @@ Reporte completo: ${url}`;
     await supabase.from("accionable_relaciones").update({ resuelta: true, resuelta_el: (/* @__PURE__ */ new Date()).toISOString(), resuelta_por: "andres" }).eq("id", req.params.id);
     res.json({ ok: true });
   });
+  app2.get("/api/respaldo/:que", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const mapa = {
+      esquema: { fn: "volcar_esquema", archivo: "00000000000001_linea_base.sql" },
+      semillas: { fn: "volcar_semillas", archivo: "00000000000002_datos_semilla.sql" },
+      crons: { fn: "volcar_crons", archivo: "00000000000003_tareas_programadas.sql" }
+    };
+    const cfg = mapa[req.params.que];
+    if (!cfg) return res.status(400).json({ error: "Ped\xED esquema, semillas o crons" });
+    const { data, error } = await supabase.rpc(cfg.fn);
+    if (error) return res.status(500).json({ error: error.message });
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${cfg.archivo}"`);
+    res.send(data || "");
+  });
+  app2.get("/api/respaldo", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const [e, s2, c] = await Promise.all([
+      supabase.rpc("volcar_esquema"),
+      supabase.rpc("volcar_semillas"),
+      supabase.rpc("volcar_crons")
+    ]);
+    const err = e.error || s2.error || c.error;
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({
+      generado: (/* @__PURE__ */ new Date()).toISOString(),
+      archivos: [
+        { nombre: "00000000000001_linea_base.sql", kb: Math.round((e.data || "").length / 1024), url: "/api/respaldo/esquema" },
+        { nombre: "00000000000002_datos_semilla.sql", kb: Math.round((s2.data || "").length / 1024), url: "/api/respaldo/semillas" },
+        { nombre: "00000000000003_tareas_programadas.sql", kb: Math.round((c.data || "").length / 1024), url: "/api/respaldo/crons" }
+      ],
+      donde_van: "supabase/migrations/ en el repo northsignal-market/app.northsignal"
+    });
+  });
+  app2.get("/api/entorno", (_req, res) => {
+    res.json({ entorno: entornoActual(), es_produccion: esProduccion(), banda: banda() });
+  });
+  app2.post("/api/novedades/grupo/leer", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { cuenta, tipo, actor, dia } = req.body || {};
+    if (!cuenta || !tipo || !actor || !dia) return res.status(400).json({ error: "Faltan cuenta, tipo, actor o dia" });
+    const { data, error } = await supabase.rpc("marcar_grupo_leido", { p_cuenta: cuenta, p_tipo: tipo, p_actor: actor, p_dia: dia });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, marcadas: data });
+  });
+  app2.post("/api/alertas/grupo/resolver", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { cuenta, tipo, dia } = req.body || {};
+    if (!cuenta || !tipo || !dia) return res.status(400).json({ error: "Faltan cuenta, tipo o dia" });
+    const { data, error } = await supabase.rpc("resolver_grupo_alertas", { p_account: cuenta, p_tipo: tipo, p_dia: dia });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, resueltas: data });
+  });
+  app2.get("/api/flujos", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.rpc("estado_de_los_flujos");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ flujos: data || [], cortados: (data || []).filter((f) => f.estado === "CORTADO" || f.estado === "NUNCA RECIBIO NADA") });
+  });
+  app2.get("/api/notas-agentes", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const [{ data: pend }, { data: resp }] = await Promise.all([
+      supabase.from("v_notas_pendientes").select("*").limit(20),
+      supabase.from("v_respuestas_de_agentes").select("*").limit(20)
+    ]);
+    res.json({ pendientes: pend || [], respuestas: resp || [] });
+  });
+  app2.get("/api/orden-del-dia", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.rpc("orden_del_dia");
+    if (error) return res.status(500).json({ error: error.message });
+    const filas = data || [];
+    const bloques = {};
+    for (const f of filas) {
+      (bloques[f.bloque] ||= []).push(f);
+    }
+    res.json({
+      total: filas.length,
+      un_clic: (bloques["Un clic"] || []).length,
+      bloques: Object.entries(bloques).map(([nombre, items]) => ({ nombre, cuantos: items.length, items }))
+    });
+  });
   app2.get("/api/salud", async (_req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { data, error } = await supabase.rpc("get_salud_sistema");
@@ -3947,7 +4248,9 @@ Reporte completo: ${url}`;
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const client = req.query.client;
     const [lec, con, tipo, brecha] = await Promise.all([
-      client ? supabase.from("lecciones").select("*").or(`account.eq.${client},account.is.null`).order("confianza", { ascending: false }).limit(30) : supabase.from("lecciones").select("*").order("confianza", { ascending: false }).limit(40),
+      // v_lecciones_vigentes, no la tabla: excluye lo que quedo en cuarentena por
+      // haberse escrito sobre datos que despues resultaron falsos.
+      client ? supabase.from("v_lecciones_vigentes").select("*").or(`account.eq.${client},account.is.null`).order("confianza", { ascending: false }).limit(30) : supabase.from("v_lecciones_vigentes").select("*").order("confianza", { ascending: false }).limit(40),
       supabase.from("conocimiento_externo").select("*").order("fecha", { ascending: false }).limit(30),
       client ? supabase.from("v_acierto_por_tipo").select("*").eq("account", client) : supabase.from("v_acierto_por_tipo").select("*"),
       supabase.from("v_brecha_objetivo").select("*")
@@ -4044,7 +4347,7 @@ Reporte completo: ${url}`;
   });
   app2.get("/api/novedades", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { data } = await supabase.from(req.query.todas ? "v_novedades_7d" : "v_novedades").select("*").limit(req.query.todas ? 150 : 60);
+    const { data } = await supabase.from(req.query.todas ? "v_novedades_7d" : "v_novedades_agrupadas").select("*").limit(req.query.todas ? 150 : 60);
     res.json(data || []);
   });
   app2.post("/api/novedades/leer", async (req, res) => {
@@ -4258,6 +4561,17 @@ Reporte completo: ${url}`;
   });
   app2.all("/api/*", (req, res) => {
     res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl || req.path}` });
+  });
+  app2.use("/api", (err, req, res, _next) => {
+    const detalle = err?.message || String(err);
+    console.error(`[error no capturado] ${req?.method} ${req?.originalUrl} \u2014 ${detalle}`);
+    if (res.headersSent) return;
+    res.status(500).json({
+      error: "Algo fall\xF3 en el servidor procesando este pedido.",
+      detalle,
+      ruta: req?.originalUrl,
+      que_hacer: "Si se repite, mir\xE1 Sistema > Salud o revis\xE1 los registros de Vercel."
+    });
   });
   return app2;
 }

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifySessionToken } from './session';
+import { comparacionSegura } from '../lib/signatures';
 
 export // Auth Middleware
   const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
@@ -17,10 +18,12 @@ export // Auth Middleware
     // Header: APP_ACCESS_TOKEN, session token, o CRON_SECRET para /cron/*
     const headerToken = req.headers.authorization?.split(' ')[1];
     if (headerToken) {
-      if (headerToken === process.env.APP_ACCESS_TOKEN) return next();
+      // Comparacion en tiempo constante: un === revela por su duracion cuantos
+      // caracteres acerto quien prueba, y el token se adivina de a uno.
+      if (comparacionSegura(headerToken, process.env.APP_ACCESS_TOKEN || '')) return next();
       if (verifySessionToken(headerToken)) return next();
       // Vercel Cron y pg_net llaman con Bearer CRON_SECRET. Solo vale para rutas de cron.
-      if (req.path.startsWith('/cron/') && process.env.CRON_SECRET && headerToken === process.env.CRON_SECRET) return next();
+      if (req.path.startsWith('/cron/') && process.env.CRON_SECRET && comparacionSegura(headerToken, process.env.CRON_SECRET)) return next();
     }
 
     if (verifySessionToken(req.cookies?.auth_token)) return next();

@@ -30,6 +30,38 @@ export function Drawer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // El foco entra al panel al abrirlo y no se escapa con Tab. Sin esto, tabular
+  // lleva el foco a la pantalla de atrás, que está tapada: el usuario escribe en
+  // un campo que no ve.
+  const panel = React.useRef<any>(null);
+  useEffect(() => {
+    if (!isOpen || !panel.current) return;
+    const enfocables = (): any[] => Array.prototype.slice.call(
+      panel.current.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ).filter((el: any) => el.offsetParent !== null);
+    const primeroAlAbrir = enfocables()[0];
+    if (primeroAlAbrir) primeroAlAbrir.focus();
+    const atrapar = (e: any) => {
+      if (e.key !== 'Tab') return;
+      const els = enfocables();
+      if (!els.length) return;
+      const primero: any = els[0], ultimo: any = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+      else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+    };
+    window.addEventListener('keydown', atrapar);
+    return () => window.removeEventListener('keydown', atrapar);
+  }, [isOpen]);
+
+  // Mientras el panel está abierto, el fondo no scrollea: sin esto la rueda del
+  // mouse mueve la pantalla de atrás cuando el panel llega a su final.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previo; };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -39,8 +71,13 @@ export function Drawer({
         backgroundColor: 'rgba(15, 20, 36, 0.7)'
       }}
       onClick={onClose}
+      role="presentation"
     >
       <div 
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : 'Panel de detalle'}
         className={`glass drawer-enter ${width} h-full flex flex-col`}
         style={{ borderRadius: 0, borderTop: 0, borderBottom: 0, borderRight: 0 }}
         onClick={(e) => e.stopPropagation()}
@@ -58,6 +95,7 @@ export function Drawer({
               <button
                 onClick={onBack}
                 title="Volver"
+                aria-label="Volver"
                 className="p-1.5 rounded hover:bg-white/10 text-[#F5F7FA] transition-colors shrink-0"
                 style={{ borderRadius: '6px' }}
               >

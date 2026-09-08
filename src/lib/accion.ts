@@ -120,7 +120,7 @@ export function tituloDesde(a: Accion): string {
     case 'crear_anuncio': return `Crear anuncio${en}`;
     case 'cambiar_puja': return `Cambiar puja${p.valor_actual != null ? ` de ${p.valor_actual}` : ''}${p.valor_nuevo != null ? ` a ${p.valor_nuevo}` : ''}${en}`;
     case 'cambiar_presupuesto': return `Cambiar presupuesto${p.valor_actual != null ? ` de ${p.valor_actual}` : ''}${p.valor_nuevo != null ? ` a ${p.valor_nuevo}` : ''}${o.campana ? ` de ${o.campana}` : ''}`;
-    case 'cambiar_estrategia_puja': return `Cambiar estrategia de puja${p.valor_actual ? ` de ${p.valor_actual}` : ''}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ''}${o.campana ? ` en ${o.campana}` : ''}`;
+    case 'cambiar_estrategia_puja': return `Cambiar estrategia de puja${p.valor_actual ? ` de ${p.valor_actual}` : ''}${p.estrategia_destino ? ` a ${p.estrategia_destino}` : (p.valor_nuevo ? ` a ${p.valor_nuevo}` : '')}${o.campana ? ` en ${o.campana}` : ''}`;
     case 'cambiar_conversion': return `Cambiar ${o.accion_conversion || 'acción de conversión'}${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ''}`;
     case 'cambiar_landing': return `Cambiar landing${p.valor_nuevo ? ` a ${p.valor_nuevo}` : ''}${en}`;
     case 'cambiar_programacion': return `Cambiar programación de anuncios${o.campana ? ` en ${o.campana}` : ''}`;
@@ -128,14 +128,10 @@ export function tituloDesde(a: Accion): string {
     case 'preguntar_cliente': return `Preguntar a ${p.a_quien || 'cliente'}: ${(p.pregunta || '').slice(0, 80)}`;
     case 'preguntar_andres': return `Decidir: ${(p.pregunta || '').slice(0, 90)}`;
     case 'tarea_externa': return `${(p.que_hacer || 'Tarea').slice(0, 80)}${p.donde ? ` en ${p.donde}` : ''}`;
-    case 'quitar_negativa': return `Quitar la negativa ${o.keyword} de ${p.nivel === 'grupo' ? o.grupo : o.campana}`;
-    case 'reactivar_keyword': return `Reactivar ${o.keyword} en ${o.grupo || o.campana}`;
     case 'pausar_grupo': return `Pausar el grupo ${o.grupo} en ${o.campana}`;
     case 'pausar_campana': return `Pausar la campaña ${o.campana}`;
     case 'reactivar_campana': return `Reactivar la campaña ${o.campana}`;
-    case 'cambiar_estrategia_puja': return `Cambiar la puja de ${o.campana} a ${p.estrategia_destino}`;
     case 'cambiar_objetivo_puja': return p.valor_nuevo == null ? `Quitar el objetivo de puja en ${o.campana}` : `Poner el objetivo de puja de ${o.campana} en ${p.valor_nuevo}`;
-    case 'cambiar_presupuesto': return `Cambiar el presupuesto de ${o.campana} de ${p.valor_actual} a ${p.valor_nuevo}`;
     case 'cambiar_cpc_keyword': return `Cambiar el CPC de ${o.keyword} de ${p.valor_actual} a ${p.valor_nuevo}`;
     case 'aplicar_etiqueta': return `Etiquetar ${o.campana} como ${p.etiqueta}`;
   }

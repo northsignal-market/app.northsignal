@@ -49,7 +49,7 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
       .then(r => r.ok ? r.json() : null).then(d => d && setPulsoDiario(d.pulsos || [])).catch(() => {});
   }, [selectedClient]);
 
-  // Veredictos de escalamiento de las tres cuentas: si alguna tiene HEADROOM
+  // Veredictos de escalamiento de todas las cuentas activas: si alguna tiene HEADROOM
   // o TECHO, es una decisión del lunes
   useEffect(() => {
     fetch('/api/objetivos', { credentials: 'include' })

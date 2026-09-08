@@ -31,6 +31,19 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const [bloqueados, setBloqueados] = useState<Record<string, string>>({});
   const [novedades, setNovedades] = useState<any[]>([]);
   const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false });
+  // Desglose por lo que cuesta decidir cada cosa. "23 cosas esperan tu criterio" no
+  // dice si son 23 clics o 23 investigaciones, y esa diferencia es la que decide
+  // si abrís la app o la cerrás.
+  const [orden, setOrden] = useState<any>(null);
+  // Lo que los agentes respondieron a lo que les preguntaste. Sin esto, un agente
+  // responde y nadie lo lee: el círculo no cierra.
+  const [notas, setNotas] = useState<any>(null);
+  useEffect(() => {
+    fetch('/api/orden-del-dia', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setOrden(d)).catch(() => {});
+    fetch('/api/notas-agentes', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null).then(d => d && setNotas(d)).catch(() => {});
+  }, []);
   const [filtroCuenta, setFiltroCuenta] = useState<string | null>(null);
 
   const cargar = () => {
@@ -49,7 +62,15 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const { nombres: cuentas } = useCuentas();
   const enCuenta = (c: string) => !filtroCuenta || c === filtroCuenta;
   const hoy = alertas.filter(a => a.nivel === 'hoy' && enCuenta(a.account || ''));
-  const listos = actionables.filter(a => a.status === NOTION_STATES.PROPUESTO && !a.reemplazado_por && enCuenta(a.client));
+  // "Listos para ejecutar" mezclaba tres cosas distintas: lo que es un clic, lo que
+  // es una pregunta para vos, y lo que hay que hacer a mano. Cada una cuesta un
+  // esfuerzo distinto, y verlas juntas obliga a abrir cada una para saber cuál es cuál.
+  const propuestos = actionables.filter(a => a.status === NOTION_STATES.PROPUESTO && !a.reemplazado_por && enCuenta(a.client));
+  const esPregunta = (a: any) => String(a.accion?.verbo || '').startsWith('preguntar');
+  const esUnClic = (a: any) => !esPregunta(a) && !bloqueados[a.id] && !!(a.accion ? tipoAutoDesde(a.accion) : detectarTipoAuto(a.title, a.como_hacerlo));
+  const listos = propuestos.filter(esUnClic);
+  const preguntas = propuestos.filter(esPregunta);
+  const aMano = propuestos.filter(a => !esUnClic(a) && !esPregunta(a));
   const confirmar = actionables.filter(a => a.status === NOTION_STATES.BLOQUEADO && !a.reemplazado_por && enCuenta(a.client));
   const reportes = (briefing?.reportes_por_aprobar || []).filter((r: any) => enCuenta(r.cuenta));
   const propPend = propuestas.filter(p => p.estado === 'propuesta' && enCuenta(p.account));
@@ -78,6 +99,25 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             {briefing?.datos_al_dia === false ? <span className="text-[#0062CC]">Los datos tienen un problema: mirá Sistema › Salud antes de decidir nada.</span> : 'Datos al día.'}
             {' '}{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}.
           </p>
+          {orden && orden.total > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {(orden.bloques || []).map((b: any) => (
+                <span key={b.nombre} className="text-[10px] px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: b.nombre === 'Un clic' ? '#0062CC28' : 'var(--surface-2)',
+                    color: b.nombre === 'Un clic' ? '#FFFFFF' : '#F5F7FA',
+                    border: '1px solid var(--border)'
+                  }}>
+                  {b.cuantos} {b.nombre.toLowerCase()}
+                </span>
+              ))}
+              {orden.un_clic > 0 && (
+                <span className="text-[10px] text-[#F5F7FA] opacity-50">
+                  · empezá por los {orden.un_clic} de un clic: son los que más te devuelven por minuto
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] ${!filtroCuenta ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>Todas</button>
@@ -108,6 +148,33 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
         </div>
       )}
 
+      {/* Lo que los agentes contestaron. Va arriba de la cola porque es lo único
+          que llegó desde la última vez sin que tuvieras que pedirlo. */}
+      {notas?.respuestas?.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--primary-faint)' }}>
+            <span className="text-[11px] font-semibold text-[#FFFFFF]">Te respondieron</span>
+            <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{notas.respuestas.length}</span>
+            <span className="text-[10px] text-[#F5F7FA] opacity-50">lo que preguntaste y ya te contestaron</span>
+          </div>
+          {notas.respuestas.slice(0, 4).map((r: any) => (
+            <div key={r.id} className="px-4 py-2.5" style={{ borderTop: '1px solid var(--border)' }}>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[10px] px-1.5 py-0.5 rounded tabular shrink-0" style={{ backgroundColor: 'var(--surface-2)', color: '#F5F7FA' }}>{r.cuenta}</span>
+                <span className="text-[11px] text-[#F5F7FA] opacity-60 truncate">{r.pregunta}</span>
+              </div>
+              <p className="text-xs text-[#FFFFFF] mt-1 leading-relaxed">{r.respuesta}</p>
+              <span className="text-[10px] text-[#F5F7FA] opacity-40">{r.respondio} · {new Date(r.cuando).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {notas?.pendientes?.length > 0 && (
+        <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">
+          {notas.pendientes.length} pregunta{notas.pendientes.length !== 1 ? 's' : ''} esperando la próxima corrida del agente.
+        </p>
+      )}
+
       {/* La cola */}
       {total === 0 ? (
         <div className="p-8 rounded-2xl text-center" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
@@ -126,10 +193,26 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             </Grupo>
           )}
           {listos.length > 0 && (
-            <Grupo titulo="Listos para ejecutar" n={listos.length} icono={<Zap size={13} />}>
+            <Grupo titulo="Un clic" n={listos.length} icono={<Zap size={13} />} destacado>
               {listos.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.priority === 'Urgente' || a.priority === 'Alta' ? `Prioridad ${a.priority.toLowerCase()}` : undefined} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#0062CC]">espera: conflicto abierto</span> : a.accion?.verbo?.startsWith('preguntar') ? 'es una pregunta, no un cambio' : (a.accion ? tipoAutoDesde(a.accion) : detectarTipoAuto(a.title, a.como_hacerlo)) ? 'el sistema puede ejecutarlo' : 'a mano, con los pasos adentro'}</span>} />
+                  accion={<span className="text-[11px] text-[#0062CC]">el ejecutor lo aplica</span>} />
+              ))}
+            </Grupo>
+          )}
+          {preguntas.length > 0 && (
+            <Grupo titulo="Lo sabés vos" n={preguntas.length}>
+              {preguntas.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
+                <Fila key={a.id} cuenta={a.client} titulo={a.title} onClick={() => abrir(a)}
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{a.accion?.verbo === 'preguntar_cliente' ? 'un mensaje al cliente' : 'responder y cerrar'}</span>} />
+              ))}
+            </Grupo>
+          )}
+          {aMano.length > 0 && (
+            <Grupo titulo="A mano" n={aMano.length}>
+              {aMano.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
+                <Fila key={a.id} cuenta={a.client} titulo={a.title} onClick={() => abrir(a)}
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#0062CC]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
               ))}
             </Grupo>
           )}

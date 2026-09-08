@@ -4,13 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>North Signal</title>
+    <!-- El icono de la pestana: sin esto la app se ve como una pagina cualquiera
+         entre veinte pestanas abiertas. Se usa el mismo logo del login. -->
+    <link rel="icon" type="image/png" href="https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png" />
+    <link rel="apple-touch-icon" href="https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png" />
+    <!-- El color de la barra del navegador en movil, igual al fondo de la app -->
+    <meta name="theme-color" content="#1A1F36" />
+    <meta name="color-scheme" content="dark" />
     <meta name="description" content="North Signal - Sistema de análisis de campañas publicitarias y centro de operaciones para Google Ads." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- display=swap ya estaba: el texto se ve con la fuente del sistema mientras
+         Inter carga, en vez de quedar invisible. Se agrega preload para que la
+         primera pantalla no cambie de tipografia a la vista. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <meta property="og:title" content="North Signal" />
     <meta property="og:description" content="North Signal - Sistema de análisis de campañas publicitarias y centro de operaciones para Google Ads." />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png" />
+    <meta property="og:locale" content="es_AR" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
@@ -23,7 +36,14 @@
         <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G"/>
       </filter>
     </svg>
-    <div id="root"></div>
+    <!-- Lo que se ve mientras React monta. Sin esto, entre que carga el HTML y
+         arranca la app hay un blanco de medio segundo que parece que fallo. -->
+    <div id="root">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1A1F36">
+        <div style="width:32px;height:32px;border-radius:50%;border:2px solid transparent;border-top-color:#0062CC;animation:girar .8s linear infinite"></div>
+      </div>
+    </div>
+    <style>@keyframes girar{to{transform:rotate(360deg)}}</style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

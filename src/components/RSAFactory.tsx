@@ -105,12 +105,12 @@ export function RSAFactory() {
           
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
             <div className="flex gap-2 mb-2">
-              <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar términos…"
+              <input aria-label="Filtro" value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar términos…"
                 className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#FFFFFF] focus:outline-none focus:border-[#0062CC]" />
               <label className="flex items-center gap-1.5 text-[11px] text-[#F5F7FA] opacity-80 whitespace-nowrap cursor-pointer">
                 <input type="checkbox" checked={soloConConv} onChange={e => setSoloConConv(e.target.checked)} className="accent-[#0062CC]" /> solo con conversiones
               </label>
-              <select value={orderBy} onChange={e => setOrderBy(e.target.value as any)}
+              <select aria-label="Order By" value={orderBy} onChange={e => setOrderBy(e.target.value as any)}
                 className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1.5 text-xs text-[#FFFFFF] focus:outline-none">
                 <option value="conversions">Por conversiones</option>
                 <option value="clicks">Por clics</option>

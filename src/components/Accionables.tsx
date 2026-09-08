@@ -127,7 +127,7 @@ export function Accionables({
         {/* Search Input */}
         <div className="relative w-full sm:w-72">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA] opacity-50" />
-          <input
+          <input aria-label="Search"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -149,7 +149,7 @@ export function Accionables({
         </div>
 
         {/* Client */}
-        <select
+        <select aria-label="Filter Client"
           value={filterClient}
           onChange={(e) => setFilterClient(e.target.value)}
           className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
@@ -160,7 +160,7 @@ export function Accionables({
         </select>
 
         {/* Status */}
-        <select
+        <select aria-label="Filter Status"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
@@ -175,7 +175,7 @@ export function Accionables({
         </select>
 
         {/* Priority */}
-        <select
+        <select aria-label="Filter Priority"
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
           className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
@@ -189,7 +189,7 @@ export function Accionables({
         </select>
 
         {/* Naturaleza */}
-        <select
+        <select aria-label="Filter Naturaleza"
           value={filterNaturaleza}
           onChange={(e) => setFilterNaturaleza(e.target.value)}
           className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
@@ -202,7 +202,7 @@ export function Accionables({
         </select>
 
         {/* Revision IA */}
-        <select
+        <select aria-label="Filter Revision"
           value={filterRevision}
           onChange={(e) => setFilterRevision(e.target.value)}
           className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
@@ -225,7 +225,7 @@ export function Accionables({
               style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
             >
               <span>{chip.label}</span>
-              <button onClick={chip.onClear} className="hover:opacity-70">
+              <button aria-label="Cerrar" title="Cerrar" onClick={chip.onClear} className="hover:opacity-70">
                 <X size={12} />
               </button>
             </span>

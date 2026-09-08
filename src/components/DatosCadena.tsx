@@ -121,7 +121,7 @@ export function DatosCadena({ account, moneda }: Props) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <select value={semanas} onChange={e => setSemanas(Number(e.target.value))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]">
+          <select aria-label="Semanas" value={semanas} onChange={e => setSemanas(Number(e.target.value))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]">
             {[1, 2, 4, 8, 13].map(n => <option key={n} value={n}>{n === 1 ? 'Última semana' : `Últimas ${n} semanas`}</option>)}
           </select>
           <button onClick={() => ir('transversal')} className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 ${nivel === 'transversal' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA]'}`} style={{ border: '1px solid var(--border)' }}>

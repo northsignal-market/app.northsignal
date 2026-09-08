@@ -1,5 +1,5 @@
 import React from 'react';
-import { Inbox, Building2, Table2, Wrench, Settings, LogOut } from 'lucide-react';
+import { Inbox, Building2, Table2, Wrench, Settings, LogOut, Search } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 interface SidebarProps {
@@ -10,14 +10,16 @@ interface SidebarProps {
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   return (
     <aside 
-      className="glass-dense group w-16 hover:w-60 h-screen fixed top-0 left-0 flex flex-col z-50 transition-all duration-300 ease-in-out overflow-hidden"
+      className="glass-dense group fixed z-50 transition-all duration-300 ease-in-out overflow-hidden
+        bottom-0 left-0 right-0 h-14 flex-row items-center justify-around flex
+        sm:top-0 sm:bottom-auto sm:right-auto sm:w-16 sm:hover:w-60 sm:h-screen sm:flex-col sm:justify-start"
       style={{ borderRadius: 0, borderTop: 0, borderBottom: 0, borderLeft: 0 }}
     >
       {/* Header: Logo NorthSignal — clic lleva a Inicio */}
       <button 
         onClick={() => onTabChange('inicio')}
         title="Ir a Inicio"
-        className="h-16 flex items-center px-3.5 shrink-0 overflow-hidden text-left transition-colors hover:bg-white/5 cursor-pointer w-full"
+        className="hidden sm:flex h-16 items-center px-3.5 shrink-0 overflow-hidden text-left transition-colors hover:bg-white/5 cursor-pointer w-full"
         style={{ borderBottom: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-3">
@@ -39,7 +41,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       </button>
 
       {/* Navigation Sections */}
-      <nav className="flex-1 py-4 px-2 space-y-5 overflow-y-auto custom-scrollbar">
+      <nav className="flex flex-row items-center justify-around w-full sm:flex-col sm:flex-1 sm:py-4 sm:px-2 sm:space-y-5 sm:justify-start sm:w-auto overflow-y-auto custom-scrollbar">
           <NavItem icon={<Inbox size={18} />} label="Bandeja" active={activeTab === 'bandeja'} onClick={() => onTabChange('bandeja')} />
           <NavItem icon={<Building2 size={18} />} label="Cuenta" active={activeTab === 'cuenta'} onClick={() => onTabChange('cuenta')} />
           <NavItem icon={<Table2 size={18} />} label="Datos" active={activeTab === 'datos'} onClick={() => onTabChange('datos')} />
@@ -47,8 +49,26 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           <NavItem icon={<Settings size={18} />} label="Sistema" active={activeTab === 'sistema'} onClick={() => onTabChange('sistema')} />
         </nav>
 
+      {/* El atajo, siempre a la vista. Antes solo se anunciaba al final de la Bandeja,
+          donde hay que hacer scroll para encontrarlo: un atajo que no se ve no existe. */}
+      <div className="hidden sm:block px-2 pb-1 shrink-0 overflow-hidden">
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+          aria-label="Buscar e ir a cualquier lado"
+          title="Buscar e ir a cualquier lado (Cmd+K)"
+          className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-[#F5F7FA] opacity-50 hover:opacity-100 hover:bg-white/5 transition-all"
+        >
+          <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+            <Search size={16} />
+          </div>
+          <span className="text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 tabular">
+            Buscar · ⌘K
+          </span>
+        </button>
+      </div>
+
       {/* Footer: Logout */}
-      <div className="p-2 shrink-0 overflow-hidden" style={{ borderTop: '1px solid var(--border)' }}>
+      <div className="hidden sm:block p-2 shrink-0 overflow-hidden" style={{ borderTop: '1px solid var(--border)' }}>
         <button
           onClick={async () => {
             try {
@@ -88,7 +108,8 @@ function NavItem({
     <button
       onClick={onClick}
       title={label}
-      className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-all duration-150 text-left ${
+      className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all duration-150
+        sm:w-full sm:flex-row sm:gap-3 sm:px-2.5 sm:py-2 sm:text-left ${
         active 
           ? 'bg-[#0062CC] text-[#FFFFFF] font-semibold shadow-sm' 
           : 'text-[#F5F7FA] opacity-75 hover:opacity-100 hover:bg-white/5 font-normal'
@@ -97,7 +118,9 @@ function NavItem({
       <div className="w-5 h-5 shrink-0 flex items-center justify-center">
         {icon}
       </div>
-      <span className="text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      {/* En móvil el nombre va debajo del icono y siempre visible: no hay hover en un
+          dedo, así que una barra que se expande al pasar el mouse deja iconos sin nombre. */}
+      <span className="text-[9px] whitespace-nowrap sm:text-xs sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity sm:duration-300">
         {label}
       </span>
     </button>

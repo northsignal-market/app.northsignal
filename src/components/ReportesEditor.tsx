@@ -5,7 +5,8 @@
  * ("approve with edits"). Lo que hace rápido a ese patrón: el diff es
  * obvio (versiones), los números están bloqueados (vienen de Supabase, no
  * se editan), cada sección se regenera sola, y aprobar es un paso explícito
- * distinto de enviar. El cliente recibe un link web, no solo un PDF.
+ * distinto de enviar. Y enviar NO significa mandarlo al cliente: te lo manda a vos,
+ * con el PDF y el texto listo para reenviar. Vos decidís cuándo sale.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { FileText, RefreshCw, Check, Send, Eye, History, Copy, ExternalLink, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -16,7 +17,7 @@ interface Props { activeClient: string; fmtMoney: (v: any) => string }
 const ESTADOS: Record<string, { label: string; ayuda: string }> = {
   borrador: { label: 'Borrador', ayuda: 'Lo escribió el sistema. Leelo, editá lo que quieras, regenerá secciones.' },
   revisado: { label: 'Revisado', ayuda: 'Lo leíste. Falta aprobar.' },
-  aprobado: { label: 'Aprobado', ayuda: 'Listo para enviar. El link ya funciona.' },
+  aprobado: { label: 'Aprobado', ayuda: 'Listo. El briefing de las 9:15 te lo manda a vos con el texto para reenviar. El link ya funciona.' },
   enviado: { label: 'Enviado', ayuda: 'Ya lo tiene el cliente. No se edita.' },
   descartado: { label: 'Descartado', ayuda: '' },
 };
@@ -62,7 +63,7 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
       <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
           <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
-          <p className="text-xs text-[#F5F7FA] opacity-60">El sistema redacta, vos revisás antes de que llegue. Los números no se editan: salen de Supabase. Cada sección se regenera sola. Aprobar y enviar son dos pasos.</p>
+          <p className="text-xs text-[#F5F7FA] opacity-60">El sistema redacta, vos revisás. Los números no se editan: salen de Supabase. Cada sección se regenera sola. Al aprobar, el reporte te llega a vos por correo con el texto listo para reenviar al cliente en su idioma; no sale solo.</p>
         </div>
         {aviso && <span className="text-[11px] text-[#FFFFFF] px-3 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: 'var(--primary-faint)', border: '1px solid rgba(0,98,204,0.4)' }}>{aviso}</span>}
       </div>
@@ -70,9 +71,9 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
       {/* Crear */}
       <div className="p-3 rounded-xl flex flex-wrap items-end gap-2" style={{ backgroundColor: 'var(--surface-2)' }}>
         <div className="flex gap-1.5">{[['semana', 'Última semana'], ['dos', 'Dos semanas'], ['mes', 'Mes pasado']].map(([k, l]) => <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#FFFFFF]" style={{ border: '1px solid var(--border)' }}>{l}</button>)}</div>
-        <input type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+        <input aria-label="Form" type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
         <span className="text-[11px] text-[#F5F7FA] opacity-50">a</span>
-        <input type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+        <input aria-label="Form" type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
         <button onClick={crear} disabled={!form.desde || !form.hasta || trabajando === 'crear'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajando === 'crear' ? 'Armando…' : 'Crear borrador'}</button>
       </div>
 
@@ -111,7 +112,7 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px]" style={{ backgroundColor: 'var(--surface-2)' }}>
                 <ExternalLink size={12} className="text-[#0062CC] shrink-0" />
                 <a href={link} target="_blank" rel="noreferrer" className="text-[#FFFFFF] truncate hover:underline">{link}</a>
-                <button onClick={copiarLink} className="ml-auto text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1 shrink-0"><Copy size={11} /> copiar</button>
+                <button aria-label="Copiar el link del reporte" title="Copiar el link del reporte" onClick={copiarLink} className="ml-auto text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1 shrink-0"><Copy size={11} /> copiar</button>
                 <span className="text-[#F5F7FA] opacity-40 shrink-0">{sel.vistas ? `${sel.vistas} vista${sel.vistas !== 1 ? 's' : ''}` : 'sin abrir todavía'}</span>
               </div>
             )}
@@ -150,12 +151,12 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
                       {editable && <button onClick={() => regenerar(b.etiqueta)} disabled={!!trabajando} className="text-[11px] text-[#0062CC] flex items-center gap-1 disabled:opacity-40"><RefreshCw size={11} className={trabajando === 'regen:' + b.etiqueta ? 'animate-spin' : ''} /> {trabajando === 'regen:' + b.etiqueta ? 'redactando…' : 'regenerar'}</button>}
                     </div>
                     {(b.texto !== undefined || !b.vinetas?.length) && (
-                      <textarea value={b.texto || ''} disabled={!editable} onChange={e => setBloque(i, { texto: e.target.value })} rows={Math.max(2, Math.ceil((b.texto || '').length / 110))} placeholder="Párrafo (opcional)" className="w-full bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid var(--border)' }} />
+                      <textarea aria-label="B" value={b.texto || ''} disabled={!editable} onChange={e => setBloque(i, { texto: e.target.value })} rows={Math.max(2, Math.ceil((b.texto || '').length / 110))} placeholder="Párrafo (opcional)" className="w-full bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid var(--border)' }} />
                     )}
                     {(b.vinetas || []).map((v, k) => (
                       <div key={k} className="flex items-start gap-2">
                         <span className="text-[#F5F7FA] opacity-40 pt-1.5">–</span>
-                        <textarea value={v} disabled={!editable} onChange={e => setBloque(i, { vinetas: b.vinetas!.map((x, j) => j === k ? e.target.value : x) })} rows={Math.max(1, Math.ceil(v.length / 110))} className="flex-1 bg-transparent px-2 py-1 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid transparent' }} onFocus={e => (e.target.style.borderColor = 'var(--border)')} onBlur={e => (e.target.style.borderColor = 'transparent')} />
+                        <textarea aria-label="V" value={v} disabled={!editable} onChange={e => setBloque(i, { vinetas: b.vinetas!.map((x, j) => j === k ? e.target.value : x) })} rows={Math.max(1, Math.ceil(v.length / 110))} className="flex-1 bg-transparent px-2 py-1 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid transparent' }} onFocus={e => (e.target.style.borderColor = 'var(--border)')} onBlur={e => (e.target.style.borderColor = 'transparent')} />
                         {editable && <button onClick={() => setBloque(i, { vinetas: b.vinetas!.filter((_, j) => j !== k) })} className="text-[#F5F7FA] opacity-30 hover:opacity-100 pt-1" title="Quitar viñeta">×</button>}
                       </div>
                     ))}
@@ -169,7 +170,14 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
             {/* Nota interna */}
             <details className="text-[11px]">
               <summary className="cursor-pointer text-[#F5F7FA] opacity-50">Nota interna (no va al cliente)</summary>
-              <textarea defaultValue={sel.nota_interna || ''} onBlur={e => fetch(`/api/reportes/${sel.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nota_interna: e.target.value }) })} rows={2} placeholder="Qué querés recordar de este envío" className="w-full mt-1 bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] focus:outline-none" style={{ border: '1px solid var(--border)' }} />
+              <textarea aria-label="Campo" defaultValue={sel.nota_interna || ''} onBlur={async e => {
+                  // Sin catch, una nota que no se guarda desaparece al recargar sin
+                  // que nadie lo note. Ahora avisa.
+                  try {
+                    const r = await fetch(`/api/reportes/${sel.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nota_interna: e.target.value }) });
+                    if (!r.ok) avisar('La nota no se guardó: el servidor respondió ' + r.status + '.');
+                  } catch { avisar('La nota no se guardó: sin conexión.'); }
+                }} rows={2} placeholder="Qué querés recordar de este envío" className="w-full mt-1 bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] focus:outline-none" style={{ border: '1px solid var(--border)' }} />
             </details>
           </div>
         )}

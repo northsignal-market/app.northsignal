@@ -127,3 +127,75 @@ button:active, [role="button"]:active { transform: scale(0.97); }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: var(--radius-pill); }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ── Táctil ─────────────────────────────────────────────────────────
+   La app se usa también desde el teléfono. Sin esto el scroll dentro de
+   un panel arrastra la página entera cuando llega al final, y las tablas
+   con scroll horizontal se sienten trabadas. */
+@media (hover: none) {
+  /* El scroll de un contenedor no arrastra el de atrás al llegar al final */
+  .custom-scrollbar,
+  main,
+  [role="dialog"] {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Sin resaltado azul al tocar: se ve como un error de render */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Área táctil mínima cómoda en los controles de navegación */
+  nav button {
+    min-height: 44px;
+  }
+}
+
+/* Las tablas anchas se deslizan de a columna en vez de quedar a mitad de camino */
+.custom-scrollbar table {
+  scroll-snap-type: none;
+}
+
+/* ── Radios concéntricos ────────────────────────────────────────────
+   La regla: radio interno = radio externo − padding. Usar el mismo radio
+   en un contenedor y en su hijo es el error más común de interfaz: las
+   curvas no comparten centro y el conjunto se ve mal armado sin que se
+   sepa por qué. Apple lo formalizó en iOS 26 con ConcentricRectangle,
+   que lo calcula solo; en CSS se hace con calc.
+
+   Uso: la tarjeta declara --r y --p, el hijo usa .concentrico.
+   <div class="tarjeta" style="--r:16px; --p:12px"> <div class="concentrico">
+*/
+.concentrico {
+  border-radius: max(0px, calc(var(--r, 16px) - var(--p, 12px)));
+}
+
+/* Escala de radios del sistema. Los valores salen de lo que ya se usaba:
+   no se inventa nada, se nombra lo que había para poder razonarlo. */
+:root {
+  --r-chip: 6px;    /* etiquetas y píldoras */
+  --r-fila: 8px;    /* filas y botones dentro de una tarjeta */
+  --r-panel: 12px;  /* paneles internos */
+  --r-tarjeta: 16px;/* tarjetas de primer nivel */
+}
+
+/* ── Contraste alto ─────────────────────────────────────────────────
+   Cuando el sistema pide más contraste, las superficies traslúcidas se
+   vuelven opacas y los bordes más marcados. Es lo mismo que hace iOS 26
+   con Liquid Glass: el vidrio se opaca en vez de desaparecer, porque un
+   borde apenas visible sobre un fondo claro deja la interfaz ilegible. */
+@media (prefers-contrast: more) {
+  .glass, .glass-dense {
+    backdrop-filter: none;
+    background-color: var(--surface-1);
+    border-color: var(--text-muted);
+  }
+  /* El texto secundario deja de estar atenuado */
+  .opacity-40, .opacity-50, .opacity-60, .opacity-70 { opacity: 0.92 !important; }
+}
+
+/* Modo de colores forzados de Windows: los bordes se dibujan con los
+   colores del sistema en vez de desaparecer. */
+@media (forced-colors: active) {
+  .glass, .glass-dense { border: 1px solid CanvasText; background: Canvas; }
+  button, [role="button"] { forced-color-adjust: auto; }
+}

@@ -304,3 +304,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   }
 }));
+
+// Se expone para que avisar() del helper pueda empujar notificaciones sin crear
+// un ciclo de imports entre el store y los componentes.
+if (typeof window !== 'undefined') { (window as any).__northsignalStore = useAppStore; }

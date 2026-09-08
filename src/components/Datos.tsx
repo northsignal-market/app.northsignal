@@ -1,4 +1,5 @@
 import { DatosCadena } from './DatosCadena';
+import { avisar } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LineChart, Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { 
@@ -230,7 +231,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
        .then(r => r.ok && r.headers.get('content-type')?.includes('application/json') ? r.json() : { data: [] })
        .then(res => {
           if (res.data && res.data.length >= 4) {
-             const current = res.data[0];
+             const current = res.data[0]
+               .catch(() => {});
              const history = res.data.slice(1, 9);
              
              const metrics = ['cpa', 'gasto', 'conversiones', 'ctr_promedio'];
@@ -360,6 +362,14 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
   }, [inspectedKeyword, selectedClient]);
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Escape sale de pantalla completa. Sin esto la única salida es encontrar el botón,
+  // que en pantalla completa queda lejos de donde está la vista.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const alEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false); };
+    window.addEventListener('keydown', alEscape);
+    return () => window.removeEventListener('keydown', alEscape);
+  }, [isFullscreen]);
 
   const [filters, setFilters] = useState<any[]>([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -577,11 +587,20 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-    const res = await fetch(url, { credentials: 'include', headers });
-    const isJson = res.headers.get('content-type')?.includes('application/json');
-    const result = isJson ? await res.json() : { data: [] };
-    const allData = result.data || [];
-    if (allData.length === 0) return;
+    // Si la exportación falla, hay que decirlo: antes no pasaba nada y el usuario
+    // se quedaba esperando una descarga que nunca iba a llegar.
+    let allData: any[] = [];
+    try {
+      const res = await fetch(url, { credentials: 'include', headers });
+      if (!res.ok) { avisar('No se pudo exportar: el servidor respondió ' + res.status + '. Probá de nuevo en un momento.', 'error'); return; }
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      const result = isJson ? await res.json() : { data: [] };
+      allData = result.data || [];
+    } catch (e: any) {
+      avisar('No se pudo exportar: ' + (e?.message || 'sin conexión') + '.', 'error');
+      return;
+    }
+    if (allData.length === 0) { avisar('No hay filas para exportar con los filtros actuales.', 'info'); return; }
       
       const cols = visibleCols.length > 0 ? visibleCols : allCols;
       const header = cols.map(c => COL_LABELS[c] || c).join(',');
@@ -723,7 +742,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
       doc.save(`NorthSignal_Report_${selectedClient}_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch(e) {
       console.error(e);
-      alert('Error generando PDF: ' + (e as Error).message);
+      avisar('Error generando PDF: ' + (e as Error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -762,7 +781,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           <div className="flex items-center gap-3">
             <span className="text-sm text-[#F5F7FA]/60 font-medium">Density:</span>
             <div className="relative">
-              <select 
+              <select aria-label="Density" 
                 value={density}
                 onChange={(e) => setDensity(e.target.value as any)}
                 className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg pl-3 pr-8 py-1.5 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
@@ -776,7 +795,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           </div>
 
           <div className="flex items-center gap-3">
-            <button 
+            <button aria-label="Exportar a PDF" title="Exportar a PDF" 
               onClick={exportToPDF}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#FFFFFF] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
             >
@@ -784,7 +803,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               PDF Report
             </button>
             
-            <button 
+            <button aria-label="Exportar a CSV" title="Exportar a CSV" 
               onClick={exportToCSV}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#FFFFFF] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
             >
@@ -1145,19 +1164,19 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Inversión (Filtro)</p>
             <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Conversiones (Filtro)</p>
             <h3 className="text-sm font-semibold text-[#FFFFFF]">{totals.conversions || 0}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPA (Ponderado)</p>
             <h3 className="text-sm font-semibold text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPC (Promedio)</p>
             <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
           </div>
-          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
+          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
             <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1" title={totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen'}>Restricción Principal</p>
             <h3 className="text-lg font-medium text-[#0062CC] line-clamp-1">
               {totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A'}
@@ -1180,7 +1199,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             </div>
             
             <div className="flex items-center gap-2">
-              <select 
+              <select aria-label="Date Range Mode" 
                 value={dateRangeMode} 
                 onChange={e => setDateRangeMode(e.target.value)}
                 className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
@@ -1200,12 +1219,12 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               
               {dateRangeMode === 'custom' && (
                 <div className="flex items-center gap-2">
-                  <input type="date" value={customRange.from} max={customRange.to || undefined}
+                  <input aria-label="Custom Range" type="date" value={customRange.from} max={customRange.to || undefined}
                     onChange={e => setCustomRange(p => ({...p, from: e.target.value}))}
                     className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
                     style={{ colorScheme: 'dark' }} />
                   <span className="text-[#F5F7FA]/50">→</span>
-                  <input type="date" value={customRange.to} min={customRange.from || undefined}
+                  <input aria-label="Custom Range" type="date" value={customRange.to} min={customRange.from || undefined}
                     onChange={e => setCustomRange(p => ({...p, to: e.target.value}))}
                     className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
                     style={{ colorScheme: 'dark' }} />
@@ -1215,7 +1234,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             </div>
 
             <div className="flex items-center gap-2">
-              <select 
+              <select aria-label="Limit" 
                 value={limit} 
                 onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
                 className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"

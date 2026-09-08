@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "NODE_ENV=development tsx server.ts",
     "build": "npm run build:client && npm run build:server",
     "start": "NODE_ENV=production tsx server.ts",
     "preview": "vite preview",
@@ -13,7 +13,11 @@
     "build:client": "vite build",
     "build:server": "esbuild api/_entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "vercel-build": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:local": "supabase start && NODE_ENV=development SUPABASE_URL=http://127.0.0.1:54321 tsx server.ts",
+    "test:db": "supabase test db",
+    "db:reset": "supabase db reset",
+    "verificar": "npm run typecheck && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
@@ -26,13 +30,11 @@
     "@types/cookie-parser": "^1.4.10",
     "@vitejs/plugin-react": "^5.0.4",
     "cookie-parser": "^1.4.7",
-    "date-fns": "^4.4.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "p-queue": "^9.3.3",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",

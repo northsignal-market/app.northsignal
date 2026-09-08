@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { avisar } from '../lib/useCuentas';
 import { 
   Check, Cpu, MessageSquare, Send, Clock, 
   ExternalLink, AlertCircle, ShieldAlert,
@@ -158,13 +159,13 @@ export function ActionableDrawerContent({
     if (!tipoAuto) return;
     const lote: string[] | null = accionActual?.objeto?.keywords?.length ? accionActual.objeto.keywords : null;
     const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
-    if (!kw && tipoAuto !== 'pausar_anuncio') { alert('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".'); return; }
+    if (!kw && tipoAuto !== 'pausar_anuncio') { avisar('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".', 'error'); return; }
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usar_accion: true, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
-      if (!r.ok) { alert(j.error || 'Error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
+      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
     } finally { setEjecutando(false); }
   };
   const [logValorAnterior, setLogValorAnterior] = useState('');
@@ -381,11 +382,11 @@ export function ActionableDrawerContent({
           <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30">
             {action.client}
           </span>
-          <select value={action.status} onChange={e => cambiarEstado(e.target.value)} title="Estado. Descartar pide el motivo; Hecho pone la fecha de hoy."
+          <select aria-label="Action" value={action.status} onChange={e => cambiarEstado(e.target.value)} title="Estado. Descartar pide el motivo; Hecho pone la fecha de hoy."
             className="px-2 py-0.5 rounded text-[11px] text-[#FFFFFF] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
             {['Propuesto', 'Bloqueado', 'En curso', 'Hecho', 'Descartado'].map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select value={action.priority || 'Media'} onChange={e => cambiarPrioridad(e.target.value)} title="Prioridad"
+          <select aria-label="Action" value={action.priority || 'Media'} onChange={e => cambiarPrioridad(e.target.value)} title="Prioridad"
             className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
             {['Urgente', 'Alta', 'Media', 'Baja'].map(p => <option key={p} value={p}>Prioridad: {p}</option>)}
           </select>
@@ -617,7 +618,7 @@ export function ActionableDrawerContent({
             <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
               Naturaleza
             </label>
-            <select
+            <select aria-label="Naturaleza"
               value={naturaleza}
               onChange={(e) => setNaturaleza(e.target.value as any)}
               className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] outline-none"
@@ -633,7 +634,7 @@ export function ActionableDrawerContent({
             <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
               Fecha Ejecución
             </label>
-            <input
+            <input aria-label="Ejecutado El"
               type="date"
               value={ejecutadoEl}
               onChange={(e) => setEjecutadoEl(e.target.value)}
@@ -647,7 +648,7 @@ export function ActionableDrawerContent({
           <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
             Qué lo confirmaría / resolvería
           </label>
-          <input
+          <input aria-label="Que Lo Confirmaria"
             type="text"
             value={queLoConfirmaria}
             onChange={(e) => setQueLoConfirmaria(e.target.value)}
@@ -661,7 +662,7 @@ export function ActionableDrawerContent({
           <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
             Causa Raíz
           </label>
-          <input
+          <input aria-label="Causa Raiz"
             type="text"
             value={causaRaiz}
             onChange={(e) => setCausaRaiz(e.target.value)}
@@ -675,7 +676,7 @@ export function ActionableDrawerContent({
           <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
             Resultado Observado
           </label>
-          <textarea
+          <textarea aria-label="Resultado Observado"
             value={resultadoObservado}
             onChange={(e) => setResultadoObservado(e.target.value)}
             placeholder="Impacto en conversiones, CPA o tráfico tras la ejecución..."
@@ -710,7 +711,7 @@ export function ActionableDrawerContent({
             Analiza el accionable contra el modelo base y detecta controversias
           </p>
         </div>
-        <button
+        <button aria-label="Analizar con IA" title="Analizar con IA"
           onClick={handleAnalyze}
           disabled={analyzing}
           className="px-3 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#FFFFFF] text-xs font-semibold shrink-0 flex items-center gap-1"

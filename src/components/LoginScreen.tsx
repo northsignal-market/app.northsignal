@@ -44,7 +44,7 @@ export function LoginScreen() {
       <div className="max-w-md w-full relative z-10">
         <div className="bg-[var(--surface-1)] border border-[rgba(255,255,255,0.12)] rounded-xl p-8 shadow-xl">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl flex items-center justify-center overflow-hidden p-2.5 shadow-sm">
+            <div className="w-16 h-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded-none flex items-center justify-center overflow-hidden p-2.5 shadow-sm">
               <img 
                 src="https://djbwxgicosargfobsmqd.supabase.co/storage/v1/object/public/logos/ChatGPT%20Image%204%20sept%202026,%2007_31_34%20p.m..png" 
                 alt="NorthSignal Logo" 

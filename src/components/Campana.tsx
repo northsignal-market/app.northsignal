@@ -86,7 +86,7 @@ export function Campana({ onAbrir }: Props) {
               <button onClick={() => setPestana('sinver')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'sinver' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Sin ver{sinVer.length ? ` · ${sinVer.length}` : ''}</button>
               <button onClick={() => setPestana('todas')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'todas' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Últimos 7 días</button>
             </div>
-            {sinVer.length > 0 && <button onClick={leerTodas} className="text-[11px] text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1"><Check size={12} /> Marcar todo visto</button>}
+            {sinVer.length > 0 && <button aria-label="Marcar como leída" title="Marcar como leída" onClick={leerTodas} className="text-[11px] text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1"><Check size={12} /> Marcar todo visto</button>}
           </div>
           <div className="overflow-y-auto custom-scrollbar flex-1">
             {grupos.length === 0 ? (
