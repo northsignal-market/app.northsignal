@@ -1,0 +1,60 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_ENV=development tsx server.ts",
+    "build": "npm run build:client && npm run build:server",
+    "start": "NODE_ENV=production tsx server.ts",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "build:client": "vite build",
+    "build:server": "esbuild api/_entry.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "vercel-build": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "dev:local": "supabase start && NODE_ENV=development SUPABASE_URL=http://127.0.0.1:54321 tsx server.ts",
+    "test:db": "supabase test db",
+    "db:reset": "supabase db reset",
+    "verificar": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
+    "@google/genai": "^2.4.0",
+    "@notionhq/client": "^2.2.15",
+    "@radix-ui/react-tooltip": "^1.2.16",
+    "@react-pdf/renderer": "^4.9.0",
+    "@supabase/supabase-js": "^2.115.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/cookie-parser": "^1.4.10",
+    "@vitejs/plugin-react": "^5.0.4",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "lucide-react": "^0.546.0",
+    "p-queue": "^9.3.3",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "recharts": "^3.10.1",
+    "vite": "^6.2.3",
+    "zod": "^4.5.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/node-cron": "^3.0.11",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.12",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
