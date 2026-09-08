@@ -1806,7 +1806,18 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
         return res.status(409).json({ error: `Este término está marcado como "${f.accion}": ${f.veredicto}`, bloqueado: true });
       }
 
-      const nivelUsar = nivel === 'campana' ? 'campana' : 'grupo';
+      // El nivel lo decide la EVIDENCIA, no quien aprieta el botón. Si el mismo término
+      // convierte en otro grupo de la campaña, una negativa de campaña apaga las dos.
+      // Caso que lo motivó: "iclick travel" en BHI quemó 14.667 CLP en un clic en
+      // SEGURO EN EL EXTRANJERO y convirtió 3 veces en SEGURO SALUD INTERNACIONAL.
+      if (f.conflicto_entre_grupos && nivel === 'campana') {
+        return res.status(409).json({
+          error: `A nivel campaña esta negativa también apaga "${searchTerm}" en ${f.grupos_donde_convierte}, donde convierte. Va a nivel grupo.`,
+          nivel_recomendado: 'grupo', bloqueado: true
+        });
+      }
+      const nivelUsar = f.nivel_recomendado === 'grupo' ? 'grupo'
+                      : (nivel === 'campana' ? 'campana' : 'grupo');
       let accionJson: any; let titulo = ''; let porQue = ''; let comoHacerlo = ''; let prioridad = NOTION_PRIORITIES.MEDIA;
 
       if (f.accion === 'negativa') {
@@ -1843,7 +1854,7 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
         titulo = `Agregar negativa "${searchTerm}" en ${nivelUsar === 'grupo' ? adGroup : campaign}`;
         porQue = `${f.gasto_30d} de gasto en ${f.clicks} clic(s) en 30 días, cero conversiones` +
                  (f.cpc_promedio ? `, a ${f.cpc_promedio} por clic` : '') +
-                 `. Lo disparó la keyword "${f.triggered_keyword}", que no contiene ninguna palabra del término: el grupo está comprando algo que no declara. Simulación sin bloqueos (ventana ${s.ventana_diaria_real || 'diaria'}, 0 conversiones y 0 términos protegidos afectados).`;
+                 `. Lo disparó la keyword "${f.triggered_keyword}", que no contiene ninguna palabra del término: el grupo está comprando algo que no declara.${f.conflicto_entre_grupos ? ` Va a nivel GRUPO y no de campaña: el mismo término convierte en ${f.grupos_donde_convierte}.` : ''} Simulación sin bloqueos (ventana ${s.ventana_diaria_real || 'diaria'}, 0 conversiones y 0 términos protegidos afectados).`;
         prioridad = Number(f.gasto_30d) > 10000 ? NOTION_PRIORITIES.ALTA : NOTION_PRIORITIES.MEDIA;
         comoHacerlo = [
           `1. Campañas > ${campaign}${nivelUsar === 'grupo' ? ` > ${adGroup}` : ''}.`,
