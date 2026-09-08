@@ -24,7 +24,11 @@ import { tituloDesde, VERBOS } from '../../lib/accion';
 // compilada de la API supere el limite y devuelva 400. Aca van los mismos datos en un
 // solo nivel; el server los arma en la forma canonica antes de escribir.
 const AccionPlanaSchema = z.object({
-  verbo: z.enum(VERBOS),
+  // 8 sep 2026: era z.enum(VERBOS). Un enum de 17 ramas anidado dentro de un array sin
+  // tope es lo que mas pesa en la gramatica compilada, y la API venia rechazando TODAS las
+  // corridas con "The compiled grammar is too large" desde el 6 de septiembre, dos veces
+  // por dia en las cuatro cuentas. Pasa a string y se valida despues, contra la misma lista.
+  verbo: z.string().describe('Uno de: ' + VERBOS.join(', ')),
   campana: z.string().nullable().describe('Nombre exacto de la campana'),
   grupo: z.string().nullable().describe('Nombre exacto del grupo, o null'),
   keyword: z.string().nullable().describe('Texto exacto de la keyword sin corchetes ni comillas, o null'),
@@ -55,9 +59,9 @@ export const PulsoSchema = z.object({
     grupo: z.string().nullable(),
     valor: z.number().nullable(),
     umbral: z.number(),
-    direccion: z.enum(['sube', 'baja', 'cruza']),
+    direccion: z.string().describe('sube, baja o cruza'),
     cumple: z.boolean(),
-    tendencia_3d: z.enum(['sube', 'baja', 'plana', 'sin_datos']),
+    tendencia_3d: z.string().describe('sube, baja, plana o sin_datos'),
     dias_seguidos_cumpliendo: z.number().int().min(0),
     nota: z.string().nullable().describe('Una línea si hay algo que decir sobre este indicador hoy')
   })).describe('Un objeto por cada indicador del plan, en el mismo orden'),
@@ -136,6 +140,15 @@ ${sinPlan ? '\nNO HAY PLAN para esta semana. Reportá evidencia sobre los cuatro
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error('Sin parsed_output: ' + (msg.stop_reason || 'desconocido'));
     if (msg.stop_reason === 'max_tokens') throw new Error('Se cortó por max_tokens');
+    // El verbo dejo de ser enum en el esquema para achicar la gramatica: se valida aca,
+    // contra la misma lista. Un verbo inventado se marca y no se pierde el hallazgo.
+    for (const h of (parsed as any).hallazgos || []) {
+      const v = h?.accion?.verbo;
+      if (v && !(VERBOS as readonly string[]).includes(v)) {
+        h.accion.verbo_invalido = v;
+        h.accion.verbo = 'investigar';
+      }
+    }
     const u: any = msg.usage;
     const tin = u.input_tokens || 0, tout = u.output_tokens || 0, tcache = u.cache_read_input_tokens || 0, tcw = u.cache_creation_input_tokens || 0;
     // Cache read cuesta 10% del input; cache write 125% (1h: 200%)
@@ -154,6 +167,33 @@ ${sinPlan ? '\nNO HAY PLAN para esta semana. Reportá evidencia sobre los cuatro
         const parsed = msg2.parsed_output;
         if (parsed) { const tin = msg2.usage.input_tokens || 0, tout = msg2.usage.output_tokens || 0; return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal, tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT, parsed }; }
       } catch (e2: any) { return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: `${e.message} · reintento: ${e2.message}` }; }
+    }
+    // RED DE SEGURIDAD (8 sep 2026). Antes, cualquier error de la API dejaba a esa cuenta
+    // SIN pulso ese dia, en silencio: el cron corria, el flujo figuraba vivo y pulso_diario
+    // se quedaba sin fila. Asi estuvo desde el 6 de septiembre en las cuatro cuentas.
+    // Si el esquema estructurado falla, se pide el mismo JSON por prompt y se parsea a mano.
+    // Un pulso degradado es infinitamente mejor que ningun pulso.
+    if (/grammar is too large|invalid_request_error|output_config|format/i.test(String(e.message))) {
+      try {
+        const msg3 = await anthropic.messages.create({
+          model: 'claude-sonnet-5', max_tokens: 16000,
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } as any },
+                   { type: 'text', text: 'Respondé UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos.' }],
+          messages: [{ role: 'user', content: user }]
+        });
+        const txt = (msg3.content || []).map((b: any) => b.type === 'text' ? b.text : '').join('').trim();
+        const limpio = txt.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+        const crudo = JSON.parse(limpio);
+        const validado = PulsoSchema.safeParse(crudo);
+        const parsed = validado.success ? validado.data : crudo;
+        const tin = (msg3.usage as any)?.input_tokens || 0, tout = (msg3.usage as any)?.output_tokens || 0;
+        return { cuenta, fecha, nivel: parsed.nivel, hallazgo: parsed.hallazgo_principal,
+                 tokens_in: tin, tokens_out: tout, costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT,
+                 parsed, degradado: 'Sin salida estructurada: el esquema fue rechazado y se parseo el JSON a mano. Revisar el tamano del esquema.' };
+      } catch (e3: any) {
+        return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0,
+                 error: `${e.message} · respaldo sin esquema: ${e3.message}` };
+      }
     }
     return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
   }

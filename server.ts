@@ -298,7 +298,10 @@ export function createApp() {
       const { data: recentChanges, error: recentErr } = await supabase
         .from('v_cambios_recientes')
         .select('*')
-        .eq('account', client)
+        // 8 sep 2026: aca habia .eq('account', client) sobre una vista que no tiene esa
+        // columna. Fue el error mas frecuente de produccion: 19 veces en tres horas.
+        // Los cambios de sistema son globales, no de una cuenta: filtrarlos por cliente
+        // no tiene sentido ni cuando la columna existe.
         .limit(10);
       if (recentErr) console.error("Recent changes error:", recentErr);
 
@@ -2853,9 +2856,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const [e, s, c] = await Promise.all([
       supabase.rpc('volcar_esquema'), supabase.rpc('volcar_semillas'), supabase.rpc('volcar_crons')
     ]);
-    const err = e.error || s.error || c.error;
-    if (err) return res.status(500).json({ error: err.message });
+    // 8 sep 2026: antes un solo volcado que fallara devolvia 500 para los tres, y la
+    // interfaz dejaba de renderizar la seccion entera sin decir nada. Ahora cada archivo
+    // reporta lo suyo y la lista sale igual: un archivo roto no esconde a los otros dos.
+    const errores = [e.error, s.error, c.error].filter(Boolean).map((x: any) => x.message);
     res.json({
+      errores: errores.length ? errores : undefined,
       generado: new Date().toISOString(),
       archivos: [
         { nombre: '00000000000001_linea_base.sql', kb: Math.round((e.data || '').length / 1024), url: '/api/respaldo/esquema' },

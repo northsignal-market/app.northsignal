@@ -15,12 +15,38 @@ export function Sistema() {
   // Salud completa: las 32 verificaciones, tareas caidas y cuarentena.
   const [saludSistema, setSaludSistema] = useState<any>(null);
   const [respaldo, setRespaldo] = useState<any>(null);
+  // 8 sep 2026. Antes TODO el bloque estaba envuelto en {respaldo && (...)}: si este
+  // fetch fallaba, el estado quedaba en null y la seccion no se renderizaba. No es que
+  // el boton no funcionara, es que no existia en pantalla y sin ningun mensaje.
+  // Falla en silencio, que es el patron que mas caro sale en este sistema.
+  const [respaldoError, setRespaldoError] = useState<string | null>(null);
+  const bajarRespaldo = async (url: string, nombre: string) => {
+    // Por fetch + blob y no por <a href download>: asi la descarga usa las mismas
+    // credenciales que el resto de la app, y un 401 o un 500 se ve como mensaje en vez
+    // de bajar un archivo con el error adentro.
+    setRespaldoError(null);
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const texto = await r.text();
+      const href = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = href; a.download = nombre;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(href); a.remove(); }, 0);
+    } catch (e: any) {
+      setRespaldoError('No se pudo bajar ' + nombre + ': ' + (e?.message || 'error desconocido'));
+    }
+  };
 
   useEffect(() => {
     fetch('/api/aprendizaje', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setAprendizaje(d)).catch(() => {});
     fetch('/api/salud-sistema', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setTamano(d)).catch(() => {});
     fetch('/api/salud', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setSaludSistema(d)).catch(() => {});
-    fetch('/api/respaldo', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setRespaldo(d)).catch(() => {});
+    fetch('/api/respaldo', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(d => setRespaldo(d))
+      .catch(e => setRespaldoError('No se pudo consultar el respaldo: ' + (e?.message || 'error')));
   }, []);
   const [loading, setLoading] = useState(false);
 
@@ -458,25 +484,31 @@ export function Sistema() {
           )}
 
           {/* Respaldo del esquema. Sin esto habia que escribir la URL a mano. */}
-          {respaldo && (
-            <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                Respaldo del esquema
-              </h2>
-              <p className="text-[11px] text-[#F5F7FA] opacity-60">
-                Se generan frescos en cada descarga. Van a <span className="tabular">supabase/migrations/</span> en el repo: son lo que permite reconstruir la base entera si se pierde.
+          <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              Respaldo del esquema
+            </h2>
+            <p className="text-[11px] text-[#F5F7FA] opacity-60">
+              Se generan frescos en cada descarga. Van a <span className="tabular">supabase/migrations/</span> en el repo: son lo que permite reconstruir la base entera si se pierde.
+            </p>
+            {respaldoError && (
+              <p className="text-[11px]" style={{ color: '#F97066' }}>
+                {respaldoError}
               </p>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {(respaldo.archivos || []).map((a: any) => (
-                  <a key={a.nombre} href={a.url} download
-                    className="px-3 py-1.5 rounded-lg text-[11px] text-[#FFFFFF] hover:opacity-80"
-                    style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                    {a.nombre} <span className="opacity-50">{a.kb} KB</span>
-                  </a>
-                ))}
-              </div>
+            )}
+            {!respaldo && !respaldoError && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-40">Consultando…</p>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {(respaldo?.archivos || []).map((a: any) => (
+                <button key={a.nombre} type="button" onClick={() => bajarRespaldo(a.url, a.nombre)}
+                  className="px-3 py-1.5 rounded-lg text-[11px] text-[#FFFFFF] hover:opacity-80"
+                  style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                  {a.nombre} <span className="opacity-50">{a.kb} KB</span>
+                </button>
+              ))}
             </div>
-          )}
+          </div>
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Datos por cuenta
