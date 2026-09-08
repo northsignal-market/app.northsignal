@@ -1528,79 +1528,337 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
     }
   });
 
-  // Module 2: Generador de RSA con Compliance Guard
+  // Module 2: Generador de RSA
+  // Rediseñado el 8 sep 2026. Antes el humano elegia terminos sueltos de la cuenta entera
+  // y el modelo escribia: eso es una herramienta de redaccion, no de optimizacion, y no
+  // podia saber en que grupo iba el anuncio ni que le pasaba a la cuenta.
+  // Ahora la unidad es el GRUPO DE ANUNCIOS, que es contra lo que Google mide la
+  // relevancia, y todo el contexto lo trae el servidor desde v_donde_escribir_anuncio.
+
+  // Lista de trabajo: donde conviene escribir, ordenado por plata en riesgo.
+  app.get("/api/rsa/oportunidades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    let q = supabase.from('v_donde_escribir_anuncio').select('*').order('prioridad', { ascending: false });
+    if (client) q = q.eq('account', client);
+    const { data, error } = await q.limit(60);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data: data || [] });
+  });
+
   app.post("/api/generate-rsa", async (req, res) => {
     try {
-      const { client, searchTerms } = req.body;
-      
-      if (!ai) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
+      const { client, campaign, adGroup } = req.body as { client: string; campaign: string; adGroup: string };
 
-      let complianceRule = "";
-      if (client === 'BHI') {
-        complianceRule = "REGLA ESTRICTA DE COMPLIANCE PARA BHI: PROHIBIDO USAR las palabras 'póliza', 'seguro', 'vender', o 'contratar'. El texto será rechazado si contiene estas palabras.";
+      if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'Falta ANTHROPIC_API_KEY en el servidor.' });
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      if (!client || !campaign || !adGroup) {
+        return res.status(400).json({ error: 'Elegí un grupo de anuncios de la lista de oportunidades.' });
       }
 
-      
-      
-      const rsaSchemaConfig = {
-        type: "OBJECT",
-        properties: {
-          headlines: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description: "Lista de 3 a 5 títulos para el anuncio, máximo 30 caracteres cada uno."
-          },
-          descriptions: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description: "Lista de 2 a 4 descripciones para el anuncio, máximo 90 caracteres cada una."
-          }
-        },
-        required: ["headlines", "descriptions"]
+      // TODO el contexto sale del servidor. El cliente solo dice que grupo.
+      const { data: opp, error: oppErr } = await supabase
+        .from('v_donde_escribir_anuncio').select('*')
+        .eq('account', client).eq('campaign', campaign).eq('ad_group', adGroup).maybeSingle();
+      if (oppErr) return res.status(500).json({ error: oppErr.message });
+      if (!opp) return res.status(404).json({ error: `No hay datos de la semana para ${adGroup} en ${campaign}.` });
+
+      const o: any = opp;
+      if (String(o.que_hacer).startsWith('NO ES EL ANUNCIO')) {
+        // Se puede forzar, pero el operador tiene que saber que no va a mover el QS.
+        if (!req.body.forzar) {
+          return res.status(409).json({ error: o.que_hacer, sugerencia: 'Si igual querés el texto, reintentá con forzar: true.', bloqueado: true });
+        }
+      }
+
+      const { data: cta } = await supabase.from('cuentas').select('reglas_dominio').eq('account', client).maybeSingle();
+      const reglas = (cta as any)?.reglas_dominio || getClientContext(client) || '';
+
+      // El anuncio que ya existe en ESE grupo: sirve para variar, no para repetir.
+      const { data: actuales } = await supabase.from('rsa_assets')
+        .select('field_type, asset_text, performance_label')
+        .eq('account', client).eq('campaign', campaign).eq('ad_group', adGroup)
+        .order('week_start', { ascending: false }).limit(60);
+      const hAct = [...new Set((actuales || []).filter((a: any) => a.field_type === 'HEADLINE').map((a: any) => a.asset_text))].slice(0, 20);
+      const dAct = [...new Set((actuales || []).filter((a: any) => a.field_type === 'DESCRIPTION').map((a: any) => a.asset_text))].slice(0, 6);
+
+      const IDIOMAS: Record<string, string> = {
+        'de-DE': 'alemán de Alemania. TODO el texto va en alemán, sin una sola palabra en español ni en inglés.',
+        'en-US': 'inglés de Estados Unidos. TODO el texto va en inglés.',
+        'es-CL': 'español de Chile, tuteo neutro. TODO el texto va en español.'
       };
+      const idioma = IDIOMAS[o.idioma_anuncio] || 'el idioma en que están escritos los anuncios actuales del grupo';
 
-      const { termMetrics, topAssets } = req.body as { termMetrics?: any[]; topAssets?: any[] };
-      const metricsTxt = Array.isArray(termMetrics) && termMetrics.length
-        ? '\n\nMétricas de esos términos (conversiones, clics, gasto):\n' + termMetrics.map((m: any) => `- "${m.term}": ${m.conv} conv, ${m.clicks} clics, ${m.cost} gasto`).join('\n')
+      const reglaLocal = o.es_cadena && o.location
+        ? `\n\nESTA CUENTA ES UNA CADENA Y ESTE GRUPO ES DEL LOCAL DE ${String(o.location).toUpperCase()}.\n` +
+          `Al menos CUATRO de los quince títulos tienen que nombrar "${o.location}". Es la ganancia de relevancia más barata que hay y hoy está desaprovechada: de 664 títulos de la cuenta, solo 44 nombran su propia ciudad.\n` +
+          `No nombres ninguna otra ciudad: este anuncio solo se muestra en ${o.location}.`
         : '';
-      const assetsTxt = Array.isArray(topAssets) && topAssets.length
-        ? '\n\nAssets actuales que Google califica por rendimiento (no repetir los BEST literalmente; superar los LOW):\n' + topAssets.map((a: any) => `- [${a.label}] ${a.tipo}: "${a.texto}"`).join('\n')
-        : '';
-      const rules = getClientContext(client) || '';
-      const prompt = `Actúa como un experto en Google Ads. Genera textos para un Responsive Search Ad (RSA) basado en estos términos de búsqueda exitosos: ${searchTerms.join(', ')}.${metricsTxt}${assetsTxt}\n\nReglas de la cuenta:\n${rules}\n\nPriorizá los términos con más conversiones. Cada headline debe ser distinto en ángulo, no en sinónimos.
-${complianceRule}
-Los títulos no deben superar los 30 caracteres.
-Las descripciones no deben superar los 90 caracteres.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: rsaSchemaConfig as any,
+      const system = `Sos redactor de Google Ads. Escribís textos para Responsive Search Ads que tienen que ganar subastas, no sonar bien.
+
+IDIOMA DEL ANUNCIO: ${idioma}
+
+QUE DEVOLVES
+Un objeto JSON, sin texto antes ni después y sin backticks:
+{"headlines": [15 strings], "descriptions": [4 strings], "notas": "..."}
+
+LIMITES QUE NO SE NEGOCIAN
+- Cada título: MAXIMO 30 caracteres con espacios. Contá antes de escribir.
+- Cada descripción: MAXIMO 90 caracteres con espacios.
+- Si una idea no entra, cambiá la idea. NUNCA la cortes: un título partido a mitad de palabra es peor que un título menos.
+- Exactamente 15 títulos y 4 descripciones.
+
+RELEVANCIA: ES EL OBJETIVO
+Google compara el anuncio con lo que la persona buscó. Es el único componente del Quality Score que el texto puede mover.
+- Los primeros CINCO títulos llevan el término más convertidor, lo más textual que entre en 30 caracteres.
+- Al menos DIEZ de los quince contienen alguna palabra de las keywords del grupo.
+- Cada descripción repite al menos un término, en una frase natural.
+- Si no entra literal, usá su núcleo, no un sinónimo: Google reconoce la búsqueda, no el sinónimo.${reglaLocal}
+
+QUE NO ESCRIBIS, PORQUE SUENA A IA
+- Relleno: "descubrí", "potenciá", "llevá tu X al siguiente nivel", "la solución definitiva", "sin complicaciones", "de forma sencilla" y sus equivalentes en el idioma que corresponda.
+- Superlativos sin respaldo: el mejor, líder, innovador, revolucionario, premium.
+- Tres adjetivos apilados, ni tres cosas separadas por comas.
+- Signos de exclamación. Ninguno.
+- La misma idea en sinónimos: son títulos desperdiciados, Google no los combina bien.
+
+QUE SI FUNCIONA
+Un número concreto que exista en el contexto. Un plazo. Una condición. El verbo que la persona usaría. Una objeción respondida de frente: precio, tiempo, requisito, riesgo. Quince ÁNGULOS distintos, no quince maneras de decir lo mismo.
+
+REGLAS DE LA CUENTA
+Mandan sobre todo lo anterior. Si una regla prohíbe una palabra, no aparece ni conjugada ni en plural. Si no podés llegar a quince sin violar una regla, escribí menos y explicá cuál te frenó en "notas".
+
+${reglas}`;
+
+      const user = `CUENTA: ${o.nombre_cliente} (${client}) · moneda ${o.moneda}
+CAMPAÑA: ${campaign}
+GRUPO DE ANUNCIOS: ${adGroup}${o.location ? `\nLOCAL: ${o.location}` : ''}${o.objetivo ? `\nOBJETIVO DE LA CAMPAÑA: ${o.objetivo}` : ''}
+
+DIAGNOSTICO DE ESTE GRUPO (por eso estás escribiendo):
+- ${o.que_hacer}
+- ${o.pct_gasto_con_relevancia_baja}% del gasto va a keywords con relevancia bajo el promedio. Quality Score ponderado: ${o.qs_ponderado}.
+- Anuncios activos en el grupo: ${o.anuncios_en_el_grupo}. Eficacia: ${o.fuerza_del_anuncio || 'sin dato'}.
+
+KEYWORDS DEL GRUPO (contra estas se mide la relevancia):
+${o.keywords_del_grupo || '(sin keywords con gasto esta semana)'}
+
+TERMINOS QUE YA CONVIRTIERON EN ESTE GRUPO, ultimos 30 dias:
+${o.terminos_que_convierten || '(ninguno convirtió: apoyate en las keywords)'}
+
+TITULOS QUE YA EXISTEN EN ESTE GRUPO (variá, no repitas; si uno es bueno, buscá el ángulo que falta):
+${hAct.length ? hAct.map((h: string) => `- ${h}`).join('\n') : '(el grupo no tiene títulos cargados)'}
+
+DESCRIPCIONES ACTUALES:
+${dAct.length ? dAct.map((d: string) => `- ${d}`).join('\n') : '(ninguna)'}
+
+Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reescribí las que pasen.`;
+
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-5', max_tokens: 4000, system,
+        messages: [{ role: 'user', content: user }]
+      });
+
+      const txt = (msg.content || []).map((b: any) => (b.type === 'text' ? b.text : '')).join('').trim();
+      const limpio = txt.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      let crudo: any;
+      try { crudo = JSON.parse(limpio); }
+      catch { return res.status(502).json({ error: 'El modelo no devolvió JSON válido. Probá de nuevo.', crudo: limpio.slice(0, 400) }); }
+
+      const val = z.object({ headlines: z.array(z.string()), descriptions: z.array(z.string()), notas: z.string().optional() }).safeParse(crudo);
+      if (!val.success) return res.status(502).json({ error: 'El JSON no tiene la forma esperada.', detalle: val.error.message });
+
+      // Nada se trunca: lo que no entra se descarta y se informa.
+      const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+      const palabras = new Set(String(o.keywords_del_grupo || '').toLowerCase().split(/[\s|]+/).filter((w: string) => w.length > 3));
+      const menciona = (s: string) => [...palabras].some((w: any) => s.toLowerCase().includes(w));
+
+      const hOk: string[] = [], descartados: any[] = [];
+      for (const h of val.data.headlines.map(norm)) {
+        if (h.length > 30) descartados.push({ texto: h, largo: h.length, motivo: 'pasa los 30' });
+        else if (hOk.includes(h)) descartados.push({ texto: h, largo: h.length, motivo: 'repetido' });
+        else hOk.push(h);
+      }
+      const dOk: string[] = [];
+      for (const d of val.data.descriptions.map(norm)) {
+        if (d.length > 90) descartados.push({ texto: d, largo: d.length, motivo: 'pasa los 90' });
+        else if (dOk.includes(d)) descartados.push({ texto: d, largo: d.length, motivo: 'repetida' });
+        else dOk.push(d);
+      }
+
+      const conTermino = hOk.filter(menciona).length;
+      const cobertura = hOk.length ? Math.round((conTermino / hOk.length) * 100) : 0;
+      const conCiudad = o.location ? hOk.filter(h => h.toLowerCase().includes(String(o.location).toLowerCase())).length : null;
+
+      const avisos: string[] = [];
+      if (cobertura < 60) avisos.push(`Solo el ${cobertura}% de los títulos menciona una keyword del grupo. Para relevancia conviene pedir otro.`);
+      if (hOk.length < 15) avisos.push(`Quedaron ${hOk.length} títulos de 15. Google necesita 15 para Eficacia Excelente.`);
+      if (o.location && (conCiudad ?? 0) < 4) avisos.push(`Solo ${conCiudad} título(s) nombra "${o.location}". En una cadena eso es relevancia regalada.`);
+
+      res.json({
+        success: true,
+        data: {
+          headlines: hOk, descriptions: dOk,
+          contexto: { cuenta: client, campaign, adGroup, location: o.location, idioma: o.idioma_anuncio, que_hacer: o.que_hacer },
+          diagnostico: {
+            titulos: hOk.length, descripciones: dOk.length,
+            cobertura_de_keyword_pct: cobertura,
+            titulos_con_la_ciudad: conCiudad,
+            largos_titulos: hOk.map(h => h.length),
+            descartados,
+            titulos_actuales_leidos: hAct.length,
+            avisos: avisos.length ? avisos : null,
+            notas_del_modelo: val.data.notas || null
+          }
         }
       });
-      
-      if (!response.text) throw new Error("No response text");
-      
-      // Zod Validation Estricta
-      const rsaZodSchema = z.object({
-        headlines: z.array(z.string()),
-        descriptions: z.array(z.string())
+    } catch (e: any) {
+      console.error('Error generando RSA:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // De diagnostico a accionable ejecutable (8 sep 2026)
+  //
+  // v_terminos_sin_cobertura encuentra terminos cuyo tema ninguna keyword del grupo
+  // cubre, y decide comparando el CPA del termino contra el del grupo: si convierte
+  // mejor merece keyword propia, si no convierte y gasta es candidato a negativa.
+  // Hasta aca era una vista que habia que ir a mirar. Esto la convierte en accionables
+  // de Notion con Accion JSON valido, que es lo unico que la app puede ejecutar de un clic.
+  //
+  // Los guardarrailes NO se saltean, se aplican antes de crear:
+  //   simular_negativa      -> que la negativa no bloquee un termino que convierte ni
+  //                            uno protegido. Si bloquea, no se crea y se dice cual.
+  //   verificar_invariantes -> sobre el JSON final, igual que cualquier otro accionable.
+  // Y nada se ejecuta solo: el accionable nace en Propuesto y lo aprueba Andres.
+  app.get("/api/terminos-sin-cobertura", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    const accion = (req.query.accion as string) || null;
+    let q = supabase.from('v_terminos_sin_cobertura').select('*').order('gasto_30d', { ascending: false });
+    if (client) q = q.eq('account', client);
+    if (accion) q = q.eq('accion', accion);
+    const { data, error } = await q.limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data: data || [] });
+  });
+
+  app.post("/api/terminos-sin-cobertura/accionable", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+      if (!notion || !NOTION_BASES.ACCIONABLES) return res.status(503).json({ error: 'Notion no configurado' });
+      const { client, campaign, adGroup, searchTerm, nivel } = req.body as
+        { client: string; campaign: string; adGroup: string; searchTerm: string; nivel?: string };
+      if (!client || !campaign || !adGroup || !searchTerm) {
+        return res.status(400).json({ error: 'Faltan client, campaign, adGroup o searchTerm.' });
+      }
+
+      const { data: fila, error: errF } = await supabase.from('v_terminos_sin_cobertura').select('*')
+        .eq('account', client).eq('campaign', campaign).eq('ad_group', adGroup).eq('search_term', searchTerm).maybeSingle();
+      if (errF) return res.status(500).json({ error: errF.message });
+      if (!fila) return res.status(404).json({ error: 'Ese término ya no aparece en los últimos 30 días.' });
+      const f: any = fila;
+
+      if (f.accion === 'ok' || f.accion === 'revisar') {
+        return res.status(409).json({ error: `Este término está marcado como "${f.accion}": ${f.veredicto}`, bloqueado: true });
+      }
+
+      const nivelUsar = nivel === 'campana' ? 'campana' : 'grupo';
+      let accionJson: any; let titulo = ''; let porQue = ''; let comoHacerlo = ''; let prioridad = NOTION_PRIORITIES.MEDIA;
+
+      if (f.accion === 'negativa') {
+        // GUARDARRAIL: simular antes de proponer. Una negativa que bloquea algo que
+        // convierte cuesta mas que el gasto que ahorra.
+        const { data: sim, error: errS } = await supabase.rpc('simular_negativa', {
+          p_account: client, p_negativa: searchTerm, p_match: 'PHRASE',
+          p_nivel: nivelUsar, p_grupo: adGroup
+        });
+        if (errS) return res.status(500).json({ error: `La simulación falló y sin ella no se propone: ${errS.message}` });
+        const s: any = sim || {};
+        // Las claves reales de simular_negativa, verificadas contra la función el 8 sep 2026:
+        // bloquearia_conversiones (boolean), protegidos_afectados (ARRAY, no un conteo),
+        // conversiones_bloqueadas y conversiones_bloqueadas_90d (numéricos).
+        // Escribí primero `s.protegidos_afectados > 0`, que sobre un array en JS es
+        // siempre false: el guardarraíl no habría frenado nunca. Probarlo lo agarró.
+        const protegidos: string[] = Array.isArray(s.protegidos_afectados) ? s.protegidos_afectados : [];
+        const convBloq = Number(s.conversiones_bloqueadas || 0) + Number(s.conversiones_bloqueadas_90d || 0);
+        if (s.bloquearia_conversiones === true || protegidos.length > 0 || convBloq > 0) {
+          return res.status(409).json({
+            error: `La simulación frena esta negativa: bloquearía ${convBloq} conversion(es) y toca ${protegidos.length} término(s) protegido(s). No se crea.`,
+            protegidos_afectados: protegidos.slice(0, 12),
+            conversiones_que_bloquearia: convBloq,
+            gasto_que_bloquearia_90d: s.gasto_bloqueado_90d ?? null,
+            simulacion: s, bloqueado: true
+          });
+        }
+        accionJson = {
+          verbo: 'agregar_negativa', plataforma: 'google',
+          objeto: { campana: campaign, grupo: nivelUsar === 'grupo' ? adGroup : null, keyword: searchTerm, match_type: 'PHRASE' },
+          parametros: { nivel: nivelUsar },
+          verificar: { metrica: 'gasto', direccion: 'baja', fecha: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10) }
+        };
+        titulo = `Agregar negativa "${searchTerm}" en ${nivelUsar === 'grupo' ? adGroup : campaign}`;
+        porQue = `${f.gasto_30d} de gasto en ${f.clicks} clic(s) en 30 días, cero conversiones` +
+                 (f.cpc_promedio ? `, a ${f.cpc_promedio} por clic` : '') +
+                 `. Lo disparó la keyword "${f.triggered_keyword}", que no contiene ninguna palabra del término: el grupo está comprando algo que no declara. Simulación sin bloqueos (ventana ${s.ventana_diaria_real || 'diaria'}, 0 conversiones y 0 términos protegidos afectados).`;
+        prioridad = Number(f.gasto_30d) > 10000 ? NOTION_PRIORITIES.ALTA : NOTION_PRIORITIES.MEDIA;
+        comoHacerlo = [
+          `1. Campañas > ${campaign}${nivelUsar === 'grupo' ? ` > ${adGroup}` : ''}.`,
+          `2. Palabras clave > pestaña Palabras clave negativas.`,
+          `3. Agregar, concordancia de frase, texto exacto: ${searchTerm}`,
+          `4. Guardar. Tiene que aparecer en la lista de negativas del ${nivelUsar === 'grupo' ? 'grupo' : 'campaña'}.`
+        ].join('\n');
+      } else {
+        // 'crear': el termino convierte mejor que su grupo y nadie lo cubre.
+        // NO se propone crear el grupo por script (no es ejecutable): se propone como
+        // tarea externa con los pasos, que es lo que capacidades_ejecucion permite.
+        accionJson = {
+          verbo: 'tarea_externa', plataforma: 'google',
+          objeto: { campana: campaign, grupo: adGroup, keyword: searchTerm },
+          parametros: {
+            donde: 'Google Ads',
+            que_hacer: `Crear keyword propia para "${searchTerm}" (exacta y frase) en un grupo con anuncio que la mencione.`
+          },
+          verificar: { metrica: 'cpa', direccion: 'baja', fecha: new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10) }
+        };
+        titulo = `Crear keyword propia para "${searchTerm}"${f.location ? ` · ${f.location}` : ''}`;
+        porQue = `Convierte a ${f.cpa_del_termino} contra ${f.cpa_del_grupo} del grupo que hoy lo sirve, con ${f.conversiones_30d} conversiones en 30 días, y ninguna keyword del grupo lo cubre: lo dispara "${f.triggered_keyword}" por concordancia amplia. Comprarlo así paga de más y hunde la relevancia del anuncio.`;
+        prioridad = NOTION_PRIORITIES.ALTA;
+        comoHacerlo = [
+          `1. Campañas > ${campaign} > ${adGroup}.`,
+          `2. Crear grupo nuevo si el tema no encaja, o agregar la keyword al grupo actual.`,
+          `3. Agregar "${searchTerm}" en concordancia exacta y de frase.`,
+          `4. El anuncio del grupo tiene que mencionar el término: si no, la relevancia no mejora.`,
+          `5. Verificar en 3 semanas que el CPA de ese término bajó de ${f.cpa_del_termino}.`
+        ].join('\n');
+      }
+
+      // GUARDARRAIL: invariantes sobre el JSON final, igual que cualquier accionable.
+      const { data: inv } = await supabase.rpc('verificar_invariantes', { p_account: client, p_accion: accionJson });
+      const bloqueos = (inv as any[] || []).filter((i: any) => i.bloquea);
+      if (bloqueos.length) {
+        return res.status(409).json({ error: 'Las invariantes bloquean este accionable.', invariantes: bloqueos, bloqueado: true });
+      }
+
+      const page: any = await notion.pages.create({
+        parent: { database_id: NOTION_BASES.ACCIONABLES },
+        properties: {
+          Accion: { title: [{ text: { content: titulo.slice(0, 200) } }] },
+          Estado: { select: { name: NOTION_STATES.PROPUESTO } },
+          Prioridad: { select: { name: prioridad } },
+          'Por que': { rich_text: [{ text: { content: porQue.slice(0, 1900) } }] },
+          'Como hacerlo': { rich_text: [{ text: { content: comoHacerlo.slice(0, 1900) } }] },
+          'Accion JSON': { rich_text: [{ text: { content: '`' + JSON.stringify(accionJson) + '`' } }] },
+          Origen: { select: { name: 'Andres' } }
+        }
       });
 
-      const parsedData = rsaZodSchema.parse(JSON.parse(response.text));
-      
-      // Enforce limits with JS truncation
-      const result = {
-        headlines: parsedData.headlines.map(h => h.length > 30 ? h.substring(0, 30) : h),
-        descriptions: parsedData.descriptions.map(d => d.length > 90 ? d.substring(0, 90) : d)
-      };
-
-      res.json({ success: true, data: result });
-
+      res.json({ success: true, notion_id: page.id, titulo, accion: f.accion, invariantes_avisos: (inv as any[] || []).filter((i: any) => !i.bloquea) });
     } catch (e: any) {
-      console.error('Error generating RSA:', e);
+      console.error('Error creando accionable desde término:', e);
       res.status(500).json({ error: e.message });
     }
   });
