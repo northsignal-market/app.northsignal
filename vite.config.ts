@@ -13,29 +13,27 @@ export default defineConfig(() => {
       },
     },
     build: {
-      // Sin esto todo va a un solo bloque de 1,5 MB: abrir la app descarga las cinco
-      // pantallas aunque solo se use una. Las librerías pesadas y de uso puntual
-      // (gráficos, PDF, captura de pantalla) van aparte y se bajan cuando hacen falta.
-      chunkSizeWarningLimit: 700,
+      // React NO se separa en su propio bloque. Cuando estaba separado, lucide-react,
+      // recharts, zustand y Radix quedaban en otros bloques y todos dependen de React:
+      // Rollup no garantiza el orden, así que un bloque podía ejecutarse antes que el
+      // de React, llamarlo cuando todavía no existía, y la app reventaba ANTES de
+      // montar. El síntoma era la pantalla de carga infinita, sin login ni error
+      // visible, porque el fallo ocurre antes de que React pueda mostrar nada.
+      //
+      // Solo se separa lo pesado que no participa del arranque.
+      chunkSizeWarningLimit: 900,
       rollupOptions: {
         output: {
           manualChunks(id: string) {
             if (!id.includes('node_modules')) return;
-            if (id.includes('recharts') || id.includes('d3-')) return 'graficos';
             if (id.includes('html2canvas') || id.includes('jspdf') || id.includes('@react-pdf')) return 'pdf';
-            if (id.includes('react-dom') || id.includes('/react/')) return 'react';
-            if (id.includes('lucide-react')) return 'iconos';
-            if (id.includes('zod')) return 'validacion';
-            return 'proveedores';
+            if (id.includes('recharts') || id.includes('d3-')) return 'graficos';
           },
         },
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
