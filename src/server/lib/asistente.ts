@@ -7,7 +7,17 @@
  *
  * Reglas de la doc oficial: el contexto grande va en el primer turno de usuario,
  * no en el system; herramientas con schema estricto y descripción precisa;
- * effort bajo porque es conversación, no análisis.
+ * effort ALTO (8 sep 2026). Antes decía "effort bajo porque es conversación, no análisis",
+ * y para una consulta suelta era cierto. Pero acá se le preguntan cosas de criterio sobre
+ * cuatro cuentas con reglas distintas, y el esfuerzo es justo lo que decide qué herramienta
+ * llamar, cuántas encadenar y cómo leer un vacío explicado.
+ * high es el DEFAULT de la API: ponerlo se comporta igual que no poner el parámetro.
+ *
+ * CUIDADO SI ALGUIEN LO VUELVE A TOCAR: el razonamiento y el texto comparten max_tokens.
+ * Subir el esfuerzo sin subir max_tokens corta la respuesta a la mitad, y el síntoma es
+ * "no devolvió JSON" o una respuesta trunca, que manda a buscar al lugar equivocado.
+ * Pasó el 8 de septiembre con el generador de RSA: 4000 tokens, 39 segundos y JSON cortado.
+ * Los dos parámetros se mueven juntos o no se mueven.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { GLOSARIO } from '../../lib/glosario';
@@ -71,7 +81,7 @@ export async function responderAsistente(supabase: any, mensajes: { role: 'user'
   // 7 vueltas: una consulta real puede ser buscar el accionable, explicarlo,
   // verificar invariantes, simular y dejar nota. Con 4 se cortaba a la mitad.
   while (vueltas++ < 7) {
-    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 2500, system: `Sos el asistente de NorthSignal, la app con la que Andrés opera cuentas de Google Ads. Hablás con Andrés, que es quien construyó el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
+    const res = await anthropic.messages.create({ model: 'claude-sonnet-5', max_tokens: 8000, system: `Sos el asistente de NorthSignal, la app con la que Andrés opera cuentas de Google Ads. Hablás con Andrés, que es quien construyó el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
 
 Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sale de la base en cada consulta, así que es la buena. Nunca digas que una cuenta no existe sin buscarla ahí, ni sugieras abrir un ticket porque una cuenta "debería estar cargada" si figura.
 
@@ -95,9 +105,18 @@ Cuando algo no se puede, decí por qué y de quién es el límite. "Los RSA no s
 
 Un número siempre con su ventana: "5,44 USD en las últimas 4 semanas", no "5,44 USD".
 
-Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas propias y promediarlas da un número que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: 'low' } as any });
+Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas propias y promediarlas da un número que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: 'high' } as any });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[];
+    // Si se cortó por largo, la respuesta que sigue está incompleta y no hay que
+    // devolverla como si estuviera entera. Antes caía por la misma rama que una
+    // respuesta terminada y el usuario recibía media frase sin saber por qué.
+    if (res.stop_reason === 'max_tokens') {
+      const parcial = res.content.filter(b => b.type === 'text').map((b: any) => b.text).join('');
+      return { texto: (parcial ? parcial + '\n\n' : '') +
+        '[La respuesta se cortó por largo. Preguntame algo más acotado, o pedímelo por partes.]',
+        costo, vueltas, cortada: true } as any;
+    }
     if (!toolUses.length || res.stop_reason !== 'tool_use') {
       const texto = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('\n').trim();
       return { texto, costo_usd: costo };

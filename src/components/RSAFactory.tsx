@@ -65,7 +65,14 @@ export function RSAFactory() {
       if (res.ok && data.success) setGenerado(data.data);
       else if (res.status === 409 && data.bloqueado) setBloqueo(data.error);
       // Sin esta rama el botón no hacía nada y no decía por qué. Fallar en silencio es peor.
-      else setError(data?.error || `El generador respondió ${res.status} sin detalle.`);
+      else {
+        // El detalle del 502 (stop_reason y lo que devolvio el modelo) viaja en la
+        // respuesta y antes no se mostraba: el error decia poco y no se podia diagnosticar.
+        const extra = [data?.stop_reason ? `stop_reason: ${data.stop_reason}` : null,
+                       data?.crudo ? `Devolvió: ${String(data.crudo).slice(0, 220)}…` : null]
+                      .filter(Boolean).join(' · ');
+        setError((data?.error || `El generador respondió ${res.status} sin detalle.`) + (extra ? `\n\n${extra}` : ''));
+      }
     } catch (e: any) {
       setError(e?.message || 'No se pudo contactar al generador.');
     }
@@ -166,7 +173,7 @@ export function RSAFactory() {
           {error && (
             <div className="flex flex-col items-center justify-center h-full space-y-3 px-4">
               <AlertCircle size={30} style={{ color: '#F97066' }} />
-              <p className="text-sm text-center" style={{ color: '#F97066' }}>{error}</p>
+              <p className="text-sm text-center whitespace-pre-wrap" style={{ color: '#F97066' }}>{error}</p>
               <p className="text-xs text-center text-[#F5F7FA]/40">
                 Si dice que falta ANTHROPIC_API_KEY, se carga en las variables de entorno de Vercel.
               </p>

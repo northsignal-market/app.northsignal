@@ -1656,16 +1656,56 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
 
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const msg = await anthropic.messages.create({
-        model: 'claude-sonnet-5', max_tokens: 4000, system,
-        messages: [{ role: 'user', content: user }]
+
+      // 8 sep 2026, segunda pasada. La primera version puso max_tokens 4000 sin tocar el
+      // esfuerzo de razonamiento, que viene encendido por defecto. Resultado medido en los
+      // logs: 39.673 ms y el JSON cortado a la mitad. El presupuesto se fue en pensar.
+      // Escribir quince titulos no necesita razonamiento largo: effort low, como el
+      // asistente de la app, y max_tokens con margen de sobra.
+      const pedir = async (extra?: string) => anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 8000,
+        system: extra ? `${system}\n\n${extra}` : system,
+        messages: [{ role: 'user', content: user }],
+        output_config: { effort: 'low' } as any
       });
 
-      const txt = (msg.content || []).map((b: any) => (b.type === 'text' ? b.text : '')).join('').trim();
-      const limpio = txt.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-      let crudo: any;
-      try { crudo = JSON.parse(limpio); }
-      catch { return res.status(502).json({ error: 'El modelo no devolvió JSON válido. Probá de nuevo.', crudo: limpio.slice(0, 400) }); }
+      // Toma el JSON aunque venga con preambulo o con backticks. Antes solo sacaba las
+      // comillas de bloque: una frase antes de la llave rompia el parseo.
+      const sacarJson = (bruto: string) => {
+        const sinFences = bruto.replace(/```(?:json)?/gi, '').trim();
+        const a = sinFences.indexOf('{'), b = sinFences.lastIndexOf('}');
+        return a >= 0 && b > a ? sinFences.slice(a, b + 1) : sinFences;
+      };
+      const texto = (m: any) => (m.content || []).map((b: any) => (b.type === 'text' ? b.text : '')).join('').trim();
+
+      let msg = await pedir();
+      let crudo: any = null;
+      let cortado = msg.stop_reason === 'max_tokens';
+
+      if (!cortado) { try { crudo = JSON.parse(sacarJson(texto(msg))); } catch { crudo = null; } }
+
+      if (crudo === null) {
+        // Un reintento acotado. Si se corto, pedir menos texto por linea; si no parseo,
+        // recordar que no puede haber nada fuera del objeto.
+        msg = await pedir(cortado
+          ? 'REINTENTO: la respuesta anterior se cortó por largo. Escribí las notas en una sola frase corta y no repitas el razonamiento.'
+          : 'REINTENTO: la respuesta anterior no era JSON parseable. Devolvé SOLO el objeto JSON, sin una palabra antes ni después.');
+        cortado = msg.stop_reason === 'max_tokens';
+        try { crudo = JSON.parse(sacarJson(texto(msg))); } catch { crudo = null; }
+      }
+
+      if (crudo === null) {
+        // El mensaje distingue los dos casos. Antes decia "no devolvió JSON válido" incluso
+        // cuando el problema era el corte, que manda a buscar en el lugar equivocado.
+        return res.status(502).json({
+          error: cortado
+            ? 'La respuesta se cortó por largo, dos veces. El texto quedó incompleto.'
+            : 'El modelo no devolvió JSON parseable, dos veces.',
+          stop_reason: msg.stop_reason,
+          crudo: texto(msg).slice(0, 600)
+        });
+      }
 
       const val = z.object({ headlines: z.array(z.string()), descriptions: z.array(z.string()), notas: z.string().optional() }).safeParse(crudo);
       if (!val.success) return res.status(502).json({ error: 'El JSON no tiene la forma esperada.', detalle: val.error.message });
