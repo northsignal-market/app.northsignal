@@ -23,11 +23,9 @@ import { ActionableDrawerContent } from './components/ActionableDrawerContent';
 import { useAppStore } from './store/useAppStore';
 import type { Actionable } from './types';
 
-const CLIENT_CURRENCIES: Record<string, string> = {
-  'KAREDO': 'EUR',
-  'BHI': 'CLP',
-  '360': 'CLP'
-};
+// La moneda sale de la cuenta, no de un mapa cableado. Este mapa tenía tres
+// entradas y Fresh Monkee caía al 'CLP' por defecto: la app mostraba dólares
+// como si fueran pesos chilenos, que es un error de lectura, no de estilo.
 
 // Rutas viejas -> nuevas. Las viejas siguen funcionando (links guardados, mails).
 const RUTA_VIEJA: Record<string, { tab: string; seg?: string }> = {
@@ -94,8 +92,12 @@ function App() {
   // Cuentas desde la base, no cableadas: sumar un cliente es una fila en `cuentas`.
   const [cuentas, setCuentas] = useState<any[]>([]);
   useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setCuentas(Array.isArray(d) ? d : [])).catch(() => {}); }, []);
-  const clients = cuentas.length ? cuentas.map(c => c.account) : ['360', 'BHI', 'KAREDO'];
-  const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
+  // Sin respaldo cableado. Si el endpoint falla, la lista queda VACÍA y se avisa,
+  // en vez de mostrar tres cuentas de las cuatro: una lista incompleta que se ve
+  // completa es peor que una vacía, porque nadie sospecha que falta algo.
+  const clients = cuentas.map(c => c.account);
+  const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda
+    || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
 
   // Check authentication
   useEffect(() => {
@@ -214,8 +216,13 @@ function App() {
                 else if (n.ref_tipo === 'alerta') irA('bandeja');
                 else irA('sistema');
               }} /></div>
+              {clients.length === 0 && (
+                <span className="px-3 py-1 text-xs text-[#fcd34d]" title="El endpoint /api/cuentas no devolvió nada. Mirá Sistema › Salud.">
+                  No se pudieron cargar las cuentas
+                </span>
+              )}
               {clients.map(client => {
-                const isSelected = (selectedClient || '360').toUpperCase() === client;
+                const isSelected = (selectedClient || clients[0] || '').toUpperCase() === client;
                 return (
                   <button
                     key={client}
@@ -234,7 +241,7 @@ function App() {
                         color: isSelected ? '#FFFFFF' : 'var(--gray)'
                       }}
                     >
-                      {CLIENT_CURRENCIES[client] || 'CLP'}
+                      {monedaDe(client)}
                     </span>
                   </button>
                 );

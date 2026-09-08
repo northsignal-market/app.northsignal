@@ -13,14 +13,19 @@ export default defineConfig(() => {
       },
     },
     build: {
-      // React NO se separa en su propio bloque. Cuando estaba separado, lucide-react,
-      // recharts, zustand y Radix quedaban en otros bloques y todos dependen de React:
-      // Rollup no garantiza el orden, así que un bloque podía ejecutarse antes que el
-      // de React, llamarlo cuando todavía no existía, y la app reventaba ANTES de
-      // montar. El síntoma era la pantalla de carga infinita, sin login ni error
-      // visible, porque el fallo ocurre antes de que React pueda mostrar nada.
+      // React NO se separa en su propio bloque, y el resto de node_modules tampoco
+      // va a un bloque general.
       //
-      // Solo se separa lo pesado que no participa del arranque.
+      // Qué pasaba antes: React quedaba en un bloque y lucide-react, recharts,
+      // zustand y Radix en otro. Todos dependen de React, así que Rollup avisaba
+      // "Circular chunk: proveedores -> react -> proveedores" y el orden de
+      // ejecución dejaba de estar garantizado. Un bloque podía correr antes que
+      // el de React, llamarlo cuando todavía no existía, y la app reventaba ANTES
+      // de montar: pantalla de carga infinita, sin login y sin error visible.
+      //
+      // Ahora solo se separa lo pesado que NO participa del arranque: el PDF y los
+      // gráficos se descargan al abrir una pantalla que los usa. Se conserva la
+      // mayor parte del ahorro de la primera carga sin el riesgo de orden.
       chunkSizeWarningLimit: 900,
       rollupOptions: {
         output: {
@@ -33,7 +38,10 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

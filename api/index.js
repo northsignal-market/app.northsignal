@@ -1499,9 +1499,16 @@ var _cuentasCache = { at: 0, data: [] };
 async function cuentasActivas() {
   if (Date.now() - _cuentasCache.at < 3e5 && _cuentasCache.data.length) return _cuentasCache.data;
   if (!supabase) return [];
-  const { data } = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas").eq("activa", true).order("account");
-  if (data?.length) _cuentasCache = { at: Date.now(), data };
-  return data || [];
+  const completo = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas").eq("activa", true).order("account");
+  if (completo.data?.length) {
+    _cuentasCache = { at: Date.now(), data: completo.data };
+    return completo.data;
+  }
+  if (completo.error) console.error("[cuentas] select completo fall\xF3: " + completo.error.message + " \u2014 reintentando con columnas base");
+  const base = await supabase.from("cuentas").select("account, nombre_cliente, moneda, cid, perfil_analisis").eq("activa", true).order("account");
+  if (base.error) console.error("[cuentas] select base tambi\xE9n fall\xF3: " + base.error.message);
+  if (base.data?.length) _cuentasCache = { at: Date.now(), data: base.data };
+  return base.data || [];
 }
 async function resolveNotionClient(notion2, relationProp) {
   if (!relationProp?.relation || relationProp.relation.length === 0) return "Unknown";

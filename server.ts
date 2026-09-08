@@ -40,9 +40,27 @@ let _cuentasCache: { at: number; data: any[] } = { at: 0, data: [] };
 async function cuentasActivas(): Promise<any[]> {
   if (Date.now() - _cuentasCache.at < 300000 && _cuentasCache.data.length) return _cuentasCache.data;
   if (!supabase) return [];
-  const { data } = await supabase.from('cuentas').select('account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas').eq('activa', true).order('account');
-  if (data?.length) _cuentasCache = { at: Date.now(), data };
-  return data || [];
+  // Dos intentos. El primero pide todo; el segundo solo lo esencial.
+  //
+  // Por qué: PostgREST cachea el esquema. Cuando se agrega una columna de un tipo
+  // nuevo —como plataformas, que es un enum creado hoy— el cache puede no conocerla
+  // y entonces FALLA EL SELECT ENTERO, no solo esa columna. La app recibía cero
+  // cuentas, caía al respaldo cableado de tres, y Fresh Monkee desaparecía del
+  // selector sin ningún error visible.
+  //
+  // El respaldo pide solo columnas que existen desde el primer día. Es preferible
+  // mostrar las cuatro cuentas sin zona horaria que mostrar tres.
+  const completo = await supabase.from('cuentas')
+    .select('account, nombre_cliente, moneda, locale, zona_horaria, cid, perfil_analisis, presupuesto_diario, notion_ficha_id, plataformas')
+    .eq('activa', true).order('account');
+  if (completo.data?.length) { _cuentasCache = { at: Date.now(), data: completo.data }; return completo.data; }
+  if (completo.error) console.error('[cuentas] select completo falló: ' + completo.error.message + ' — reintentando con columnas base');
+  const base = await supabase.from('cuentas')
+    .select('account, nombre_cliente, moneda, cid, perfil_analisis')
+    .eq('activa', true).order('account');
+  if (base.error) console.error('[cuentas] select base también falló: ' + base.error.message);
+  if (base.data?.length) _cuentasCache = { at: Date.now(), data: base.data };
+  return base.data || [];
 }
 
 async function resolveNotionClient(notion: any, relationProp: any): Promise<string> {
