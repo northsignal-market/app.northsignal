@@ -1836,13 +1836,31 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
         // siempre false: el guardarraíl no habría frenado nunca. Probarlo lo agarró.
         const protegidos: string[] = Array.isArray(s.protegidos_afectados) ? s.protegidos_afectados : [];
         const convBloq = Number(s.conversiones_bloqueadas || 0) + Number(s.conversiones_bloqueadas_90d || 0);
-        if (s.bloquearia_conversiones === true || protegidos.length > 0 || convBloq > 0) {
+
+        // El radio del guardarraíl tiene que ser el radio de la evidencia, igual que el
+        // nivel de la negativa. conversiones_bloqueadas SÍ respeta el alcance simulado;
+        // protegidos_afectados y bloquearia_conversiones son de CUENTA, no del grupo.
+        // Caso real: "iclick travel" a nivel grupo en SEGURO EN EL EXTRANJERO bloquea 0
+        // conversiones ahí, pero figura protegido porque convierte en otro grupo. Con el
+        // OR de antes, el guardarraíl rechazaba la acción correcta.
+        // Bloqueo duro: se perderían conversiones dentro del alcance.
+        if (convBloq > 0) {
           return res.status(409).json({
-            error: `La simulación frena esta negativa: bloquearía ${convBloq} conversion(es) y toca ${protegidos.length} término(s) protegido(s). No se crea.`,
-            protegidos_afectados: protegidos.slice(0, 12),
+            error: `La simulación frena esta negativa: dentro del alcance elegido bloquearía ${convBloq} conversion(es). No se crea.`,
             conversiones_que_bloquearia: convBloq,
             gasto_que_bloquearia_90d: s.gasto_bloqueado_90d ?? null,
             simulacion: s, bloqueado: true
+          });
+        }
+        // Aviso, no bloqueo: el término está protegido a nivel cuenta pero no convierte
+        // en este alcance. Se pide confirmación explícita en vez de decidir por el operador.
+        if (protegidos.length > 0 && !req.body.confirmar_protegido) {
+          return res.status(409).json({
+            error: `"${searchTerm}" figura entre los términos protegidos de la cuenta porque convierte en otro lado, pero en ${nivelUsar === 'grupo' ? adGroup : campaign} bloquearía 0 conversiones. Confirmá que querés excluirlo solo acá.`,
+            protegidos_afectados: protegidos.slice(0, 12),
+            conversiones_que_bloquearia: 0,
+            gasto_que_bloquearia_90d: s.gasto_bloqueado_90d ?? null,
+            requiere_confirmacion: true, bloqueado: true
           });
         }
         accionJson = {
