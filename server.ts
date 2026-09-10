@@ -1595,6 +1595,17 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
           `No nombres ninguna otra ciudad: este anuncio solo se muestra en ${o.location}.`
         : '';
 
+      // Reglas verificadas contra la documentacion de Google y estudios de Adalysis el
+      // 8 sep 2026. La version anterior de este prompt pedia que DIEZ de los quince
+      // titulos contuvieran una keyword: eso dispara "tus titulos son demasiado similares"
+      // de forma garantizada, que es justo el criterio contrario de Ad Strength.
+      //
+      // Y mezclaba dos cosas que no son la misma:
+      //   RELEVANCIA DEL ANUNCIO: componente del Quality Score. Entra en la subasta.
+      //   AD STRENGTH: diagnostico de la interfaz. Google dice explicitamente que NO
+      //     influye directamente en la elegibilidad de publicacion.
+      // Ad Strength ademas depende de cosas que este generador no toca, como tener al
+      // menos 6 sitelinks, asi que por diseno no puede llevar un anuncio a Excellent solo.
       const system = `Sos redactor de Google Ads. Escribís textos para Responsive Search Ads que tienen que ganar subastas, no sonar bien.
 
 IDIOMA DEL ANUNCIO: ${idioma}
@@ -1609,25 +1620,37 @@ LIMITES QUE NO SE NEGOCIAN
 - Si una idea no entra, cambiá la idea. NUNCA la cortes: un título partido a mitad de palabra es peor que un título menos.
 - Exactamente 15 títulos y 4 descripciones.
 
-RELEVANCIA: ES EL OBJETIVO
-Google compara el anuncio con lo que la persona buscó. Es el único componente del Quality Score que el texto puede mover.
-- Los primeros CINCO títulos llevan el término más convertidor, lo más textual que entre en 30 caracteres.
-- Al menos DIEZ de los quince contienen alguna palabra de las keywords del grupo.
-- Cada descripción repite al menos un término, en una frase natural.
-- Si no entra literal, usá su núcleo, no un sinónimo: Google reconoce la búsqueda, no el sinónimo.${reglaLocal}
+LAS DOS COSAS QUE SE MIDEN, Y NO SON LA MISMA
+1. RELEVANCIA DEL ANUNCIO. Es parte del Quality Score y entra en la subasta. Se gana cuando el anuncio trata de lo que la persona buscó. NO exige repetir la keyword quince veces: exige que el anuncio sea sobre ese tema.
+2. AD STRENGTH. Es un diagnóstico de la interfaz, no entra en la subasta. Premia VARIEDAD: títulos distintos entre sí, de largos distintos, cubriendo ángulos distintos.
+
+Las dos tiran para lados opuestos si se abusa de la keyword. El equilibrio verificado:
+
+LA KEYWORD VA EN 2 A 4 TITULOS. NO MAS.
+- El título 1 lleva el término más convertidor, lo más textual que entre en 30 caracteres.
+- Otros dos o tres lo llevan con variaciones reales, no sinónimos de relleno.
+- **Al menos TRES títulos NO llevan la keyword a propósito**, para romper la monotonía.
+- Los once restantes son sobre el mismo tema sin repetir la palabra: beneficio, objeción, prueba, público, lugar, condición, llamada a la acción.
+Si repetís la keyword en diez títulos, Google marca "tus títulos son demasiado similares" y perdés variedad sin ganar relevancia.
+
+QUINCE ANGULOS, NO QUINCE FRASES
+- Ningún título puede ser una reescritura de otro. "Envío gratis", "Envío sin costo" y "Gratis el envío" son UN título, no tres.
+- Variá el largo a propósito: unos de 12 a 18 caracteres, otros de 25 a 30. La mezcla de largos rinde mejor en distintas posiciones.
+- Cada título tiene que funcionar solo Y combinado con cualquier otro, porque Google los arma en pares sin que vos elijas.
+- Las 4 descripciones también distintas entre sí, y distintas de los títulos. La keyword va en una o dos, no en las cuatro.
 
 QUE NO ESCRIBIS, PORQUE SUENA A IA
 - Relleno: "descubrí", "potenciá", "llevá tu X al siguiente nivel", "la solución definitiva", "sin complicaciones", "de forma sencilla" y sus equivalentes en el idioma que corresponda.
 - Superlativos sin respaldo: el mejor, líder, innovador, revolucionario, premium.
 - Tres adjetivos apilados, ni tres cosas separadas por comas.
 - Signos de exclamación. Ninguno.
-- La misma idea en sinónimos: son títulos desperdiciados, Google no los combina bien.
+- Títulos genéricos puestos para llenar, tipo "Más información" o "Conocé más". Un título débil agregado para llegar a quince empeora el anuncio: Google los rota igual.
 
 QUE SI FUNCIONA
-Un número concreto que exista en el contexto. Un plazo. Una condición. El verbo que la persona usaría. Una objeción respondida de frente: precio, tiempo, requisito, riesgo. Quince ÁNGULOS distintos, no quince maneras de decir lo mismo.
+Un número concreto que exista en el contexto. Un plazo. Una condición. El verbo que la persona usaría. Una objeción respondida de frente: precio, tiempo, requisito, riesgo.${reglaLocal}
 
 REGLAS DE LA CUENTA
-Mandan sobre todo lo anterior. Si una regla prohíbe una palabra, no aparece ni conjugada ni en plural. Si no podés llegar a quince sin violar una regla, escribí menos y explicá cuál te frenó en "notas".
+Mandan sobre todo lo anterior. Si una regla prohíbe una palabra, no aparece ni conjugada ni en plural. Si no podés llegar a quince sin violar una regla o sin repetirte, escribí menos y explicá cuál te frenó en "notas". Trece títulos distintos valen más que quince con dos rellenos.
 
 ${reglas}`;
 
@@ -1729,13 +1752,35 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
       }
 
       const conTermino = hOk.filter(menciona).length;
-      const cobertura = hOk.length ? Math.round((conTermino / hOk.length) * 100) : 0;
+      const sinTermino = hOk.length - conTermino;
       const conCiudad = o.location ? hOk.filter(h => h.toLowerCase().includes(String(o.location).toLowerCase())).length : null;
 
+      // Titulos demasiado parecidos entre si: es el criterio de Ad Strength que mas se
+      // rompe cuando se abusa de la keyword. Se mide por solape de palabras significativas.
+      const tokens = (s: string) => new Set(s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .split(/[^a-z0-9]+/).filter(w => w.length > 3));
+      const pares: string[] = [];
+      for (let i = 0; i < hOk.length; i++) {
+        for (let j = i + 1; j < hOk.length; j++) {
+          const a = tokens(hOk[i]), b = tokens(hOk[j]);
+          if (!a.size || !b.size) continue;
+          const comunes = [...a].filter(w => b.has(w)).length;
+          if (comunes / Math.min(a.size, b.size) >= 0.7) pares.push(`"${hOk[i]}" ≈ "${hOk[j]}"`);
+        }
+      }
+      const largos = hOk.map(h => h.length);
+      const cortos = largos.filter(l => l <= 18).length;
+      const largosN = largos.filter(l => l >= 25).length;
+
       const avisos: string[] = [];
-      if (cobertura < 60) avisos.push(`Solo el ${cobertura}% de los títulos menciona una keyword del grupo. Para relevancia conviene pedir otro.`);
-      if (hOk.length < 15) avisos.push(`Quedaron ${hOk.length} títulos de 15. Google necesita 15 para Eficacia Excelente.`);
-      if (o.location && (conCiudad ?? 0) < 4) avisos.push(`Solo ${conCiudad} título(s) nombra "${o.location}". En una cadena eso es relevancia regalada.`);
+      // La regla va al REVES de como estaba: el problema no es poca keyword, es demasiada.
+      if (conTermino > 5) avisos.push(`${conTermino} de ${hOk.length} títulos repiten la keyword. Google marca "títulos demasiado similares" pasando de 4. La relevancia no necesita repetirla: necesita que el anuncio sea del tema.`);
+      if (conTermino < 2) avisos.push(`Solo ${conTermino} título(s) contiene la keyword del grupo. Para relevancia del anuncio conviene 2 a 4.`);
+      if (sinTermino < 3) avisos.push(`Solo ${sinTermino} título(s) evita la keyword. Conviene que al menos 3 no la lleven, para variedad.`);
+      if (pares.length) avisos.push(`${pares.length} par(es) de títulos dicen casi lo mismo: ${pares.slice(0, 3).join(' · ')}. Cada uno cuenta como uno solo para Ad Strength.`);
+      if (cortos < 3 || largosN < 3) avisos.push(`Poca variedad de largos: ${cortos} cortos y ${largosN} largos. Conviene mezclar, rinden distinto según la posición.`);
+      if (hOk.length < 13) avisos.push(`Quedaron ${hOk.length} títulos. Ningún RSA con menos de 8 llega a Ad Strength Excelente, y los que la tienen suelen llevar 13 o más. Ojo: mejor 13 distintos que 15 con rellenos.`);
+      if (o.location && (conCiudad ?? 0) < 3) avisos.push(`Solo ${conCiudad} título(s) nombra "${o.location}". En una cadena eso es relevancia regalada.`);
 
       res.json({
         success: true,
@@ -1744,8 +1789,13 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
           contexto: { cuenta: client, campaign, adGroup, location: o.location, idioma: o.idioma_anuncio, que_hacer: o.que_hacer },
           diagnostico: {
             titulos: hOk.length, descripciones: dOk.length,
-            cobertura_de_keyword_pct: cobertura,
+            titulos_con_keyword: conTermino,
+            titulos_sin_keyword: sinTermino,
+            pares_parecidos: pares,
             titulos_con_la_ciudad: conCiudad,
+            // Ad Strength depende tambien de tener al menos 6 sitelinks, que este
+            // generador no toca. Sin eso no llega a Excellent por mas bueno que sea el copy.
+            nota_ad_strength: 'Ad Strength no entra en la subasta, es un diagnostico de la interfaz. Lo que si entra es la relevancia del anuncio, que es parte del Quality Score. Y Ad Strength tambien pide al menos 6 sitelinks en el grupo o la campana, que no se cargan desde aca.',
             largos_titulos: hOk.map(h => h.length),
             descartados,
             titulos_actuales_leidos: hAct.length,

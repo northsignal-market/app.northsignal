@@ -209,7 +209,7 @@ export function RSAFactory() {
                      style={{ backgroundColor: 'var(--surface-2, #131728)', border: '1px solid rgba(0,98,204,0.2)' }}>
                   <div className="text-[#F5F7FA]/70">
                     {generado.diagnostico.titulos} títulos · {generado.diagnostico.descripciones} descripciones ·{' '}
-                    {generado.diagnostico.cobertura_de_keyword_pct}% menciona una keyword del grupo
+                    {generado.diagnostico.titulos_con_keyword} con la keyword y {generado.diagnostico.titulos_sin_keyword} sin ella
                     {generado.diagnostico.titulos_con_la_ciudad != null &&
                       ` · ${generado.diagnostico.titulos_con_la_ciudad} nombran la ciudad`}
                   </div>
@@ -224,6 +224,11 @@ export function RSAFactory() {
                   )}
                   {generado.diagnostico.notas_del_modelo && (
                     <div className="text-[#F5F7FA]/50">{generado.diagnostico.notas_del_modelo}</div>
+                  )}
+                  {generado.diagnostico.nota_ad_strength && (
+                    <div className="text-[#F5F7FA]/40 pt-1" style={{ borderTop: '1px solid rgba(0,98,204,0.15)' }}>
+                      {generado.diagnostico.nota_ad_strength}
+                    </div>
                   )}
                 </div>
               )}
