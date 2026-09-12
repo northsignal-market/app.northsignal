@@ -508,17 +508,29 @@ export function ActionableDrawerContent({
           <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
         </div>
       )}
-      {(contexto?.actual?.accion_error || (!contexto && action.accion_error)) && action.status !== 'Hecho' && action.status !== 'Descartado' && (
-        String(contexto?.actual?.accion_error || action.accion_error).startsWith('INVARIANTE') ? (
+      {(contexto?.actual?.accion_error || (!contexto && action.accion_error)) && action.status !== 'Hecho' && action.status !== 'Descartado' && (() => {
+        const err = String(contexto?.actual?.accion_error || action.accion_error);
+        if (err.startsWith('INVARIANTE')) return (
           <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
             <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Viola una regla que no se negocia</span>
-            {String(contexto?.actual?.accion_error || action.accion_error).replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
+            {err.replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
             <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">El sistema no lo ejecuta y no debería ejecutarse a mano. Descartalo o pedile a la tarea del lunes que lo reformule.</p>
           </div>
-        ) : (
-          <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({contexto?.actual?.accion_error || action.accion_error}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>
-        )
-      )}
+        );
+        // "No ejecutable" no es "inválida": el JSON puede estar impecable, solo que no es un clic.
+        // Para las preguntas ni hace falta cartel: el panel de pregunta ya lo dice mejor.
+        if (err.startsWith('No ejecutable por script') || err.startsWith('Sin Accion JSON')) {
+          if (esPregunta) return null;
+          return (
+            <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Esto se hace a mano</span>
+              <p className="text-xs text-[#F5F7FA] leading-relaxed">{err.replace(/^No ejecutable por script: /, '').replace(/ Se hace a mano con los pasos de "Como hacerlo"\.?$/, '')}</p>
+              <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">Los pasos están en "Cómo hacerlo". Cuando lo termines, anotá el resultado y marcalo Hecho.</p>
+            </div>
+          );
+        }
+        return <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({err}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>;
+      })()}
 
       {/* Aprobar y ejecutar: solo negativas y pausas, que son reversibles */}
       {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && !contexto?.bloqueo && (
