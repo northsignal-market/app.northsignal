@@ -9,6 +9,7 @@ import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/vi
 import { notion } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
+import { gadsDisponible, gadsSearch, consultasGaql } from './src/server/lib/gads';
 import { responderAsistente } from './src/server/lib/asistente';
 import { embeberPendientes, parecidoA } from './src/server/lib/memoria';
 import type { ReporteInput } from './src/server/lib/reporte-pdf';
@@ -3546,6 +3547,36 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     res.json(data || []);
   });
 
+
+  // ================================================================
+  // GAQL DE PRUEBA: extracción por Google Ads API, solo lectura
+  // ================================================================
+  // Primer paso de la migración script → API (12 sep 2026). NO escribe en la
+  // base: devuelve una muestra para comparar a ojo y ajustar campos antes de
+  // mapear a tablas. Protegido por el middleware de /api como todos los cron.
+  app.all("/api/cron/gaql-prueba", async (req, res) => {
+    if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno (developer token u OAuth)' });
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    try {
+      const client = String(req.query.client || 'FRESH_MONKEE');
+      const recurso = String(req.query.recurso || 'campanas');
+      const cta = (await cuentasActivas()).find(c => c.account === client);
+      if (!cta?.cid) return res.status(404).json({ error: `cuenta ${client} sin cid en la tabla cuentas` });
+      // change_event no admite más de 30 días de rango; el resto se acota a 90.
+      const dias = Math.min(Number(req.query.dias) || 7, recurso === 'cambios' ? 27 : 90);
+      const hasta = new Date(); hasta.setDate(hasta.getDate() - 1);
+      const desde = new Date(hasta); desde.setDate(desde.getDate() - (dias - 1));
+      const f = (d: Date) => d.toISOString().slice(0, 10);
+      const q = consultasGaql(f(desde), f(hasta))[recurso];
+      if (!q) return res.status(400).json({ error: `recurso desconocido: ${recurso}`, validos: Object.keys(consultasGaql('', '')) });
+      // login=self: para cuentas que no cuelgan de la MCC (candidata: FRESH_MONKEE)
+      const login = req.query.login === 'self' ? null : undefined;
+      const filas = await gadsSearch(cta.cid, q, { loginCid: login });
+      res.json({ ok: true, cuenta: client, cid: cta.cid, recurso, desde: f(desde), hasta: f(hasta), filas: filas.length, muestra: filas.slice(0, Number(req.query.muestra) || 15), gaql: q });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // ================================================================
   // PULSO DIARIO: Gemini interpreta ayer, por cuenta
