@@ -116,7 +116,8 @@ El "por qué" es lo importante. El qué se deduce mirando el código; la razón 
 - **Supabase** `djbwxgicosargfobsmqd` — el estado vivo y el catálogo: `diccionario_datos()`
 - **Este repo** — el código. `docs/` tiene la historia de cómo se llegó acá.
 - **Notion** — fichas de cliente, accionables y briefs
-- **Google Ads MCC** 641-902-5021 — los scripts. Fresh Monkee corre su propia copia.
+- **Google Ads MCC** 641-902-5021 — los scripts, para las 4 cuentas. (Fresh Monkee
+  está vinculada al MCC desde el 12/9/2026; antes corría su propia copia del semanal.)
 - **La app** `app-northsignal.vercel.app`
 
 ## Lo urgente

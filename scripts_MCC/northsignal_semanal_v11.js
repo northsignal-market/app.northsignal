@@ -1,6 +1,7 @@
 /**
  *  INSTALAR EN EL MCC 641-902-5021 · lunes 07:00, BACKFILL=false
- *  Procesa KAREDO, BHI y 360. Saltea Fresh Monkee, que corre su propia copia.
+ *  Procesa las 4 cuentas: KAREDO, BHI, 360 y FRESH_MONKEE (vinculada al MCC el
+ *  12/9/2026; su copia interna se retiro ese dia — no deben convivir).
  */
 /**
  * NORTHSIGNAL — EXPORT SEMANAL  ·  v11 (mail con verificacion real, sin links a Sheets)
@@ -52,7 +53,10 @@ var CONFIG = {
     {
       cid: '497-723-1137',
       label: 'FRESH_MONKEE',
-      soloCuentaUnica: true,        // el MCC no la ve: la corre el script instalado dentro de la cuenta
+      // 12 sep 2026: FM quedo vinculada al MCC y este script la procesa como a las
+      // demas. La copia que corria adentro de la cuenta se retira: dos copias
+      // corriendo a la misma hora se pisan los delete+insert y duplican filas.
+      // (Hasta hoy decia soloCuentaUnica: true.)
       sheetUrl: '',                  // Fresh Monkee no usa Sheet
       // 8 sep 2026: estaban TODOS en cero. kwSpendNoConv en 0 no es "sin configurar":
       // la condicion de la linea de alerta pasa a ser "gasto algo y no convirtio", asi que
