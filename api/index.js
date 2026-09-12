@@ -1038,19 +1038,31 @@ ${JSON.stringify(input)}${memoriaTxt}`;
       }
     }
     if (/grammar is too large|invalid_request_error|output_config|format/i.test(String(e.message))) {
-      try {
-        const msg3 = await anthropic.messages.create({
+      const pedirSinEsquema = async (acotado) => {
+        const bloques = [
+          { type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } },
+          { type: "text", text: "Respond\xE9 UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos." }
+        ];
+        if (acotado) bloques.push({ type: "text", text: "REINTENTO: la respuesta anterior se cort\xF3 o no fue JSON v\xE1lido. Limit\xE1 hallazgos a los 4 m\xE1s relevantes, cada evidencia_texto a una oraci\xF3n, y no repitas datos de entrada." });
+        const m = await anthropic.messages.create({
           model: "claude-sonnet-5",
           max_tokens: 16e3,
-          system: [
-            { type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } },
-            { type: "text", text: "Respond\xE9 UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos." }
-          ],
+          system: bloques,
           messages: [{ role: "user", content: user }]
         });
-        const txt = (msg3.content || []).map((b) => b.type === "text" ? b.text : "").join("").trim();
+        if (m.stop_reason === "max_tokens") throw new Error("Se cort\xF3 por max_tokens");
+        const txt = (m.content || []).map((b) => b.type === "text" ? b.text : "").join("").trim();
         const limpio = txt.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-        const crudo = JSON.parse(limpio);
+        return { m, crudo: JSON.parse(limpio) };
+      };
+      try {
+        let intento;
+        try {
+          intento = await pedirSinEsquema(false);
+        } catch {
+          intento = await pedirSinEsquema(true);
+        }
+        const { m: msg3, crudo } = intento;
         const validado = PulsoSchema.safeParse(crudo);
         const parsed = validado.success ? validado.data : crudo;
         const tin = msg3.usage?.input_tokens || 0, tout = msg3.usage?.output_tokens || 0;
@@ -1078,6 +1090,74 @@ ${JSON.stringify(input)}${memoriaTxt}`;
     }
     return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
   }
+}
+
+// src/server/lib/gads.ts
+var VERSION = "v25";
+var DEV_TOKEN = process.env.GADS_DEVELOPER_TOKEN || "";
+var CLIENT_ID = process.env.GADS_CLIENT_ID || "";
+var CLIENT_SECRET = process.env.GADS_CLIENT_SECRET || "";
+var REFRESH_TOKEN = process.env.GADS_REFRESH_TOKEN || "";
+var LOGIN_CID = (process.env.GADS_LOGIN_CUSTOMER_ID || "").replace(/-/g, "");
+function gadsDisponible() {
+  return !!(DEV_TOKEN && CLIENT_ID && CLIENT_SECRET && REFRESH_TOKEN);
+}
+var _tok = null;
+async function accessToken() {
+  if (_tok && Date.now() < _tok.vence - 6e4) return _tok.v;
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      refresh_token: REFRESH_TOKEN,
+      grant_type: "refresh_token"
+    })
+  });
+  const j = await r.json();
+  if (!r.ok || !j.access_token) throw new Error(`OAuth de Google: ${j.error_description || j.error || r.status}`);
+  _tok = { v: j.access_token, vence: Date.now() + (j.expires_in || 3600) * 1e3 };
+  return _tok.v;
+}
+async function gadsSearch(cid, gaql, opts = {}) {
+  const customer = cid.replace(/-/g, "");
+  const login = opts.loginCid === null ? "" : (opts.loginCid || LOGIN_CID).replace(/-/g, "");
+  const tok = await accessToken();
+  const filas = [];
+  let pageToken;
+  do {
+    const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${customer}/googleAds:search`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tok}`,
+        "developer-token": DEV_TOKEN,
+        ...login ? { "login-customer-id": login } : {},
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ query: gaql, ...pageToken ? { pageToken } : {} })
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      const det = j?.error?.details?.[0]?.errors?.[0];
+      throw new Error(`GAQL ${r.status}: ${det?.message || j?.error?.message || "error desconocido"}${det?.location?.fieldPathElements ? ` \xB7 campo: ${JSON.stringify(det.location.fieldPathElements)}` : ""}`);
+    }
+    filas.push(...j.results || []);
+    pageToken = j.nextPageToken;
+  } while (pageToken);
+  return filas;
+}
+function consultasGaql(desde, hasta) {
+  const M = "metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.conversions_value";
+  const RANGO = `segments.date BETWEEN '${desde}' AND '${hasta}'`;
+  return {
+    campanas: `SELECT segments.date, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, ${M}, metrics.search_impression_share, metrics.search_budget_lost_impression_share FROM campaign WHERE ${RANGO} AND campaign.status IN ('ENABLED','PAUSED')`,
+    grupos: `SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group.status, ${M}, metrics.search_top_impression_share, metrics.search_absolute_top_impression_share FROM ad_group WHERE ${RANGO} AND ad_group.status != 'REMOVED'`,
+    keywords: `SELECT segments.date, campaign.name, ad_group.name, ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status, ${M}, metrics.search_top_impression_share, metrics.search_absolute_top_impression_share FROM keyword_view WHERE ${RANGO}`,
+    terminos: `SELECT segments.date, campaign.name, ad_group.name, search_term_view.search_term, search_term_view.status, segments.keyword.info.text, ${M} FROM search_term_view WHERE ${RANGO}`,
+    // change_event exige rango cerrado ≤ 30 días y LIMIT explícito. La fecha es timestamp real: el ticket 54 muere acá.
+    cambios: `SELECT change_event.change_date_time, change_event.change_resource_type, change_event.client_type, change_event.user_email, change_event.changed_fields, campaign.name FROM change_event WHERE change_event.change_date_time >= '${desde}' AND change_event.change_date_time <= '${hasta} 23:59:59' ORDER BY change_event.change_date_time DESC LIMIT 10000`
+  };
 }
 
 // src/server/lib/asistente.ts
@@ -4867,6 +4947,29 @@ Reporte completo: ${url}`;
     const { data, error } = await supabase.from("doc_maestro_humano").select("version, editado_el, editado_por, vigente, contenido").eq("account", account).eq("seccion", seccion).order("version", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
+  });
+  app2.all("/api/cron/gaql-prueba", async (req, res) => {
+    if (!gadsDisponible()) return res.status(503).json({ error: "Faltan credenciales GADS_* en el entorno (developer token u OAuth)" });
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    try {
+      const client = String(req.query.client || "FRESH_MONKEE");
+      const recurso = String(req.query.recurso || "campanas");
+      const cta = (await cuentasActivas()).find((c) => c.account === client);
+      if (!cta?.cid) return res.status(404).json({ error: `cuenta ${client} sin cid en la tabla cuentas` });
+      const dias = Math.min(Number(req.query.dias) || 7, recurso === "cambios" ? 27 : 90);
+      const hasta = /* @__PURE__ */ new Date();
+      hasta.setDate(hasta.getDate() - 1);
+      const desde = new Date(hasta);
+      desde.setDate(desde.getDate() - (dias - 1));
+      const f = (d) => d.toISOString().slice(0, 10);
+      const q = consultasGaql(f(desde), f(hasta))[recurso];
+      if (!q) return res.status(400).json({ error: `recurso desconocido: ${recurso}`, validos: Object.keys(consultasGaql("", "")) });
+      const login = req.query.login === "self" ? null : void 0;
+      const filas = await gadsSearch(cta.cid, q, { loginCid: login });
+      res.json({ ok: true, cuenta: client, cid: cta.cid, recurso, desde: f(desde), hasta: f(hasta), filas: filas.length, muestra: filas.slice(0, Number(req.query.muestra) || 15), gaql: q });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
   app2.all("/api/cron/pulso-diario", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
