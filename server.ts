@@ -3021,6 +3021,27 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     return data && data.campana ? data : null;
   }
 
+  // Resolver el nombre EXACTO de una campaña contra la base: adivinar un nombre es
+  // la regla que más veces rompió el sistema. Devuelve también el canal, porque
+  // AdsApp no devuelve Performance Max ni Demand Gen y el ejecutor fallaría con
+  // "Campaña no encontrada" (la nota vive en capacidades_ejecucion).
+  async function resolverCampana(account: string, nombre: string): Promise<{ ok: true; campana: string; channel: string | null } | { ok: false; error: string }> {
+    if (!supabase) return { ok: false, error: 'Supabase no configurado' };
+    const limpio = String(nombre).trim();
+    const { data: exacta } = await supabase.from('campaign').select('campaign, channel')
+      .eq('account', account).eq('campaign', limpio).order('week_start', { ascending: false }).limit(1);
+    if (exacta?.length) return { ok: true, campana: exacta[0].campaign, channel: exacta[0].channel || null };
+    const { data: parecidas } = await supabase.from('campaign').select('campaign, channel')
+      .eq('account', account).ilike('campaign', `%${limpio}%`).order('week_start', { ascending: false }).limit(24);
+    const unicas = [...new Map((parecidas || []).map((c: any) => [c.campaign, c])).values()] as any[];
+    if (unicas.length === 1) return { ok: true, campana: unicas[0].campaign, channel: unicas[0].channel || null };
+    return {
+      ok: false, error: unicas.length
+        ? `"${limpio}" matchea ${unicas.length} campañas en ${account}: ${unicas.slice(0, 5).map((c: any) => c.campaign).join(' · ')}${unicas.length > 5 ? '…' : ''}. El accionable tiene que traer el nombre exacto.`
+        : `No encontré la campaña "${limpio}" en ${account}. El nombre se resuelve contra la base, no se adivina.`,
+    };
+  }
+
   // ---- Politicas de ejecucion automatica ----
   // Si un accionable nuevo es de un tipo con politica activa y cumple sus condiciones,
   // va directo a acciones_aprobadas (en el modo de la politica) sin esperar a Andres.
@@ -3086,11 +3107,57 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     {
       const viejos: Record<string, string> = { negativa_grupo: 'agregar_negativa', negativa_campana: 'agregar_negativa' };
       const verboReal = viejos[tipo] || tipo;
-      const { data: cap } = await supabase.from('capacidades_ejecucion').select('ejecutable, por_que_no, riesgo, requiere').eq('verbo', verboReal).maybeSingle();
+      // Por plataforma: la tabla también registra los verbos de Meta y sin este
+      // filtro los verbos duplicados hacían fallar maybeSingle -> "Verbo desconocido"
+      const { data: cap } = await supabase.from('capacidades_ejecucion').select('ejecutable, por_que_no, riesgo, requiere').eq('verbo', verboReal).eq('plataforma', 'google').maybeSingle();
       if (!cap) return res.status(400).json({ error: `Verbo desconocido: ${tipo}. Los válidos están en capacidades_ejecucion.` });
       if (!cap.ejecutable) return res.status(400).json({ error: `Esto no lo puede hacer un script: ${cap.por_que_no}`, manual: true, por_que: cap.por_que_no });
     }
     if (tipo === 'cambiar_concordancia' && !match_type_destino) return res.status(400).json({ error: 'No pude leer la concordancia destino del título. Ejecutalo a mano.' });
+
+    // ---- Verbos a nivel campaña o grupo: acá no hay keyword y no debe exigirse una ----
+    // La campaña se resuelve contra la base con su nombre exacto, y las PMax/Demand Gen
+    // se frenan ANTES de encolar: el ejecutor fallaría con "Campaña no encontrada".
+    const VERBOS_DE_CAMPANA = new Set(['pausar_campana', 'reactivar_campana', 'cambiar_presupuesto', 'cambiar_objetivo_puja', 'cambiar_estrategia_puja', 'aplicar_etiqueta', 'pausar_grupo']);
+    if (VERBOS_DE_CAMPANA.has(tipo)) {
+      if (!account || !campana) return res.status(400).json({ error: 'Faltan account y campaña: la acción estructurada tiene que traer objeto.campana.' });
+      const rc = await resolverCampana(account, campana);
+      if ('error' in rc) return res.status(422).json({ error: rc.error });
+      if (['PERFORMANCE_MAX', 'DEMAND_GEN'].includes(String(rc.channel || '').toUpperCase())) {
+        return res.status(422).json({ error: `${rc.campana} es ${rc.channel}: Google Ads Scripts no puede tocarla (AdsApp no devuelve ese canal). Este cambio va a mano en Google Ads o por la API.`, manual: true });
+      }
+      const p = (body.parametros || {}) as any;
+      // Riesgo medio: sin el valor anterior no hay vuelta atrás, así que no se encola.
+      if (['cambiar_presupuesto', 'cambiar_objetivo_puja'].includes(tipo) && p.valor_actual == null) {
+        return res.status(422).json({ error: `${tipo} sin valor_actual: sin el valor anterior el cambio no se puede revertir. Esperá a que la tarea del lunes lo reformule con el valor de hoy.` });
+      }
+      let grpResuelto: string | null = null;
+      if (tipo === 'pausar_grupo') {
+        if (!grupo) return res.status(400).json({ error: 'pausar_grupo sin grupo en la acción estructurada.' });
+        const { data: gs } = await supabase.from('adgroup').select('ad_group').eq('account', account).eq('campaign', rc.campana).ilike('ad_group', `%${grupo}%`).order('week_start', { ascending: false }).limit(10);
+        const nombres = [...new Set((gs || []).map((g: any) => g.ad_group))];
+        const exacto = nombres.find(n => n === grupo) || (nombres.length === 1 ? nombres[0] : null);
+        if (!exacto) return res.status(422).json({ error: `No encontré el grupo "${grupo}" en ${rc.campana}${nombres.length ? `. Parecidos: ${nombres.slice(0, 5).join(' · ')}` : ''}. El nombre se resuelve contra la base, no se adivina.` });
+        grpResuelto = exacto;
+      }
+      const afueraC = puedeEscribirAfuera();
+      const { data: filaC, error: errC } = await supabase.from('acciones_aprobadas').insert({
+        account, notion_id: req.params.id, tipo, campana: rc.campana, grupo: grpResuelto,
+        nivel: p.nivel || null, estrategia_destino: p.estrategia_destino || null,
+        valor_actual: p.valor_actual ?? null, valor_nuevo: p.valor_nuevo ?? null, etiqueta: p.etiqueta || null,
+        modo: afueraC.permitido && modo === 'ejecutar' ? 'ejecutar' : 'simular'
+      }).select().single();
+      if (errC) return res.status(500).json({ error: errC.message });
+      const detalleC = tipo === 'cambiar_presupuesto' || tipo === 'cambiar_objetivo_puja' || tipo === 'cambiar_cpc_keyword'
+        ? ` (${p.valor_actual} → ${p.valor_nuevo ?? 'sin objetivo'})`
+        : tipo === 'cambiar_estrategia_puja' ? ` (→ ${p.estrategia_destino})` : tipo === 'aplicar_etiqueta' ? ` (${p.etiqueta})` : '';
+      if (notion) { try {
+        await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } });
+        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática: ${tipo.replace(/_/g, ' ')} en ${rc.campana}${detalleC} (${modo === 'ejecutar' ? 'real' : 'simulación'}). El valor anterior queda guardado para revertir. El script ejecutor lo aplica en la próxima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(' | ')}`.slice(0, 900) : ''}` } }] });
+      } catch {} }
+      return res.json({ ...filaC, avisos });
+    }
+
     if (!account || (!keyword && !ad_id)) return res.status(400).json({ error: 'Faltan account y keyword o ad_id' });
     // Resolver la keyword contra la base: campaña y grupo exactos. Para negativas nuevas (que no existen como keyword) se usa lo que vino.
     let camp = campana, grp = grupo, mt = match_type; let loteResuelto: string[] | undefined;

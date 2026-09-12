@@ -326,15 +326,15 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas y cambios de concordancia, que se pueden deshacer. Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
           </div>
-          {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una negativa o una pausa desde el accionable.</p> : (
+          {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
             <div className="space-y-1">
               {ejecuciones.map((e: any) => (
                 <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(e.aprobada_el).slice(5, 16).replace('T', ' ')}</span>
                   <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
-                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace('_', ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
+                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
                   {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
                 </div>
               ))}

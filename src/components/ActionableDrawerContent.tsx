@@ -155,11 +155,15 @@ export function ActionableDrawerContent({
   const tipoAuto = accionActual ? tipoAutoDesde(accionActual) : null;
   const esPregunta = accionActual?.verbo?.startsWith('preguntar');
   const entidadPartes = String(action.entidad || action.where || '').split('|').map(x => x.trim());
+  // Verbos que operan sobre la campaña o el grupo entero: no llevan keyword y el
+  // server resuelve el nombre exacto contra la base. Exigirles keyword acá era el
+  // bug que dejaba el botón visible pero muerto para presupuesto, puja y pausas de campaña.
+  const VERBOS_SIN_KEYWORD = ['pausar_anuncio', 'pausar_campana', 'reactivar_campana', 'cambiar_presupuesto', 'cambiar_objetivo_puja', 'cambiar_estrategia_puja', 'aplicar_etiqueta', 'pausar_grupo'];
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
     const lote: string[] | null = accionActual?.objeto?.keywords?.length ? accionActual.objeto.keywords : null;
     const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
-    if (!kw && tipoAuto !== 'pausar_anuncio') { avisar('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".', 'error'); return; }
+    if (!kw && !VERBOS_SIN_KEYWORD.includes(tipoAuto)) { avisar('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".', 'error'); return; }
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -532,7 +536,21 @@ export function ActionableDrawerContent({
                   ))}
                 </div>
               )}
-              <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : accionActual?.objeto?.keywords?.length > 1 ? `Son ${accionActual.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.` : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-80">{(() => {
+                const p = accionActual?.parametros || {};
+                const camp = accionActual?.objeto?.campana || '';
+                if (tipoAuto === 'cambiar_concordancia') return 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.';
+                if (tipoAuto === 'cambiar_presupuesto') return `Cambia el presupuesto de ${camp} de ${p.valor_actual} a ${p.valor_nuevo}. El valor anterior queda guardado en la cola para poder revertir.`;
+                if (tipoAuto === 'cambiar_objetivo_puja') return p.valor_nuevo == null ? `Quita el objetivo de puja de ${camp} (hoy ${p.valor_actual}). El valor anterior queda guardado para revertir.` : `Cambia el objetivo de puja de ${camp} de ${p.valor_actual} a ${p.valor_nuevo}. El valor anterior queda guardado para revertir. Smart Bidding reaprende unos días.`;
+                if (tipoAuto === 'cambiar_estrategia_puja') return `Cambia la estrategia de puja de ${camp} a ${p.estrategia_destino}. La estrategia actual queda registrada para revertir. Smart Bidding reaprende unos días.`;
+                if (tipoAuto === 'cambiar_cpc_keyword') return `Cambia el CPC máximo de ${p.valor_actual} a ${p.valor_nuevo}. El valor anterior queda guardado para revertir.`;
+                if (tipoAuto === 'pausar_campana') return `Pausa la campaña ${camp} entera. Se revierte reactivándola, sin pérdida de historial.`;
+                if (tipoAuto === 'reactivar_campana') return `Reactiva la campaña ${camp}. Se revierte pausándola de nuevo.`;
+                if (tipoAuto === 'pausar_grupo') return `Pausa el grupo entero. Se revierte reactivándolo, sin pérdida de historial.`;
+                if (tipoAuto === 'aplicar_etiqueta') return `Etiqueta ${camp} como "${p.etiqueta}". No cambia la entrega: es organización.`;
+                if (accionActual?.objeto?.keywords?.length > 1) return `Son ${accionActual.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.`;
+                return `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`;
+              })()} Un script lo ejecuta dentro de la próxima hora.</p>
               <div className="flex gap-2">
                 <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
                 <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
