@@ -47,6 +47,9 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
   const accionAlerta = async (id: number, accion: string) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargarAlertas(); };
   useEffect(() => {
     if (!selectedClient) return;
+    // Limpiar ANTES de pedir: si no, al cambiar de cuenta quedaba el plan de la anterior
+    // en pantalla (para siempre, si el fetch nuevo fallaba o venía vacío).
+    setPlan(null);
     fetch(`/api/plan?client=${selectedClient}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(d => d && setPlan(d)).catch(() => {});
   }, [selectedClient]);
@@ -71,6 +74,9 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
 
   const fetchPulse = async () => {
     setLoadingPulse(true);
+    // Sin esto, al cambiar de cuenta el gasto/CPA de la anterior quedaba en pantalla
+    // mientras el header ya mostraba la nueva.
+    setPulse(null);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};

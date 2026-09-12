@@ -98,6 +98,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // Fetch daily chart data
   const fetchDailyOverview = async () => {
     setLoadingDaily(true);
+    // Limpiar antes de pedir: al cambiar de cuenta, el gráfico mostraba la anterior
+    // hasta que llegara la nueva respuesta (o para siempre si fallaba).
+    setDailyData([]);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -120,6 +123,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // Fetch changes
   const fetchChanges = async () => {
     setLoadingChanges(true);
+    setChangesList([]);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -139,6 +143,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // Fetch new search terms
   const fetchNewTerms = async () => {
     setLoadingTerms(true);
+    setNewTerms([]);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};

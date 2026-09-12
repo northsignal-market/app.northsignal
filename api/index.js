@@ -1743,7 +1743,6 @@ import express from "express";
 import path from "path";
 import { z as z4 } from "zod";
 import cookieParser from "cookie-parser";
-import { Client as NotionClient } from "@notionhq/client";
 var cargarPdf = () => Promise.resolve().then(() => (init_reporte_pdf(), reporte_pdf_exports));
 var notionClientCache = {};
 var _cuentasCache = { at: 0, data: [] };
@@ -1993,7 +1992,7 @@ function createApp() {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const response = await notion2.databases.query({
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
@@ -2116,7 +2115,7 @@ function createApp() {
     }
     if (notionKey2) {
       try {
-        const notion2 = new NotionClient({ auth: notionKey2 });
+        const notion2 = notion;
         const response = await notion2.databases.query({
           database_id: NOTION_BASES.ACCIONABLES,
           page_size: 100
@@ -2406,7 +2405,7 @@ function createApp() {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const response = await notion2.databases.query({
         database_id: NOTION_BASES.BRIEFS,
         page_size: 50,
@@ -2445,7 +2444,7 @@ function createApp() {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const response = await notion2.databases.query({
         database_id: NOTION_BASES.ACCIONABLES,
         page_size: 50,
@@ -2534,7 +2533,7 @@ function createApp() {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const response = await notion2.comments.list({ block_id: req.params.id });
       const comments = response.results.map((comment) => ({
         id: comment.id,
@@ -2554,7 +2553,7 @@ function createApp() {
     if (!ai) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
-    const notion2 = new NotionClient({ auth: notionKey2 });
+    const notion2 = notion;
     if (!force) {
       try {
         const commentRes = await notion2.comments.list({ block_id: req.params.id });
@@ -2703,7 +2702,7 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
           puntoDisputa = discrepoMatch[1].trim();
         }
       }
-      const notion3 = new NotionClient({ auth: notionKey2 });
+      const notion3 = notion;
       const propertiesToUpdate = {
         "Revision IA": { select: { name: revisionStatus } }
       };
@@ -2751,7 +2750,7 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: "Text is required" });
       const response = await notion2.comments.create({
@@ -2774,7 +2773,7 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const {
         status,
         resolutionNote,
@@ -2935,7 +2934,7 @@ Nota: ${resolutionNote || ""}`;
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.json({ blocks: [], error: "Missing NOTION_API_KEY" });
     try {
-      const notion2 = new NotionClient({ auth: notionKey2 });
+      const notion2 = notion;
       const response = await notion2.blocks.children.list({ block_id: req.params.id, page_size: 100 });
       const blocks = response.results.map((block) => {
         let text = "";
@@ -4847,7 +4846,7 @@ Reporte completo: ${url}`;
   async function refrescarEspejo() {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!supabase || !notionKey2 || !NOTION_BASES.ACCIONABLES) return 0;
-    const notion2 = new NotionClient({ auth: notionKey2 });
+    const notion2 = notion;
     const r = await notion2.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100 });
     const { parsearAccion: parsearAccion2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
     const filas = [];

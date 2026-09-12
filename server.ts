@@ -6,7 +6,9 @@ import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } fr
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
-import { notion } from './src/server/lib/notion';
+// notionEnCola: el MISMO cliente envuelto, para los endpoints que antes creaban un cliente
+// crudo por pedido y esquivaban la cola anti-429 (el 6/9 esas escrituras se perdían con 500).
+import { notion, notion as notionEnCola } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
 import { gadsDisponible, gadsSearch, consultasGaql } from './src/server/lib/gads';
@@ -372,7 +374,7 @@ export function createApp() {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       const response = await notion.databases.query({
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
@@ -531,7 +533,7 @@ export function createApp() {
     // 2. Try fetching from Notion
     if (notionKey) {
       try {
-        const notion = new NotionClient({ auth: notionKey });
+        const notion = notionEnCola as NotionClient;
         
         
         const response = await notion.databases.query({
@@ -916,7 +918,7 @@ export function createApp() {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       
       const response = await notion.databases.query({
         database_id: NOTION_BASES.BRIEFS,
@@ -957,7 +959,7 @@ export function createApp() {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       
       const response = await notion.databases.query({
         database_id: NOTION_BASES.ACCIONABLES,
@@ -1030,7 +1032,7 @@ export function createApp() {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       const response = await notion.comments.list({ block_id: req.params.id });
       
       const comments = response.results.map((comment: any) => ({
@@ -1057,7 +1059,7 @@ export function createApp() {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
 
-    const notion = new NotionClient({ auth: notionKey });
+    const notion = notionEnCola as NotionClient;
 
     // Verificación de duplicado: si ya fue analizado previamente por Gemini y no se fuerza
     if (!force) {
@@ -1224,7 +1226,7 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
          }
       }
 
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       
       const propertiesToUpdate: any = {
         'Revision IA': { select: { name: revisionStatus } }
@@ -1282,7 +1284,7 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       const { text } = req.body;
       
       if (!text) return res.status(400).json({ error: 'Text is required' });
@@ -1305,7 +1307,7 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       const { 
         status, resolutionNote, ejecutado_el, resultado_observado,
         naturaleza, que_lo_confirmaria, causa_raiz, confirmar_hipotesis, prioridad
@@ -1491,7 +1493,7 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.json({ blocks: [], error: "Missing NOTION_API_KEY" });
     try {
-      const notion = new NotionClient({ auth: notionKey });
+      const notion = notionEnCola as NotionClient;
       const response = await notion.blocks.children.list({ block_id: req.params.id, page_size: 100 });
       
       // Simple block to text mapping for preview purposes
@@ -3461,7 +3463,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   async function refrescarEspejo(): Promise<number> {
     const notionKey = process.env.NOTION_API_KEY;
     if (!supabase || !notionKey || !NOTION_BASES.ACCIONABLES) return 0;
-    const notion = new NotionClient({ auth: notionKey });
+    const notion = notionEnCola as NotionClient;
     const r: any = await notion.databases.query({ database_id: NOTION_BASES.ACCIONABLES, page_size: 100 });
     const { parsearAccion } = await import('./src/lib/accion');
     const filas: any[] = [];
