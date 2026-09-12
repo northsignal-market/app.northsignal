@@ -165,7 +165,7 @@ export function ActionableDrawerContent({
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usar_accion: true, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
-      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else setEjecutado(modo);
+      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else { setEjecutado(modo); if (j.avisos?.length) avisar(String(j.avisos.join(' · ')).slice(0, 300), 'info', 'Encolado con avisos'); }
     } finally { setEjecutando(false); }
   };
   const [logValorAnterior, setLogValorAnterior] = useState('');
@@ -523,6 +523,15 @@ export function ActionableDrawerContent({
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
           ) : (
             <>
+              {/* Ticket 49: los avisos de pre-vuelo que NO bloquean se muestran acá, antes de aprobar */}
+              {contexto?.avisos?.length > 0 && (
+                <div className="px-2.5 py-2 rounded-lg space-y-1" style={{ backgroundColor: 'var(--surface-2)', borderLeft: '2px solid #E8A13C' }}>
+                  <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Avisos · no bloquean, pero miralos antes de aprobar</span>
+                  {contexto.avisos.map((a: string, i: number) => (
+                    <p key={i} className="text-[11px] text-[#F5F7FA] opacity-80 leading-relaxed">{a}</p>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-[#F5F7FA] opacity-80">{tipoAuto === 'cambiar_concordancia' ? 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.' : accionActual?.objeto?.keywords?.length > 1 ? `Son ${accionActual.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.` : `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`} Un script lo ejecuta dentro de la próxima hora. Presupuesto, puja y conversiones siguen siendo a mano.</p>
               <div className="flex gap-2">
                 <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>

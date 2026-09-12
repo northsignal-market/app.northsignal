@@ -3044,10 +3044,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data: bloqueo, error: errPv } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
     if (errPv) { console.error('[politica] prevuelo fallo: ' + errPv.message); return null; }
     if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
+    // Ticket 49: si hay avisos que no bloquean, quedan en el comentario de Notion — la politica ejecuta igual
+    const { data: avisosPol } = await supabase.rpc('prevuelo_avisos', { p_notion_id: notionId });
     await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : 'simular', aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
-      await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.` } }] });
+      await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.${Array.isArray(avisosPol) && avisosPol.length ? ` Avisos (no bloquean): ${avisosPol.join(' | ')}`.slice(0, 700) : ''}` } }] });
     } catch {} }
     return modo;
   }
@@ -3076,6 +3078,9 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data: bloqueo, error: errPrevuelo } = await supabase.rpc('prevuelo', { p_notion_id: req.params.id });
     if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo falló y no se encola sin él: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todavía: ${bloqueo}`, conflicto: true });
+    // Ticket 49: los avisos (invariantes con bloquea=false) no frenan, pero se muestran y quedan en Notion
+    const { data: avisosPv } = await supabase.rpc('prevuelo_avisos', { p_notion_id: req.params.id });
+    const avisos: string[] = Array.isArray(avisosPv) ? avisosPv : [];
     // Que se puede ejecutar sale del registro capacidades_ejecucion, no de una lista fija:
     // agregar un verbo alla lo habilita aca sin tocar el codigo.
     {
@@ -3136,8 +3141,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
-    if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.` } }] }); } catch {} }
-    res.json(data);
+    if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(' | ')}`.slice(0, 900) : ''}` } }] }); } catch {} }
+    res.json({ ...data, avisos });
   });
   app.get("/api/acciones-aprobadas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -3208,8 +3213,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       supabase.from('v_accionable_relaciones').select('*').or(`a.eq.${id},b.eq.${id}`).eq('resuelta', false),
       supabase.from('accionables_espejo').select('version, accion, accion_valida, accion_error, hash').eq('notion_id', id).maybeSingle(),
     ]);
-    const { data: bloqueo } = await supabase.rpc('prevuelo', { p_notion_id: id });
-    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null });
+    // Ticket 49: los avisos que no bloquean tambien viajan; hasta ahora morian en prevuelo()
+    const [{ data: bloqueo }, { data: avisosCtx }] = await Promise.all([
+      supabase.rpc('prevuelo', { p_notion_id: id }),
+      supabase.rpc('prevuelo_avisos', { p_notion_id: id }),
+    ]);
+    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null, avisos: avisosCtx || [] });
   });
   app.post("/api/relaciones/:id/resolver", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });

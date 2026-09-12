@@ -131,7 +131,7 @@ var CONFIG = {
     ADGROUP: ['week_start','week_end','account','campaign','campaign_status','ad_group',
               'ad_group_status','ad_group_type','currency','impressions','clicks','ctr','avg_cpc',
               'cost','conversions','all_conversions','conv_value','cost_per_conv','conv_rate',
-              'impr_share','run_ts'],
+              'impr_share','top_impr_share','abs_top_impr_share','run_ts'],
 
     KEYWORDS: ['week_start','week_end','account','campaign','campaign_status','ad_group',
                'ad_group_status','criterion_id','keyword','match_type','keyword_status',
@@ -140,7 +140,7 @@ var CONFIG = {
                'est_first_position_cpc','quality_score','qs_ad_relevance','qs_landing_page',
                'qs_expected_ctr','impressions','clicks','ctr','avg_cpc','cost','conversions',
                'all_conversions','conv_value','cost_per_conv','conv_rate','impr_share',
-               'top_impr_share','lost_is_rank','run_ts'],
+               'top_impr_share','abs_top_impr_share','lost_is_rank','run_ts'],
 
     BID_TARGETS: ['week_start','week_end','account','level','campaign','ad_group','status',
                   'bid_strategy','target_cpa','target_roas','target_source','cpc_bid_or_budget',
@@ -317,6 +317,25 @@ function processAccount() {
   if (!backfill) log.push('  ADS                 ' + safe(exportAds, ctx, 'ADS'));
   if (!backfill) log.push('  RSA_ASSETS          ' + safe(exportRsaAssets, ctx, 'RSA_ASSETS'));
   log.push('  CONVERSION_ACTIONS  ' + safe(exportConversionActions, ctx, 'CONVERSION_ACTIONS'));
+
+  // Ticket 31 (maduracion): re-extraer la semana ANTERIOR con 7 dias mas de
+  // atribucion. Sin esto la foto semanal queda congelada en su primer lunes y
+  // subcuenta contra Google para siempre (2026-09-12: 58 conversiones perdidas
+  // en 18 semanas entre FRESH_MONKEE, KAREDO y BHI). Las alertas de esa semana
+  // ya se emitieron en su propio lunes: van a un arreglo que nadie lee. El
+  // runLog y el lote de Supabase se comparten para que el flush sea uno solo.
+  var ctxPrev = {
+    conf: ctx.conf, label: ctx.label, range: shiftWeek(ctx.range, -7),
+    currency: ctx.currency, stamp: ctx.stamp,
+    alerts: [], geoCache: ctx.geoCache, runLog: ctx.runLog,
+    supabaseRequests: ctx.supabaseRequests, sinSheet: true
+  };
+  log.push('  MADURACION (' + ctxPrev.range.start + ')');
+  log.push('    CAMPAIGN            ' + safe(exportCampaigns, ctxPrev, 'CAMPAIGN'));
+  log.push('    ADGROUP             ' + safe(exportAdGroups, ctxPrev, 'ADGROUP'));
+  log.push('    KEYWORDS            ' + safe(exportKeywords, ctxPrev, 'KEYWORDS'));
+  log.push('    CONVERSION_ACTIONS  ' + safe(exportConversionActions, ctxPrev, 'CONVERSION_ACTIONS'));
+
   log.push('  DEVICE              ' + safe(exportDevices, ctx, 'DEVICE'));
   log.push('  HOUR_DAY            ' + safe(exportHourDay, ctx, 'HOUR_DAY'));
   log.push('  GEO                 ' + safe(exportGeo, ctx, 'GEO'));
@@ -555,7 +574,8 @@ function exportAdGroups(ctx) {
     'SELECT ad_group.id, metrics.impressions, metrics.clicks, metrics.ctr, ' +
     'metrics.average_cpc, metrics.cost_micros, metrics.conversions, ' +
     'metrics.all_conversions, metrics.conversions_value, metrics.cost_per_conversion, ' +
-    'metrics.conversions_from_interactions_rate, metrics.search_impression_share ' +
+    'metrics.conversions_from_interactions_rate, metrics.search_impression_share, ' +
+    'metrics.search_top_impression_share, metrics.search_absolute_top_impression_share ' +
     'FROM ad_group ' + dateFilter(ctx);
 
   var mres = AdsApp.search(qMetrics);
@@ -569,7 +589,7 @@ function exportAdGroups(ctx) {
     'ad_group.type ' +
     'FROM ad_group WHERE ad_group.status != "REMOVED"';
 
-  var sheet = getSheet('ADGROUP');
+  var sheet = ctx.sinSheet ? null : getSheet('ADGROUP');
   var results = AdsApp.search(qInventory);
   var rows = [];
 
@@ -591,7 +611,8 @@ function exportAdGroups(ctx) {
       impr, n(m.clicks), pct(m.ctr), cost(m.averageCpc), cost(m.costMicros),
       n2(m.conversions), n2(m.allConversions), n2(m.conversionsValue),
       cost(m.costPerConversion), pct(m.conversionsFromInteractionsRate),
-      pct(m.searchImpressionShare), ctx.stamp
+      pct(m.searchImpressionShare), pct(m.searchTopImpressionShare),
+      pct(m.searchAbsoluteTopImpressionShare), ctx.stamp
     ]);
   }
 
@@ -610,7 +631,8 @@ function exportKeywords(ctx) {
     'metrics.cost_micros, metrics.conversions, metrics.all_conversions, ' +
     'metrics.conversions_value, metrics.cost_per_conversion, ' +
     'metrics.conversions_from_interactions_rate, metrics.search_impression_share, ' +
-    'metrics.search_top_impression_share, metrics.search_rank_lost_impression_share ' +
+    'metrics.search_top_impression_share, metrics.search_absolute_top_impression_share, ' +
+    'metrics.search_rank_lost_impression_share ' +
     'FROM keyword_view ' + dateFilter(ctx);
 
   var mres = AdsApp.search(qMetrics);
@@ -638,7 +660,7 @@ function exportKeywords(ctx) {
     'AND ad_group_criterion.negative = FALSE ' +
     'AND ad_group_criterion.status != "REMOVED"';
 
-  var sheet = getSheet('KEYWORDS');
+  var sheet = ctx.sinSheet ? null : getSheet('KEYWORDS');
   var results = AdsApp.search(qInventory);
   var rows = [];
   var inventoryCount = 0, withData = 0;
@@ -700,6 +722,7 @@ function exportKeywords(ctx) {
       conv, n2(m.allConversions), n2(m.conversionsValue),
       cost(m.costPerConversion), pct(m.conversionsFromInteractionsRate),
       pct(m.searchImpressionShare), pct(m.searchTopImpressionShare),
+      pct(m.searchAbsoluteTopImpressionShare),
       pct(m.searchRankLostImpressionShare), ctx.stamp
     ]);
   }
@@ -1584,7 +1607,13 @@ function exportWeeklyBrief(ctx) {
   ];
   for (var i = 0; i < metrics.length; i++) {
     var name = metrics[i][0], key = metrics[i][1];
-    add('totales', name, ctx.currency, cur[key], pre[key], deltaPct(cur[key], pre[key]), '');
+    // Ticket 31: las dos lecturas salen de Google en el mismo momento, pero la
+    // semana actual lleva 0-6 dias de maduracion y la previa 7-13. En metricas
+    // con conversiones tardias el delta exagera la caida; que quede dicho.
+    var notaMadurez = (key === 'conversions' || key === 'allConv' || key === 'cpa')
+      ? 'La semana actual tiene 0-6 dias de maduracion y la previa 7-13: en conversiones tardias este delta exagera la caida.'
+      : '';
+    add('totales', name, ctx.currency, cur[key], pre[key], deltaPct(cur[key], pre[key]), notaMadurez);
   }
 
   var camps = AdsApp.search(
@@ -1835,7 +1864,7 @@ function flushAlerts(ctx) {
 // ================================================================
 
 function write(tabName, query, ctx, mapper) {
-  var sheet = getSheet(tabName);
+  var sheet = ctx.sinSheet ? null : getSheet(tabName);
   var results = AdsApp.search(query);
   var rows = [];
   while (results.hasNext() && rows.length < CONFIG.ROW_LIMIT) {
