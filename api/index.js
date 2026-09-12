@@ -2243,7 +2243,7 @@ function createApp() {
     const group_by = req.query.groupBy;
     const order_by = req.query.orderBy;
     const order_dir = req.query.orderDir;
-    const limit = Number(req.query.limit) || 25;
+    const limit = Math.min(Number(req.query.limit) || 25, 1e3);
     const offset = Number(req.query.offset) || 0;
     let filters = [];
     try {
@@ -2276,7 +2276,7 @@ function createApp() {
           query = query.ilike(search_col, `%${search}%`);
         }
         const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : cols.has("cost") ? "cost" : [...cols][0]);
-        query = query.order(sortCol, { ascending: order_dir === "asc" });
+        if (sortCol) query = query.order(sortCol, { ascending: order_dir === "asc" });
         query = query.range(offset, offset + limit - 1);
         const { data: rows, count, error: qErr } = await query;
         if (qErr) throw qErr;
@@ -2345,7 +2345,7 @@ function createApp() {
       if (search && search_col) {
         query = query.ilike(search_col, `%${search}%`);
       }
-      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : "cost");
+      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : cols.has("cost") ? "cost" : void 0);
       if (sortCol) {
         query = query.order(sortCol, { ascending: order_dir === "asc" });
       }
@@ -2494,32 +2494,37 @@ function createApp() {
         a.accion_error = p.error || null;
       }
       const visibles = data.filter((a) => !a.reemplazado_por);
+      if (supabase) {
+        try {
+          const { error } = await supabase.from("accionables_espejo").upsert(data.map((a) => ({
+            notion_id: a.id,
+            account: a.client,
+            titulo: a.title,
+            estado: a.status,
+            prioridad: a.priority,
+            naturaleza: a.naturaleza,
+            origen: a.origen || null,
+            entidad: a.entidad || null,
+            causa_raiz: a.causa_raiz || null,
+            por_que: (a.why || "").slice(0, 1e3),
+            detectado: a.detected || null,
+            ejecutado_el: a.ejecutado_el || null,
+            vence: a.vence,
+            reemplazado_por: a.reemplazado_por,
+            semanas_pendiente: a.weeks_pending ?? null,
+            revision_ia: a.revision_ia || null,
+            ultima_edicion: a.last_edited,
+            sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
+            accion: a.accion || null,
+            accion_valida: !!a.accion,
+            accion_error: a.accion_error || null
+          })), { onConflict: "notion_id" });
+          if (error) console.error("[espejo] " + error.message);
+        } catch (e) {
+          console.error("[espejo] " + e.message);
+        }
+      }
       res.json({ data: visibles });
-      if (supabase) supabase.from("accionables_espejo").upsert(data.map((a) => ({
-        notion_id: a.id,
-        account: a.client,
-        titulo: a.title,
-        estado: a.status,
-        prioridad: a.priority,
-        naturaleza: a.naturaleza,
-        origen: a.origen || null,
-        entidad: a.entidad || null,
-        causa_raiz: a.causa_raiz || null,
-        por_que: (a.why || "").slice(0, 1e3),
-        detectado: a.detected || null,
-        ejecutado_el: a.ejecutado_el || null,
-        vence: a.vence,
-        reemplazado_por: a.reemplazado_por,
-        semanas_pendiente: a.weeks_pending ?? null,
-        revision_ia: a.revision_ia || null,
-        ultima_edicion: a.last_edited,
-        sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
-        accion: a.accion || null,
-        accion_valida: !!a.accion,
-        accion_error: a.accion_error || null
-      })), { onConflict: "notion_id" }).then(({ error }) => {
-        if (error) console.error("[espejo] " + error.message);
-      });
     } catch (e) {
       console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });

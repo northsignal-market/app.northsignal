@@ -20,6 +20,10 @@ function formatCurrency(val: number, client?: string | null) {
   if (client?.toUpperCase() === 'KAREDO') {
     return `${val.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €`;
   }
+  // FRESH_MONKEE es USD: sin esta rama caía al formato CLP y era indistinguible de un monto chileno.
+  if (client?.toUpperCase() === 'FRESH_MONKEE') {
+    return `US$${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
   return `$${val.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
@@ -629,7 +633,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       </div>
                     </div>
                   ))}
-                  {sinConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Antes de agregar una negativa, buscá el término en Datos › Términos con 30 días: si alguna variante convirtió, la bloquearía también.</p>}
+                  {sinConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Antes de agregar una negativa, buscá el término en Datos › Términos con 14 días (la ventana diaria completa): si alguna variante convirtió, la bloquearía también.</p>}
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex items-baseline justify-between">

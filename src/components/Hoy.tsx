@@ -21,6 +21,11 @@ function formatCurrency(val: number, client?: string | null) {
   if (client?.toUpperCase() === 'KAREDO') {
     return `${val.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €`;
   }
+  // FRESH_MONKEE es USD: sin esta rama caía al formato CLP ($ sin decimales) y un CPA de US$12,53 se veía "$13",
+  // indistinguible de un monto chileno.
+  if (client?.toUpperCase() === 'FRESH_MONKEE') {
+    return `US$${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
   return `$${val.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
@@ -310,7 +315,10 @@ export function Hoy({ onOpenActionable, onNavigate }: HoyProps) {
         const cuenta = useCuentaActiva(selectedClient) || selectedClient || '';
         const principal = ultimoPorCuenta[cuenta];
         const otras = nombresCuentas.filter(a => a !== cuenta);
-        const ayer = new Date(); ayer.setDate(ayer.getDate() - 1); const ayerStr = ayer.toISOString().slice(0, 10);
+        // Fecha LOCAL, no toISOString (UTC): en Buenos Aires desde las 21:00 el ISO ya es mañana
+        // y "ayer" se corría un día, disparando de más el aviso de análisis atrasado.
+        const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
+        const ayerStr = `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, '0')}-${String(ayer.getDate()).padStart(2, '0')}`;
         return (
           <div className="p-4 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: principal?.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div className="flex items-center justify-between pb-1" style={{ borderBottom: '1px solid var(--border)' }}>

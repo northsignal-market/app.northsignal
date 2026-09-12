@@ -231,8 +231,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
        .then(r => r.ok && r.headers.get('content-type')?.includes('application/json') ? r.json() : { data: [] })
        .then(res => {
           if (res.data && res.data.length >= 4) {
-             const current = res.data[0]
-               .catch(() => {});
+             // res.data[0] es una fila, no una promesa: un .catch() pegado acá (12/9) mató
+             // el detector de anomalías en silencio cada vez que había 4+ semanas de datos.
+             const current = res.data[0];
              const history = res.data.slice(1, 9);
              
              const metrics = ['cpa', 'gasto', 'conversiones', 'ctr_promedio'];

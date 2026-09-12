@@ -710,7 +710,8 @@ export function createApp() {
     const group_by = req.query.groupBy as string;
     const order_by = req.query.orderBy as string;
     const order_dir = req.query.orderDir as string;
-    const limit = Number(req.query.limit) || 25;
+    // Tope duro como en consultar_datos del asistente: sin él, un limit=1000000 autenticado pasaba crudo al range()
+    const limit = Math.min(Number(req.query.limit) || 25, 1000);
     const offset = Number(req.query.offset) || 0;
     
     let filters = [];
@@ -747,8 +748,10 @@ export function createApp() {
         if (search && search_col) {
           query = query.ilike(search_col, `%${search}%`);
         }
+        // Con la vista vacía columnasDeVista devuelve un set vacío y [...cols][0] era undefined:
+        // .order(undefined) reproducía el mismo 500 "column does not exist" del 6/9. Sin columna conocida, no se ordena.
         const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : (cols.has('cost') ? 'cost' : [...cols][0]));
-        query = query.order(sortCol, { ascending: order_dir === 'asc' });
+        if (sortCol) query = query.order(sortCol, { ascending: order_dir === 'asc' });
         query = query.range(offset, offset + limit - 1);
 
         const { data: rows, count, error: qErr } = await query;
@@ -827,7 +830,8 @@ export function createApp() {
       if (search && search_col) {
         query = query.ilike(search_col, `%${search}%`);
       }
-      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : 'cost');
+      // Si la vista no tiene 'cost' (o cols vino vacío), ordenar por 'cost' a ciegas repetía el 500 del 6/9.
+      const sortCol = orderValido || (cols.has(defaultOrderBy[view]) ? defaultOrderBy[view] : (cols.has('cost') ? 'cost' : undefined));
       if (sortCol) {
         query = query.order(sortCol, { ascending: order_dir === 'asc' });
       }
@@ -1001,14 +1005,21 @@ export function createApp() {
       const { parsearAccion } = await import('./src/lib/accion');
       for (const a of data as any[]) { const p = parsearAccion(a.accion_json); a.accion = p.accion || null; a.accion_error = p.error || null; }
       const visibles = data.filter((a: any) => !a.reemplazado_por);
+      // Espejo en Supabase ANTES de responder: en Vercel la funcion se congela al responder,
+      // asi que el fire-and-forget de antes podia dejar el espejo viejo en silencio (mismo bug
+      // que webhooks.ts documenta haber arreglado el 8/9). Si el espejo falla, la respuesta sale igual.
+      if (supabase) {
+        try {
+          const { error } = await supabase.from('accionables_espejo').upsert(data.map((a: any) => ({
+            notion_id: a.id, account: a.client, titulo: a.title, estado: a.status, prioridad: a.priority, naturaleza: a.naturaleza, origen: a.origen || null,
+            entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detected || null, ejecutado_el: a.ejecutado_el || null,
+            vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString(),
+            accion: a.accion || null, accion_valida: !!a.accion, accion_error: a.accion_error || null
+          })), { onConflict: 'notion_id' });
+          if (error) console.error('[espejo] ' + error.message);
+        } catch (e: any) { console.error('[espejo] ' + e.message); }
+      }
       res.json({ data: visibles });
-      // Espejo en Supabase: permite dedupe por entidad y reconciliacion en SQL. Fire-and-forget.
-      if (supabase) supabase.from('accionables_espejo').upsert(data.map((a: any) => ({
-        notion_id: a.id, account: a.client, titulo: a.title, estado: a.status, prioridad: a.priority, naturaleza: a.naturaleza, origen: a.origen || null,
-        entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detected || null, ejecutado_el: a.ejecutado_el || null,
-        vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString(),
-        accion: a.accion || null, accion_valida: !!a.accion, accion_error: a.accion_error || null
-      })), { onConflict: 'notion_id' }).then(({ error }: any) => { if (error) console.error('[espejo] ' + error.message); });
     } catch (e: any) {
       console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
         res.status(500).json({ error: e.message });

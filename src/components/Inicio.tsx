@@ -66,7 +66,9 @@ export function Inicio({ onNavigate }: InicioProps) {
         })
         .catch(console.error);
     });
-  }, []);
+  // La clave de deps es el listado de cuentas serializado: con [] el efecto corría una sola vez
+  // y en montaje frío (cuentas todavía no cargadas) las tarjetas quedaban en "—" para siempre.
+  }, [(cuentasIni.length ? cuentasIni : nombresCuentas).join(',')]);
 
   // System health evaluation
   const dataHealthRows = systemHealth?.dataHealth || [];
@@ -118,7 +120,9 @@ export function Inicio({ onNavigate }: InicioProps) {
     if (sorted.length > 0 && sorted[0].title) {
       return `Última semana: ${sorted[0].title}`;
     }
-    return 'Última semana: 26 registros en Karedo con 935 €, en línea con las cuatro previas.';
+    // Nunca una cifra inventada como relleno: un fallback con números que parecen reales
+    // es exactamente el modo de falla que este sistema caza en las vistas.
+    return 'Todavía no hay brief semanal cargado.';
   }, [notionBriefs]);
 
   const accounts = nombresCuentas;
@@ -203,7 +207,9 @@ export function Inicio({ onNavigate }: InicioProps) {
             const w = semana[acc];
             const fmt = (v: number) => acc === 'KAREDO'
               ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
-              : `$${Math.round(v).toLocaleString('es-CL')}`;
+              : acc === 'FRESH_MONKEE'
+                ? `US$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                : `$${Math.round(v).toLocaleString('es-CL')}`;
             const spend = p ? fmt(Number(p.gasto_hasta_ahora || 0)) : '—';
             const conv = p ? `${Number(p.conversiones_hasta_ahora || 0)} conv` : '—';
             const hace = p?.minutos_desde_medicion != null ? `hace ${p.minutos_desde_medicion} min` : '';

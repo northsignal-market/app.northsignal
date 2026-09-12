@@ -33,7 +33,7 @@ export function receta(titulo: string, cliente?: string): Receta | null {
     const pasos = nivel === 'lista'
       ? ['En Google Ads, menú izquierdo: Herramientas > Biblioteca compartida > Listas de palabras clave negativas.', `Abrí la lista de ${cliente || 'la cuenta'} o creá una nueva con el botón azul +.`, `Pegá el término${ent ? ` "${ent}"` : ''} y elegí la concordancia. Por defecto Google pone exacta; si querés cubrir variantes, cambiá a frase.`, 'Guardá. Verificá que la lista esté aplicada a la campaña: abajo, "Aplicar a campañas".']
       : ['En Google Ads, menú izquierdo: Campañas.', nivel === 'campaña' ? 'Abrí la campaña.' : 'Abrí la campaña y después el grupo de anuncios que dice el accionable.', 'En el submenú del medio: Palabras clave > pestaña "Palabras clave negativas".', `Botón azul + > escribí${ent ? ` "${ent}"` : ' el término'} > elegí la concordancia (exacta si es una búsqueda puntual, frase si querés bloquear todo lo que la contenga).`, 'Guardar.'];
-    return { titulo: `Agregar negativa a nivel ${nivel}`, pasos, nota: 'Antes de guardar, buscá el término en Términos de búsqueda con un rango de 30 días: si alguna variante convirtió, la negativa la bloquearía también.' };
+    return { titulo: `Agregar negativa a nivel ${nivel}`, pasos, nota: 'Antes de guardar, buscá el término en Términos de búsqueda con el rango de 14 días (la ventana diaria completa): si alguna variante convirtió, la negativa la bloquearía también.' };
   }
   // Pausar keyword
   if (/pausar/.test(t) && /keyword|palabra/.test(t)) {

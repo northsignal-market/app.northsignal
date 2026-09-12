@@ -150,7 +150,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                 >
                   <div className="flex items-center justify-between text-[11px] text-[#F5F7FA] opacity-60 mb-1">
                     <span className="tabular font-medium">
-                      {brief.date ? new Date(brief.date).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sin fecha'}
+                      {(() => { const f = brief.date || (brief as any).semana || (brief as any).week || (brief as any).created_at; return f ? new Date(f).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sin fecha'; })()}
                     </span>
                     {i === 0 && (
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#0062CC] text-[#FFFFFF]">
@@ -186,7 +186,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                   </span>
                   <span className="text-xs text-[#F5F7FA] opacity-70 tabular flex items-center gap-1">
                     <Calendar size={12} />
-                    {selectedBrief.date || 'Semana activa'}
+                    {selectedBrief.date || (selectedBrief as any).semana || (selectedBrief as any).week || (selectedBrief as any).created_at?.slice(0, 10) || 'Semana activa'}
                   </span>
                   {provisionalDays > 0 && (
                     <span className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] opacity-75" style={{ border: '1px solid var(--border-strong)' }}>

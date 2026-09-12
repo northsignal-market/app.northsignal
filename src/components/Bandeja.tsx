@@ -141,7 +141,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 <div className="text-xs text-[#FFFFFF] truncate">{n.titulo}</div>
                 {n.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{n.texto}</div>}
               </div>
-              <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{String(n.creada).slice(5, 16).replace('T', ' ')}</span>
+              {/* La vista agrupada no trae "creada" sino "ultima": el String(undefined).slice(5,16) mostraba "ined" en cada fila */}
+              <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(n.ultima || n.creada) ? String(n.ultima || n.creada).slice(5, 16).replace('T', ' ') : ''}</span>
             </div>
           ))}
           {novs.length > 12 && <div className="px-4 py-1.5 text-[10px] text-[#F5F7FA] opacity-40" style={{ borderTop: '1px solid var(--border)' }}>y {novs.length - 12} más</div>}
