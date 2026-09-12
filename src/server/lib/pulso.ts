@@ -175,16 +175,31 @@ ${sinPlan ? '\nNO HAY PLAN para esta semana. Reportá evidencia sobre los cuatro
     // Si el esquema estructurado falla, se pide el mismo JSON por prompt y se parsea a mano.
     // Un pulso degradado es infinitamente mejor que ningun pulso.
     if (/grammar is too large|invalid_request_error|output_config|format/i.test(String(e.message))) {
-      try {
-        const msg3 = await anthropic.messages.create({
+      // El paracaidas tambien puede cortarse: el 12 de septiembre FRESH_MONKEE quedo sin pulso
+      // porque este respaldo devolvio JSON truncado en max_tokens y JSON.parse murio con
+      // "Unexpected end of JSON input". Por eso el pedido sin esquema tambien reintenta UNA vez
+      // acotando cobertura, igual que el camino estructurado.
+      const pedirSinEsquema = async (acotado: boolean) => {
+        const bloques: any[] = [
+          { type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } as any },
+          { type: 'text', text: 'Respondé UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos.' }
+        ];
+        if (acotado) bloques.push({ type: 'text', text: 'REINTENTO: la respuesta anterior se cortó o no fue JSON válido. Limitá hallazgos a los 4 más relevantes, cada evidencia_texto a una oración, y no repitas datos de entrada.' });
+        const m = await anthropic!.messages.create({
           model: 'claude-sonnet-5', max_tokens: 16000,
-          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } as any },
-                   { type: 'text', text: 'Respondé UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos.' }],
+          system: bloques,
           messages: [{ role: 'user', content: user }]
         });
-        const txt = (msg3.content || []).map((b: any) => b.type === 'text' ? b.text : '').join('').trim();
+        if (m.stop_reason === 'max_tokens') throw new Error('Se cortó por max_tokens');
+        const txt = (m.content || []).map((b: any) => b.type === 'text' ? b.text : '').join('').trim();
         const limpio = txt.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-        const crudo = JSON.parse(limpio);
+        return { m, crudo: JSON.parse(limpio) };
+      };
+      try {
+        let intento;
+        try { intento = await pedirSinEsquema(false); }
+        catch { intento = await pedirSinEsquema(true); }
+        const { m: msg3, crudo } = intento;
         const validado = PulsoSchema.safeParse(crudo);
         const parsed = validado.success ? validado.data : crudo;
         const tin = (msg3.usage as any)?.input_tokens || 0, tout = (msg3.usage as any)?.output_tokens || 0;
