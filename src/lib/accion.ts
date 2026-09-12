@@ -149,7 +149,10 @@ export function tipoAutoDesde(a: Accion): string | null {
   switch (a.verbo) {
     case 'agregar_negativa': return p.nivel === 'campana' ? 'negativa_campana' : p.nivel === 'lista' ? null : 'negativa_grupo';
     case 'quitar_negativa': return a.objeto.keyword ? 'quitar_negativa' : null;
-    case 'pausar_keyword': return !a.objeto.keywords?.length ? 'pausar_keyword' : null;
+    // Suelta o en lote: el servidor resuelve cada keyword contra la base y omite
+    // las que no existen activas. Un resabio defensivo anulaba el boton justo
+    // para los lotes, que son la mayoria de las pausas reales.
+    case 'pausar_keyword': return (a.objeto.keyword || a.objeto.keywords?.length) ? 'pausar_keyword' : null;
     case 'reactivar_keyword': return a.objeto.keyword ? 'reactivar_keyword' : null;
     case 'pausar_anuncio': return 'pausar_anuncio';
     case 'pausar_grupo': return a.objeto.grupo ? 'pausar_grupo' : null;

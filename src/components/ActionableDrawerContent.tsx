@@ -532,8 +532,9 @@ export function ActionableDrawerContent({
         return <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({err}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>;
       })()}
 
-      {/* Aprobar y ejecutar: solo negativas y pausas, que son reversibles */}
-      {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && !contexto?.bloqueo && (
+      {/* Aprobar y ejecutar. "En curso" tampoco muestra botón: ya está encolado y
+          apretarlo de nuevo duplicaría la acción (el server además lo rechaza). */}
+      {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && action.status !== 'En curso' && !contexto?.bloqueo && (
         <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           {ejecutado ? (
             <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>

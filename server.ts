@@ -3102,6 +3102,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     // Ticket 49: los avisos (invariantes con bloquea=false) no frenan, pero se muestran y quedan en Notion
     const { data: avisosPv } = await supabase.rpc('prevuelo_avisos', { p_notion_id: req.params.id });
     const avisos: string[] = Array.isArray(avisosPv) ? avisosPv : [];
+    // Anti-duplicado: si este accionable ya tiene una acción encolada o ejecutada
+    // (y no revertida), apretar de nuevo no encola otra. Dos filas iguales en la
+    // cola son dos aplicaciones en Google Ads.
+    {
+      const { data: previa } = await supabase.from('acciones_aprobadas').select('id, estado, modo, aprobada_el')
+        .eq('notion_id', req.params.id).in('estado', ['pendiente', 'ejecutada']).is('revertida_el', null)
+        .order('aprobada_el', { ascending: false }).limit(1).maybeSingle();
+      if (previa) return res.status(409).json({ error: `Este accionable ya tiene una acción ${previa.estado === 'pendiente' ? 'encolada (el ejecutor la aplica dentro de la hora)' : 'ejecutada'} en modo ${previa.modo}. Está en Sistema › Ejecuciones. Si hace falta repetirla, primero revertí o descartá la anterior.`, duplicado: true });
+    }
     // Que se puede ejecutar sale del registro capacidades_ejecucion, no de una lista fija:
     // agregar un verbo alla lo habilita aca sin tocar el codigo.
     {
