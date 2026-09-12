@@ -1868,7 +1868,7 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
       }
       const nivelUsar = f.nivel_recomendado === 'grupo' ? 'grupo'
                       : (nivel === 'campana' ? 'campana' : 'grupo');
-      let accionJson: any; let titulo = ''; let porQue = ''; let comoHacerlo = ''; let prioridad = NOTION_PRIORITIES.MEDIA;
+      let accionJson: any; let titulo = ''; let porQue = ''; let comoHacerlo = ''; let prioridad: string = NOTION_PRIORITIES.MEDIA;
 
       if (f.accion === 'negativa') {
         // GUARDARRAIL: simular antes de proponer. Una negativa que bloquea algo que

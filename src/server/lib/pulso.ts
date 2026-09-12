@@ -88,6 +88,7 @@ export type PulsoOut = z.infer<typeof PulsoSchema>;
 export interface PulsoResultado {
   cuenta: string; fecha: string; nivel?: string; hallazgo?: string | null;
   tokens_in: number; tokens_out: number; costo_usd: number; error?: string; parsed?: PulsoOut;
+  degradado?: string;
 }
 
 export function pulsoDisponible(): boolean { return !!anthropic; }

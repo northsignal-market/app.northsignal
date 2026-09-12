@@ -566,6 +566,82 @@ var STATUS_RECEIVED = "RECEIVED";
 var STATUS_PROCESSED = "PROCESSED";
 var STATUS_QUARANTINED = "QUARANTINED";
 var STATUS_FAILED = "FAILED";
+var STATUS_SIN_MAPEO = "SIN_MAPEO";
+var TIMEOUT_ASANA_MS = 8e3;
+async function etapasDe(account, source) {
+  if (!supabase) return [];
+  const { data } = await supabase.from("funnel_stages").select("account, stage_order, stage_name, stage_value, currency, google_conversion_action, external_id, source").eq("account", account).eq("source", source);
+  return data || [];
+}
+function normalizar(s2) {
+  return String(s2 || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+function buscarEtapa(etapas, nombre) {
+  const n = normalizar(nombre);
+  if (!n) return null;
+  return etapas.find((e) => normalizar(e.stage_name) === n) || null;
+}
+async function registrarHecho(opts) {
+  if (!supabase) return { ok: false, detalle: "sin supabase" };
+  const { account, etapa, externalId, nombre, monto, clickId, clickIdType, fecha: fecha2, source } = opts;
+  const { error: eFunnel } = await supabase.from("funnel_events").upsert(
+    {
+      account,
+      external_id: externalId,
+      lead_name: nombre,
+      stage_order: etapa.stage_order,
+      stage_name: etapa.stage_name,
+      stage_value: monto != null ? monto : etapa.stage_value,
+      currency: etapa.currency,
+      click_id: clickId,
+      click_id_type: clickId ? clickIdType || "gclid" : null,
+      reached_at: fecha2,
+      uploaded_to_google: false,
+      source
+    },
+    { onConflict: "account,external_id,stage_order" }
+  );
+  if (eFunnel) return { ok: false, detalle: `funnel_events: ${eFunnel.message}` };
+  const partes = [`etapa ${etapa.stage_order} ${etapa.stage_name}`];
+  if (monto != null && monto > 0) {
+    if (clickId) {
+      const { error } = await supabase.from("true_roas_events").upsert(
+        {
+          client: account,
+          source,
+          external_id: externalId,
+          gclid: clickId,
+          click_id_type: clickIdType || "gclid",
+          monto,
+          event_date: fecha2
+        },
+        { onConflict: "client,gclid,external_id" }
+      );
+      if (error) return { ok: false, detalle: `true_roas_events: ${error.message}` };
+      partes.push("con atribucion");
+    } else {
+      const { error } = await supabase.from("cierres_sin_atribucion").upsert(
+        {
+          client: account,
+          source,
+          external_id: externalId,
+          nombre_tarea: nombre,
+          monto,
+          motivo: "El registro no trae click id. El cierre existe y el monto es real, pero no se puede atribuir a un clic de Google. Cuenta para el negocio, no para el ROAS.",
+          event_date: fecha2
+        },
+        { onConflict: "client,source,external_id" }
+      );
+      if (error) return { ok: false, detalle: `cierres_sin_atribucion: ${error.message}` };
+      partes.push("sin atribucion");
+    }
+  }
+  return { ok: true, detalle: partes.join(", ") };
+}
+async function marcar(logId, status, error_msg) {
+  if (!supabase || !logId) return;
+  await supabase.from("webhook_events").update({ status, error_msg: error_msg || null, processed_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", logId);
+}
 webhooksRouter.post("/asana", async (req, res) => {
   try {
     const secret = req.headers["x-hook-secret"];
@@ -580,89 +656,95 @@ webhooksRouter.post("/asana", async (req, res) => {
     }
     const signature = req.headers["x-hook-signature"];
     const rawBody = req.rawBody;
-    if (!signature || !rawBody) {
-      return res.status(401).json({ error: "Missing signature or raw body" });
-    }
+    if (!signature || !rawBody) return res.status(401).json({ error: "Missing signature or raw body" });
     if (!verifyHmacSha256(asanaSecret, signature, rawBody)) {
       return res.status(401).json({ error: "Invalid signature" });
     }
-    res.status(200).json({ received: true });
     const payload = req.body;
     let parsedPayload;
     try {
       parsedPayload = AsanaWebhookPayload.parse(payload);
     } catch (zodError) {
       if (supabase) {
-        const { error: quarErr } = await supabase.from("webhook_events").insert([{
-          source: "asana",
-          payload,
-          status: STATUS_QUARANTINED,
-          error_msg: zodError.message,
-          received_at: (/* @__PURE__ */ new Date()).toISOString()
-        }]);
-        if (quarErr) console.error("Failed to log quarantined event", quarErr);
+        await supabase.from("webhook_events").insert([
+          { source: "asana", payload, status: STATUS_QUARANTINED, error_msg: zodError.message, received_at: (/* @__PURE__ */ new Date()).toISOString() }
+        ]);
       }
-      return;
+      return res.status(200).json({ received: true, procesados: 0, motivo: "payload fuera de esquema, en cuarentena" });
     }
-    if (!parsedPayload.events || parsedPayload.events.length === 0) return;
-    for (const event of parsedPayload.events) {
-      if (event.resource?.resource_type !== "task") continue;
-      if (event.action !== "changed" && event.action !== "added") continue;
+    const eventos = (parsedPayload.events || []).filter(
+      (e) => e.resource?.resource_type === "task" && (e.action === "changed" || e.action === "added")
+    );
+    if (!eventos.length || !supabase) return res.status(200).json({ received: true, procesados: 0 });
+    const etapas = await etapasDe("360", "asana_section");
+    let procesados = 0;
+    let sinMapeo = 0;
+    for (const event of eventos) {
       const taskGid = event.resource.gid;
-      if (supabase) {
-        const { data: webhookLog, error: logErr } = await supabase.from("webhook_events").insert([{
-          source: "asana",
-          external_id: taskGid,
-          payload: event,
-          status: STATUS_RECEIVED,
-          received_at: (/* @__PURE__ */ new Date()).toISOString()
-        }]).select("id").single();
-        if (logErr) throw new Error(`Supabase log error: ${logErr.message}`);
-        let logId = webhookLog?.id;
+      const { data: log } = await supabase.from("webhook_events").insert([{ source: "asana", external_id: taskGid, payload: event, status: STATUS_RECEIVED, received_at: (/* @__PURE__ */ new Date()).toISOString() }]).select("id").single();
+      const logId = log?.id;
+      try {
+        const asanaPat = process.env.ASANA_PAT;
+        if (!asanaPat) throw new Error("ASANA_PAT no configurado");
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), TIMEOUT_ASANA_MS);
+        let task;
         try {
-          const asanaPat = process.env.ASANA_PAT;
-          if (!asanaPat) throw new Error("ASANA_PAT no configurado");
           const resp = await fetch(
-            `https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,completed,memberships.section.name,custom_fields.name,custom_fields.number_value,custom_fields.text_value`,
-            { headers: { Authorization: `Bearer ${asanaPat}` } }
+            `https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,completed,modified_at,memberships.section.name,memberships.section.gid,custom_fields.name,custom_fields.number_value,custom_fields.text_value`,
+            { headers: { Authorization: `Bearer ${asanaPat}` }, signal: ctrl.signal }
           );
-          if (!resp.ok) {
-            throw new Error(`Asana API error: ${resp.status}`);
-          }
-          const { data: task } = await resp.json();
-          const monto = task.custom_fields?.find((f) => f.name === "Monto")?.number_value;
-          const gclid = task.custom_fields?.find((f) => f.name === "GCLID")?.text_value;
-          const seccion = task.memberships?.[0]?.section?.name;
-          if (seccion === "Cerrado ganado" && monto && gclid) {
-            const { error: upsertErr } = await supabase.from("true_roas_events").upsert({
-              client: "360",
-              source: "asana",
-              external_id: taskGid,
-              gclid,
-              monto,
-              event_date: task.modified_at || (/* @__PURE__ */ new Date()).toISOString()
-            }, { onConflict: "client,gclid,external_id" });
-            if (upsertErr) throw new Error(`Supabase upsert error: ${upsertErr.message}`);
-          }
-          if (logId) {
-            await supabase.from("webhook_events").update({
-              status: STATUS_PROCESSED,
-              processed_at: (/* @__PURE__ */ new Date()).toISOString()
-            }).eq("id", logId);
-          }
-        } catch (procErr) {
-          if (logId) {
-            await supabase.from("webhook_events").update({
-              status: STATUS_FAILED,
-              error_msg: procErr.message,
-              processed_at: (/* @__PURE__ */ new Date()).toISOString()
-            }).eq("id", logId);
+          if (!resp.ok) throw new Error(`Asana API error: ${resp.status}`);
+          task = (await resp.json()).data;
+        } finally {
+          clearTimeout(t);
+        }
+        const campo = (n, k) => task.custom_fields?.find((f) => normalizar(f.name) === normalizar(n))?.[k] ?? null;
+        const monto = campo("Monto", "number_value");
+        const gclid = campo("GCLID", "text_value");
+        let etapa = null;
+        let seccionVista = "";
+        for (const m of task.memberships || []) {
+          const nombre = m?.section?.name;
+          if (!nombre) continue;
+          seccionVista = seccionVista ? `${seccionVista}, ${nombre}` : nombre;
+          const e = buscarEtapa(etapas, nombre);
+          if (e) {
+            etapa = e;
+            break;
           }
         }
+        if (!etapa) {
+          sinMapeo++;
+          await marcar(
+            logId,
+            STATUS_SIN_MAPEO,
+            `La tarea esta en la(s) seccion(es) "${seccionVista || "ninguna"}" y ninguna coincide con una etapa declarada en funnel_stages para 360. No se escribio nada. Declarar la etapa o corregir el nombre de la seccion.`
+          );
+          continue;
+        }
+        const r = await registrarHecho({
+          account: "360",
+          etapa,
+          externalId: taskGid,
+          nombre: task.name || null,
+          monto,
+          clickId: gclid,
+          clickIdType: "gclid",
+          fecha: task.modified_at || (/* @__PURE__ */ new Date()).toISOString(),
+          source: "asana"
+        });
+        if (!r.ok) throw new Error(r.detalle);
+        procesados++;
+        await marcar(logId, STATUS_PROCESSED, r.detalle);
+      } catch (procErr) {
+        await marcar(logId, STATUS_FAILED, procErr.message);
       }
     }
+    return res.status(200).json({ received: true, procesados, sin_mapeo: sinMapeo });
   } catch (e) {
     console.error("Asana webhook top-level error:", e);
+    if (!res.headersSent) return res.status(200).json({ received: true, error: true });
   }
 });
 webhooksRouter.post("/gohighlevel", async (req, res) => {
@@ -676,38 +758,62 @@ webhooksRouter.post("/gohighlevel", async (req, res) => {
     if (!comparacionSegura(auth, `Bearer ${ghlSecret}`)) {
       return res.status(401).json({ error: "Invalid signature" });
     }
-    res.status(200).json({ received: true });
-    const payload = req.body;
-    if (supabase) {
-      const externalId = payload.contact_id || payload.locationId || "unknown";
-      const { data: webhookLog, error: logErr } = await supabase.from("webhook_events").insert([{
-        source: "gohighlevel",
-        external_id: externalId,
-        payload,
-        status: STATUS_RECEIVED,
-        received_at: (/* @__PURE__ */ new Date()).toISOString()
-      }]).select("id").single();
-      if (logErr) throw new Error(`Supabase log error: ${logErr.message}`);
-      let logId = webhookLog?.id;
-      try {
-        if (logId) {
-          await supabase.from("webhook_events").update({
-            status: STATUS_PROCESSED,
-            processed_at: (/* @__PURE__ */ new Date()).toISOString()
-          }).eq("id", logId);
-        }
-      } catch (procErr) {
-        if (logId) {
-          await supabase.from("webhook_events").update({
-            status: STATUS_FAILED,
-            error_msg: procErr.message,
-            processed_at: (/* @__PURE__ */ new Date()).toISOString()
-          }).eq("id", logId);
-        }
+    const payload = req.body || {};
+    if (!supabase) return res.status(200).json({ received: true, procesados: 0 });
+    const externalId = payload.opportunity_id || payload.opportunityId || payload.contact_id || payload.contactId || payload.id || "desconocido";
+    const { data: log } = await supabase.from("webhook_events").insert([{ source: "gohighlevel", external_id: externalId, payload, status: STATUS_RECEIVED, received_at: (/* @__PURE__ */ new Date()).toISOString() }]).select("id").single();
+    const logId = log?.id;
+    try {
+      const candidatas = [
+        payload.pipleline_stage,
+        payload.pipeline_stage,
+        payload.pipelineStage,
+        payload.stage,
+        payload.stage_name,
+        payload.status,
+        payload.opportunity?.pipeline_stage,
+        payload.opportunity?.stage
+      ].filter(Boolean);
+      const etapas = await etapasDe("BHI", "ghl_stage");
+      let etapa = null;
+      for (const c of candidatas) {
+        etapa = buscarEtapa(etapas, c);
+        if (etapa) break;
       }
+      if (!etapa) {
+        await marcar(
+          logId,
+          STATUS_SIN_MAPEO,
+          `No se pudo mapear el evento a una etapa. Nombres recibidos: ${candidatas.length ? candidatas.join(" | ") : "ninguno"}. Etapas declaradas para BHI en funnel_stages: ${etapas.map((e) => e.stage_name).join(", ") || "ninguna"}. No se escribio nada, a proposito: marcar PROCESSED sin haber escrito un hecho de negocio pone el flujo en VIVO con v_cierres_totales vacia.`
+        );
+        return res.status(200).json({ received: true, procesados: 0, sin_mapeo: 1 });
+      }
+      const montoRaw = payload.monetary_value ?? payload.monetaryValue ?? payload.value ?? payload.opportunity?.monetary_value ?? null;
+      const monto = montoRaw != null && montoRaw !== "" ? Number(montoRaw) : null;
+      const clickId = payload.gclid || payload.attribution?.gclid || payload.contact?.gclid || payload.custom_fields?.gclid || null;
+      const wbraid = payload.wbraid || payload.attribution?.wbraid || null;
+      const gbraid = payload.gbraid || payload.attribution?.gbraid || null;
+      const r = await registrarHecho({
+        account: "BHI",
+        etapa,
+        externalId: String(externalId),
+        nombre: payload.full_name || payload.contact?.name || payload.name || null,
+        monto: monto != null && !isNaN(monto) ? monto : null,
+        clickId: clickId || wbraid || gbraid || null,
+        clickIdType: clickId ? "gclid" : wbraid ? "wbraid" : gbraid ? "gbraid" : null,
+        fecha: payload.date_added || payload.updated_at || (/* @__PURE__ */ new Date()).toISOString(),
+        source: "gohighlevel"
+      });
+      if (!r.ok) throw new Error(r.detalle);
+      await marcar(logId, STATUS_PROCESSED, r.detalle);
+      return res.status(200).json({ received: true, procesados: 1 });
+    } catch (procErr) {
+      await marcar(logId, STATUS_FAILED, procErr.message);
+      return res.status(200).json({ received: true, procesados: 0, error: procErr.message });
     }
   } catch (e) {
     console.error("GHL webhook top-level error:", e);
+    if (!res.headersSent) return res.status(200).json({ received: true, error: true });
   }
 });
 
@@ -724,6 +830,12 @@ var NOTION_STATES = {
   HECHO: "Hecho",
   DESCARTADO: "Descartado",
   BLOQUEADO: "Bloqueado"
+};
+var NOTION_PRIORITIES = {
+  URGENTE: "Urgente",
+  ALTA: "Alta",
+  MEDIA: "Media",
+  BAJA: "Baja"
 };
 var NOTION_REVISION_IA = {
   SIN_REVISAR: "Sin revisar",
@@ -789,7 +901,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z as z3 } from "zod";
 var AccionPlanaSchema = z3.object({
-  verbo: z3.enum(VERBOS),
+  // 8 sep 2026: era z.enum(VERBOS). Un enum de 17 ramas anidado dentro de un array sin
+  // tope es lo que mas pesa en la gramatica compilada, y la API venia rechazando TODAS las
+  // corridas con "The compiled grammar is too large" desde el 6 de septiembre, dos veces
+  // por dia en las cuatro cuentas. Pasa a string y se valida despues, contra la misma lista.
+  verbo: z3.string().describe("Uno de: " + VERBOS.join(", ")),
   campana: z3.string().nullable().describe("Nombre exacto de la campana"),
   grupo: z3.string().nullable().describe("Nombre exacto del grupo, o null"),
   keyword: z3.string().nullable().describe("Texto exacto de la keyword sin corchetes ni comillas, o null"),
@@ -817,9 +933,9 @@ var PulsoSchema = z3.object({
     grupo: z3.string().nullable(),
     valor: z3.number().nullable(),
     umbral: z3.number(),
-    direccion: z3.enum(["sube", "baja", "cruza"]),
+    direccion: z3.string().describe("sube, baja o cruza"),
     cumple: z3.boolean(),
-    tendencia_3d: z3.enum(["sube", "baja", "plana", "sin_datos"]),
+    tendencia_3d: z3.string().describe("sube, baja, plana o sin_datos"),
     dias_seguidos_cumpliendo: z3.number().int().min(0),
     nota: z3.string().nullable().describe("Una l\xEDnea si hay algo que decir sobre este indicador hoy")
   })).describe("Un objeto por cada indicador del plan, en el mismo orden"),
@@ -891,6 +1007,13 @@ ${JSON.stringify(input)}${memoriaTxt}`;
     const parsed = msg.parsed_output;
     if (!parsed) throw new Error("Sin parsed_output: " + (msg.stop_reason || "desconocido"));
     if (msg.stop_reason === "max_tokens") throw new Error("Se cort\xF3 por max_tokens");
+    for (const h of parsed.hallazgos || []) {
+      const v = h?.accion?.verbo;
+      if (v && !VERBOS.includes(v)) {
+        h.accion.verbo_invalido = v;
+        h.accion.verbo = "investigar";
+      }
+    }
     const u = msg.usage;
     const tin = u.input_tokens || 0, tout = u.output_tokens || 0, tcache = u.cache_read_input_tokens || 0, tcw = u.cache_creation_input_tokens || 0;
     const costo = tin * PRECIO_IN + tcache * PRECIO_IN * 0.1 + tcw * PRECIO_IN * 2 + tout * PRECIO_OUT;
@@ -912,6 +1035,45 @@ ${JSON.stringify(input)}${memoriaTxt}`;
         }
       } catch (e2) {
         return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: `${e.message} \xB7 reintento: ${e2.message}` };
+      }
+    }
+    if (/grammar is too large|invalid_request_error|output_config|format/i.test(String(e.message))) {
+      try {
+        const msg3 = await anthropic.messages.create({
+          model: "claude-sonnet-5",
+          max_tokens: 16e3,
+          system: [
+            { type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } },
+            { type: "text", text: "Respond\xE9 UNICAMENTE con un objeto JSON valido, sin texto antes ni despues y sin backticks, con las claves: nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos." }
+          ],
+          messages: [{ role: "user", content: user }]
+        });
+        const txt = (msg3.content || []).map((b) => b.type === "text" ? b.text : "").join("").trim();
+        const limpio = txt.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+        const crudo = JSON.parse(limpio);
+        const validado = PulsoSchema.safeParse(crudo);
+        const parsed = validado.success ? validado.data : crudo;
+        const tin = msg3.usage?.input_tokens || 0, tout = msg3.usage?.output_tokens || 0;
+        return {
+          cuenta,
+          fecha: fecha2,
+          nivel: parsed.nivel,
+          hallazgo: parsed.hallazgo_principal,
+          tokens_in: tin,
+          tokens_out: tout,
+          costo_usd: tin * PRECIO_IN + tout * PRECIO_OUT,
+          parsed,
+          degradado: "Sin salida estructurada: el esquema fue rechazado y se parseo el JSON a mano. Revisar el tamano del esquema."
+        };
+      } catch (e3) {
+        return {
+          cuenta,
+          fecha: fecha2,
+          tokens_in: 0,
+          tokens_out: 0,
+          costo_usd: 0,
+          error: `${e.message} \xB7 respaldo sin esquema: ${e3.message}`
+        };
       }
     }
     return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: e.message };
@@ -1045,7 +1207,7 @@ PREGUNTA: ${mensajes[mensajes.length - 1]?.content || ""}`;
   let costo = 0;
   let vueltas = 0;
   while (vueltas++ < 7) {
-    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 2500, system: `Sos el asistente de NorthSignal, la app con la que Andr\xE9s opera cuentas de Google Ads. Habl\xE1s con Andr\xE9s, que es quien construy\xF3 el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
+    const res = await anthropic2.messages.create({ model: "claude-sonnet-5", max_tokens: 8e3, system: `Sos el asistente de NorthSignal, la app con la que Andr\xE9s opera cuentas de Google Ads. Habl\xE1s con Andr\xE9s, que es quien construy\xF3 el sistema y conoce cada cuenta: no le expliques lo obvio ni le pidas contexto que ya tiene.
 
 Las cuentas activas hoy son: ${listaCuentas || "ninguna cargada"}. Esa lista sale de la base en cada consulta, as\xED que es la buena. Nunca digas que una cuenta no existe sin buscarla ah\xED, ni sugieras abrir un ticket porque una cuenta "deber\xEDa estar cargada" si figura.
 
@@ -1069,9 +1231,18 @@ Cuando algo no se puede, dec\xED por qu\xE9 y de qui\xE9n es el l\xEDmite. "Los 
 
 Un n\xFAmero siempre con su ventana: "5,44 USD en las \xFAltimas 4 semanas", no "5,44 USD".
 
-Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene reglas propias y promediarlas da un n\xFAmero que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: "low" } });
+Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene reglas propias y promediarlas da un n\xFAmero que no significa nada.`, messages: msgs, tools: TOOLS, output_config: { effort: "high" } });
     costo += (res.usage.input_tokens || 0) * 2 / 1e6 + (res.usage.output_tokens || 0) * 10 / 1e6;
     const toolUses = res.content.filter((b) => b.type === "tool_use");
+    if (res.stop_reason === "max_tokens") {
+      const parcial = res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+      return {
+        texto: (parcial ? parcial + "\n\n" : "") + "[La respuesta se cort\xF3 por largo. Preguntame algo m\xE1s acotado, o ped\xEDmelo por partes.]",
+        costo,
+        vueltas,
+        cortada: true
+      };
+    }
     if (!toolUses.length || res.stop_reason !== "tool_use") {
       const texto = res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
       return { texto, costo_usd: costo };
@@ -1691,7 +1862,7 @@ function createApp() {
       if (cambiosErr) console.error("Cambios error:", cambiosErr);
       const { data: newTerms, error: termsErr } = await supabase.from("v_terminos_nuevos").select("*").eq("account", client).order("gasto_acumulado", { ascending: false }).limit(10);
       if (termsErr) console.error("Terms error:", termsErr);
-      const { data: recentChanges, error: recentErr } = await supabase.from("v_cambios_recientes").select("*").eq("account", client).limit(10);
+      const { data: recentChanges, error: recentErr } = await supabase.from("v_cambios_recientes").select("*").limit(10);
       if (recentErr) console.error("Recent changes error:", recentErr);
       res.json({
         success: true,
@@ -2715,64 +2886,360 @@ Nota: ${resolutionNote || ""}`;
       res.status(500).json({ error: e.message });
     }
   });
+  app2.get("/api/rsa/oportunidades", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    let q = supabase.from("v_donde_escribir_anuncio").select("*").order("prioridad", { ascending: false });
+    if (client) q = q.eq("account", client);
+    const { data, error } = await q.limit(60);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data: data || [] });
+  });
   app2.post("/api/generate-rsa", async (req, res) => {
     try {
-      const { client, searchTerms } = req.body;
-      if (!ai) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
-      let complianceRule = "";
-      if (client === "BHI") {
-        complianceRule = "REGLA ESTRICTA DE COMPLIANCE PARA BHI: PROHIBIDO USAR las palabras 'p\xF3liza', 'seguro', 'vender', o 'contratar'. El texto ser\xE1 rechazado si contiene estas palabras.";
+      const { client, campaign, adGroup } = req.body;
+      if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: "Falta ANTHROPIC_API_KEY en el servidor." });
+      if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+      if (!client || !campaign || !adGroup) {
+        return res.status(400).json({ error: "Eleg\xED un grupo de anuncios de la lista de oportunidades." });
       }
-      const rsaSchemaConfig = {
-        type: "OBJECT",
-        properties: {
-          headlines: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description: "Lista de 3 a 5 t\xEDtulos para el anuncio, m\xE1ximo 30 caracteres cada uno."
-          },
-          descriptions: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description: "Lista de 2 a 4 descripciones para el anuncio, m\xE1ximo 90 caracteres cada una."
-          }
-        },
-        required: ["headlines", "descriptions"]
+      const { data: opp, error: oppErr } = await supabase.from("v_donde_escribir_anuncio").select("*").eq("account", client).eq("campaign", campaign).eq("ad_group", adGroup).maybeSingle();
+      if (oppErr) return res.status(500).json({ error: oppErr.message });
+      if (!opp) return res.status(404).json({ error: `No hay datos de la semana para ${adGroup} en ${campaign}.` });
+      const o = opp;
+      if (String(o.que_hacer).startsWith("NO ES EL ANUNCIO")) {
+        if (!req.body.forzar) {
+          return res.status(409).json({ error: o.que_hacer, sugerencia: "Si igual quer\xE9s el texto, reintent\xE1 con forzar: true.", bloqueado: true });
+        }
+      }
+      const { data: cta } = await supabase.from("cuentas").select("reglas_dominio").eq("account", client).maybeSingle();
+      const reglas = cta?.reglas_dominio || getClientContext(client) || "";
+      const { data: actuales } = await supabase.from("rsa_assets").select("field_type, asset_text, performance_label").eq("account", client).eq("campaign", campaign).eq("ad_group", adGroup).order("week_start", { ascending: false }).limit(60);
+      const hAct = [...new Set((actuales || []).filter((a) => a.field_type === "HEADLINE").map((a) => a.asset_text))].slice(0, 20);
+      const dAct = [...new Set((actuales || []).filter((a) => a.field_type === "DESCRIPTION").map((a) => a.asset_text))].slice(0, 6);
+      const IDIOMAS = {
+        "de-DE": "alem\xE1n de Alemania. TODO el texto va en alem\xE1n, sin una sola palabra en espa\xF1ol ni en ingl\xE9s.",
+        "en-US": "ingl\xE9s de Estados Unidos. TODO el texto va en ingl\xE9s.",
+        "es-CL": "espa\xF1ol de Chile, tuteo neutro. TODO el texto va en espa\xF1ol."
       };
-      const { termMetrics, topAssets } = req.body;
-      const metricsTxt = Array.isArray(termMetrics) && termMetrics.length ? "\n\nM\xE9tricas de esos t\xE9rminos (conversiones, clics, gasto):\n" + termMetrics.map((m) => `- "${m.term}": ${m.conv} conv, ${m.clicks} clics, ${m.cost} gasto`).join("\n") : "";
-      const assetsTxt = Array.isArray(topAssets) && topAssets.length ? "\n\nAssets actuales que Google califica por rendimiento (no repetir los BEST literalmente; superar los LOW):\n" + topAssets.map((a) => `- [${a.label}] ${a.tipo}: "${a.texto}"`).join("\n") : "";
-      const rules = getClientContext(client) || "";
-      const prompt = `Act\xFAa como un experto en Google Ads. Genera textos para un Responsive Search Ad (RSA) basado en estos t\xE9rminos de b\xFAsqueda exitosos: ${searchTerms.join(", ")}.${metricsTxt}${assetsTxt}
+      const idioma = IDIOMAS[o.idioma_anuncio] || "el idioma en que est\xE1n escritos los anuncios actuales del grupo";
+      const reglaLocal = o.es_cadena && o.location ? `
 
-Reglas de la cuenta:
-${rules}
+ESTA CUENTA ES UNA CADENA Y ESTE GRUPO ES DEL LOCAL DE ${String(o.location).toUpperCase()}.
+Al menos CUATRO de los quince t\xEDtulos tienen que nombrar "${o.location}". Es la ganancia de relevancia m\xE1s barata que hay y hoy est\xE1 desaprovechada: de 664 t\xEDtulos de la cuenta, solo 44 nombran su propia ciudad.
+No nombres ninguna otra ciudad: este anuncio solo se muestra en ${o.location}.` : "";
+      const system = `Sos redactor de Google Ads. Escrib\xEDs textos para Responsive Search Ads que tienen que ganar subastas, no sonar bien.
 
-Prioriz\xE1 los t\xE9rminos con m\xE1s conversiones. Cada headline debe ser distinto en \xE1ngulo, no en sin\xF3nimos.
-${complianceRule}
-Los t\xEDtulos no deben superar los 30 caracteres.
-Las descripciones no deben superar los 90 caracteres.`;
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: rsaSchemaConfig
+IDIOMA DEL ANUNCIO: ${idioma}
+
+QUE DEVOLVES
+Un objeto JSON, sin texto antes ni despu\xE9s y sin backticks:
+{"headlines": [15 strings], "descriptions": [4 strings], "notas": "..."}
+
+LIMITES QUE NO SE NEGOCIAN
+- Cada t\xEDtulo: MAXIMO 30 caracteres con espacios. Cont\xE1 antes de escribir.
+- Cada descripci\xF3n: MAXIMO 90 caracteres con espacios.
+- Si una idea no entra, cambi\xE1 la idea. NUNCA la cortes: un t\xEDtulo partido a mitad de palabra es peor que un t\xEDtulo menos.
+- Exactamente 15 t\xEDtulos y 4 descripciones.
+
+LAS DOS COSAS QUE SE MIDEN, Y NO SON LA MISMA
+1. RELEVANCIA DEL ANUNCIO. Es parte del Quality Score y entra en la subasta. Se gana cuando el anuncio trata de lo que la persona busc\xF3. NO exige repetir la keyword quince veces: exige que el anuncio sea sobre ese tema.
+2. AD STRENGTH. Es un diagn\xF3stico de la interfaz, no entra en la subasta. Premia VARIEDAD: t\xEDtulos distintos entre s\xED, de largos distintos, cubriendo \xE1ngulos distintos.
+
+Las dos tiran para lados opuestos si se abusa de la keyword. El equilibrio verificado:
+
+LA KEYWORD VA EN 2 A 4 TITULOS. NO MAS.
+- El t\xEDtulo 1 lleva el t\xE9rmino m\xE1s convertidor, lo m\xE1s textual que entre en 30 caracteres.
+- Otros dos o tres lo llevan con variaciones reales, no sin\xF3nimos de relleno.
+- **Al menos TRES t\xEDtulos NO llevan la keyword a prop\xF3sito**, para romper la monoton\xEDa.
+- Los once restantes son sobre el mismo tema sin repetir la palabra: beneficio, objeci\xF3n, prueba, p\xFAblico, lugar, condici\xF3n, llamada a la acci\xF3n.
+Si repet\xEDs la keyword en diez t\xEDtulos, Google marca "tus t\xEDtulos son demasiado similares" y perd\xE9s variedad sin ganar relevancia.
+
+QUINCE ANGULOS, NO QUINCE FRASES
+- Ning\xFAn t\xEDtulo puede ser una reescritura de otro. "Env\xEDo gratis", "Env\xEDo sin costo" y "Gratis el env\xEDo" son UN t\xEDtulo, no tres.
+- Vari\xE1 el largo a prop\xF3sito: unos de 12 a 18 caracteres, otros de 25 a 30. La mezcla de largos rinde mejor en distintas posiciones.
+- Cada t\xEDtulo tiene que funcionar solo Y combinado con cualquier otro, porque Google los arma en pares sin que vos elijas.
+- Las 4 descripciones tambi\xE9n distintas entre s\xED, y distintas de los t\xEDtulos. La keyword va en una o dos, no en las cuatro.
+
+QUE NO ESCRIBIS, PORQUE SUENA A IA
+- Relleno: "descubr\xED", "potenci\xE1", "llev\xE1 tu X al siguiente nivel", "la soluci\xF3n definitiva", "sin complicaciones", "de forma sencilla" y sus equivalentes en el idioma que corresponda.
+- Superlativos sin respaldo: el mejor, l\xEDder, innovador, revolucionario, premium.
+- Tres adjetivos apilados, ni tres cosas separadas por comas.
+- Signos de exclamaci\xF3n. Ninguno.
+- T\xEDtulos gen\xE9ricos puestos para llenar, tipo "M\xE1s informaci\xF3n" o "Conoc\xE9 m\xE1s". Un t\xEDtulo d\xE9bil agregado para llegar a quince empeora el anuncio: Google los rota igual.
+
+QUE SI FUNCIONA
+Un n\xFAmero concreto que exista en el contexto. Un plazo. Una condici\xF3n. El verbo que la persona usar\xEDa. Una objeci\xF3n respondida de frente: precio, tiempo, requisito, riesgo.${reglaLocal}
+
+REGLAS DE LA CUENTA
+Mandan sobre todo lo anterior. Si una regla proh\xEDbe una palabra, no aparece ni conjugada ni en plural. Si no pod\xE9s llegar a quince sin violar una regla o sin repetirte, escrib\xED menos y explic\xE1 cu\xE1l te fren\xF3 en "notas". Trece t\xEDtulos distintos valen m\xE1s que quince con dos rellenos.
+
+${reglas}`;
+      const user = `CUENTA: ${o.nombre_cliente} (${client}) \xB7 moneda ${o.moneda}
+CAMPA\xD1A: ${campaign}
+GRUPO DE ANUNCIOS: ${adGroup}${o.location ? `
+LOCAL: ${o.location}` : ""}${o.objetivo ? `
+OBJETIVO DE LA CAMPA\xD1A: ${o.objetivo}` : ""}
+
+DIAGNOSTICO DE ESTE GRUPO (por eso est\xE1s escribiendo):
+- ${o.que_hacer}
+- ${o.pct_gasto_con_relevancia_baja}% del gasto va a keywords con relevancia bajo el promedio. Quality Score ponderado: ${o.qs_ponderado}.
+- Anuncios activos en el grupo: ${o.anuncios_en_el_grupo}. Eficacia: ${o.fuerza_del_anuncio || "sin dato"}.
+
+KEYWORDS DEL GRUPO (contra estas se mide la relevancia):
+${o.keywords_del_grupo || "(sin keywords con gasto esta semana)"}
+
+TERMINOS QUE YA CONVIRTIERON EN ESTE GRUPO, ultimos 30 dias:
+${o.terminos_que_convierten || "(ninguno convirti\xF3: apoyate en las keywords)"}
+
+TITULOS QUE YA EXISTEN EN ESTE GRUPO (vari\xE1, no repitas; si uno es bueno, busc\xE1 el \xE1ngulo que falta):
+${hAct.length ? hAct.map((h) => `- ${h}`).join("\n") : "(el grupo no tiene t\xEDtulos cargados)"}
+
+DESCRIPCIONES ACTUALES:
+${dAct.length ? dAct.map((d) => `- ${d}`).join("\n") : "(ninguna)"}
+
+Escrib\xED el RSA. Antes de devolver, cont\xE1 los caracteres de cada l\xEDnea y reescrib\xED las que pasen.`;
+      const Anthropic3 = (await import("@anthropic-ai/sdk")).default;
+      const anthropic3 = new Anthropic3({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const pedir = async (extra) => anthropic3.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 8e3,
+        system: extra ? `${system}
+
+${extra}` : system,
+        messages: [{ role: "user", content: user }],
+        output_config: { effort: "low" }
+      });
+      const sacarJson = (bruto) => {
+        const sinFences = bruto.replace(/```(?:json)?/gi, "").trim();
+        const a = sinFences.indexOf("{"), b = sinFences.lastIndexOf("}");
+        return a >= 0 && b > a ? sinFences.slice(a, b + 1) : sinFences;
+      };
+      const texto = (m) => (m.content || []).map((b) => b.type === "text" ? b.text : "").join("").trim();
+      let msg = await pedir();
+      let crudo = null;
+      let cortado = msg.stop_reason === "max_tokens";
+      if (!cortado) {
+        try {
+          crudo = JSON.parse(sacarJson(texto(msg)));
+        } catch {
+          crudo = null;
+        }
+      }
+      if (crudo === null) {
+        msg = await pedir(cortado ? "REINTENTO: la respuesta anterior se cort\xF3 por largo. Escrib\xED las notas en una sola frase corta y no repitas el razonamiento." : "REINTENTO: la respuesta anterior no era JSON parseable. Devolv\xE9 SOLO el objeto JSON, sin una palabra antes ni despu\xE9s.");
+        cortado = msg.stop_reason === "max_tokens";
+        try {
+          crudo = JSON.parse(sacarJson(texto(msg)));
+        } catch {
+          crudo = null;
+        }
+      }
+      if (crudo === null) {
+        return res.status(502).json({
+          error: cortado ? "La respuesta se cort\xF3 por largo, dos veces. El texto qued\xF3 incompleto." : "El modelo no devolvi\xF3 JSON parseable, dos veces.",
+          stop_reason: msg.stop_reason,
+          crudo: texto(msg).slice(0, 600)
+        });
+      }
+      const val = z4.object({ headlines: z4.array(z4.string()), descriptions: z4.array(z4.string()), notas: z4.string().optional() }).safeParse(crudo);
+      if (!val.success) return res.status(502).json({ error: "El JSON no tiene la forma esperada.", detalle: val.error.message });
+      const norm = (s2) => s2.replace(/\s+/g, " ").trim();
+      const palabras = new Set(String(o.keywords_del_grupo || "").toLowerCase().split(/[\s|]+/).filter((w) => w.length > 3));
+      const menciona = (s2) => [...palabras].some((w) => s2.toLowerCase().includes(w));
+      const hOk = [], descartados = [];
+      for (const h of val.data.headlines.map(norm)) {
+        if (h.length > 30) descartados.push({ texto: h, largo: h.length, motivo: "pasa los 30" });
+        else if (hOk.includes(h)) descartados.push({ texto: h, largo: h.length, motivo: "repetido" });
+        else hOk.push(h);
+      }
+      const dOk = [];
+      for (const d of val.data.descriptions.map(norm)) {
+        if (d.length > 90) descartados.push({ texto: d, largo: d.length, motivo: "pasa los 90" });
+        else if (dOk.includes(d)) descartados.push({ texto: d, largo: d.length, motivo: "repetida" });
+        else dOk.push(d);
+      }
+      const conTermino = hOk.filter(menciona).length;
+      const sinTermino = hOk.length - conTermino;
+      const conCiudad = o.location ? hOk.filter((h) => h.toLowerCase().includes(String(o.location).toLowerCase())).length : null;
+      const tokens = (s2) => new Set(s2.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length > 3));
+      const pares = [];
+      for (let i = 0; i < hOk.length; i++) {
+        for (let j = i + 1; j < hOk.length; j++) {
+          const a = tokens(hOk[i]), b = tokens(hOk[j]);
+          if (!a.size || !b.size) continue;
+          const comunes = [...a].filter((w) => b.has(w)).length;
+          if (comunes / Math.min(a.size, b.size) >= 0.7) pares.push(`"${hOk[i]}" \u2248 "${hOk[j]}"`);
+        }
+      }
+      const largos = hOk.map((h) => h.length);
+      const cortos = largos.filter((l) => l <= 18).length;
+      const largosN = largos.filter((l) => l >= 25).length;
+      const avisos = [];
+      if (conTermino > 5) avisos.push(`${conTermino} de ${hOk.length} t\xEDtulos repiten la keyword. Google marca "t\xEDtulos demasiado similares" pasando de 4. La relevancia no necesita repetirla: necesita que el anuncio sea del tema.`);
+      if (conTermino < 2) avisos.push(`Solo ${conTermino} t\xEDtulo(s) contiene la keyword del grupo. Para relevancia del anuncio conviene 2 a 4.`);
+      if (sinTermino < 3) avisos.push(`Solo ${sinTermino} t\xEDtulo(s) evita la keyword. Conviene que al menos 3 no la lleven, para variedad.`);
+      if (pares.length) avisos.push(`${pares.length} par(es) de t\xEDtulos dicen casi lo mismo: ${pares.slice(0, 3).join(" \xB7 ")}. Cada uno cuenta como uno solo para Ad Strength.`);
+      if (cortos < 3 || largosN < 3) avisos.push(`Poca variedad de largos: ${cortos} cortos y ${largosN} largos. Conviene mezclar, rinden distinto seg\xFAn la posici\xF3n.`);
+      if (hOk.length < 13) avisos.push(`Quedaron ${hOk.length} t\xEDtulos. Ning\xFAn RSA con menos de 8 llega a Ad Strength Excelente, y los que la tienen suelen llevar 13 o m\xE1s. Ojo: mejor 13 distintos que 15 con rellenos.`);
+      if (o.location && (conCiudad ?? 0) < 3) avisos.push(`Solo ${conCiudad} t\xEDtulo(s) nombra "${o.location}". En una cadena eso es relevancia regalada.`);
+      res.json({
+        success: true,
+        data: {
+          headlines: hOk,
+          descriptions: dOk,
+          contexto: { cuenta: client, campaign, adGroup, location: o.location, idioma: o.idioma_anuncio, que_hacer: o.que_hacer },
+          diagnostico: {
+            titulos: hOk.length,
+            descripciones: dOk.length,
+            titulos_con_keyword: conTermino,
+            titulos_sin_keyword: sinTermino,
+            pares_parecidos: pares,
+            titulos_con_la_ciudad: conCiudad,
+            // Ad Strength depende tambien de tener al menos 6 sitelinks, que este
+            // generador no toca. Sin eso no llega a Excellent por mas bueno que sea el copy.
+            nota_ad_strength: "Ad Strength no entra en la subasta, es un diagnostico de la interfaz. Lo que si entra es la relevancia del anuncio, que es parte del Quality Score. Y Ad Strength tambien pide al menos 6 sitelinks en el grupo o la campana, que no se cargan desde aca.",
+            largos_titulos: hOk.map((h) => h.length),
+            descartados,
+            titulos_actuales_leidos: hAct.length,
+            avisos: avisos.length ? avisos : null,
+            notas_del_modelo: val.data.notas || null
+          }
         }
       });
-      if (!response.text) throw new Error("No response text");
-      const rsaZodSchema = z4.object({
-        headlines: z4.array(z4.string()),
-        descriptions: z4.array(z4.string())
-      });
-      const parsedData = rsaZodSchema.parse(JSON.parse(response.text));
-      const result = {
-        headlines: parsedData.headlines.map((h) => h.length > 30 ? h.substring(0, 30) : h),
-        descriptions: parsedData.descriptions.map((d) => d.length > 90 ? d.substring(0, 90) : d)
-      };
-      res.json({ success: true, data: result });
     } catch (e) {
-      console.error("Error generating RSA:", e);
+      console.error("Error generando RSA:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app2.get("/api/terminos-sin-cobertura", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    const accion = req.query.accion || null;
+    let q = supabase.from("v_terminos_sin_cobertura").select("*").order("gasto_30d", { ascending: false });
+    if (client) q = q.eq("account", client);
+    if (accion) q = q.eq("accion", accion);
+    const { data, error } = await q.limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data: data || [] });
+  });
+  app2.post("/api/terminos-sin-cobertura/accionable", async (req, res) => {
+    try {
+      if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+      if (!notion || !NOTION_BASES.ACCIONABLES) return res.status(503).json({ error: "Notion no configurado" });
+      const { client, campaign, adGroup, searchTerm, nivel } = req.body;
+      if (!client || !campaign || !adGroup || !searchTerm) {
+        return res.status(400).json({ error: "Faltan client, campaign, adGroup o searchTerm." });
+      }
+      const { data: fila, error: errF } = await supabase.from("v_terminos_sin_cobertura").select("*").eq("account", client).eq("campaign", campaign).eq("ad_group", adGroup).eq("search_term", searchTerm).maybeSingle();
+      if (errF) return res.status(500).json({ error: errF.message });
+      if (!fila) return res.status(404).json({ error: "Ese t\xE9rmino ya no aparece en los \xFAltimos 30 d\xEDas." });
+      const f = fila;
+      if (f.accion === "ok" || f.accion === "revisar") {
+        return res.status(409).json({ error: `Este t\xE9rmino est\xE1 marcado como "${f.accion}": ${f.veredicto}`, bloqueado: true });
+      }
+      if (f.conflicto_entre_grupos && nivel === "campana") {
+        return res.status(409).json({
+          error: `A nivel campa\xF1a esta negativa tambi\xE9n apaga "${searchTerm}" en ${f.grupos_donde_convierte}, donde convierte. Va a nivel grupo.`,
+          nivel_recomendado: "grupo",
+          bloqueado: true
+        });
+      }
+      const nivelUsar = f.nivel_recomendado === "grupo" ? "grupo" : nivel === "campana" ? "campana" : "grupo";
+      let accionJson;
+      let titulo = "";
+      let porQue = "";
+      let comoHacerlo = "";
+      let prioridad = NOTION_PRIORITIES.MEDIA;
+      if (f.accion === "negativa") {
+        const { data: sim, error: errS } = await supabase.rpc("simular_negativa", {
+          p_account: client,
+          p_negativa: searchTerm,
+          p_match: "PHRASE",
+          p_nivel: nivelUsar,
+          p_grupo: adGroup
+        });
+        if (errS) return res.status(500).json({ error: `La simulaci\xF3n fall\xF3 y sin ella no se propone: ${errS.message}` });
+        const s2 = sim || {};
+        const protegidos = Array.isArray(s2.protegidos_afectados) ? s2.protegidos_afectados : [];
+        const convBloq = Number(s2.conversiones_bloqueadas || 0) + Number(s2.conversiones_bloqueadas_90d || 0);
+        if (convBloq > 0) {
+          return res.status(409).json({
+            error: `La simulaci\xF3n frena esta negativa: dentro del alcance elegido bloquear\xEDa ${convBloq} conversion(es). No se crea.`,
+            conversiones_que_bloquearia: convBloq,
+            gasto_que_bloquearia_90d: s2.gasto_bloqueado_90d ?? null,
+            simulacion: s2,
+            bloqueado: true
+          });
+        }
+        if (protegidos.length > 0 && !req.body.confirmar_protegido) {
+          return res.status(409).json({
+            error: `"${searchTerm}" figura entre los t\xE9rminos protegidos de la cuenta porque convierte en otro lado, pero en ${nivelUsar === "grupo" ? adGroup : campaign} bloquear\xEDa 0 conversiones. Confirm\xE1 que quer\xE9s excluirlo solo ac\xE1.`,
+            protegidos_afectados: protegidos.slice(0, 12),
+            conversiones_que_bloquearia: 0,
+            gasto_que_bloquearia_90d: s2.gasto_bloqueado_90d ?? null,
+            requiere_confirmacion: true,
+            bloqueado: true
+          });
+        }
+        accionJson = {
+          verbo: "agregar_negativa",
+          plataforma: "google",
+          objeto: { campana: campaign, grupo: nivelUsar === "grupo" ? adGroup : null, keyword: searchTerm, match_type: "PHRASE" },
+          parametros: { nivel: nivelUsar },
+          verificar: { metrica: "gasto", direccion: "baja", fecha: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10) }
+        };
+        titulo = `Agregar negativa "${searchTerm}" en ${nivelUsar === "grupo" ? adGroup : campaign}`;
+        porQue = `${f.gasto_30d} de gasto en ${f.clicks} clic(s) en 30 d\xEDas, cero conversiones` + (f.cpc_promedio ? `, a ${f.cpc_promedio} por clic` : "") + `. Lo dispar\xF3 la keyword "${f.triggered_keyword}", que no contiene ninguna palabra del t\xE9rmino: el grupo est\xE1 comprando algo que no declara.${f.conflicto_entre_grupos ? ` Va a nivel GRUPO y no de campa\xF1a: el mismo t\xE9rmino convierte en ${f.grupos_donde_convierte}.` : ""} Simulaci\xF3n sin bloqueos (ventana ${s2.ventana_diaria_real || "diaria"}, 0 conversiones y 0 t\xE9rminos protegidos afectados).`;
+        prioridad = Number(f.gasto_30d) > 1e4 ? NOTION_PRIORITIES.ALTA : NOTION_PRIORITIES.MEDIA;
+        comoHacerlo = [
+          `1. Campa\xF1as > ${campaign}${nivelUsar === "grupo" ? ` > ${adGroup}` : ""}.`,
+          `2. Palabras clave > pesta\xF1a Palabras clave negativas.`,
+          `3. Agregar, concordancia de frase, texto exacto: ${searchTerm}`,
+          `4. Guardar. Tiene que aparecer en la lista de negativas del ${nivelUsar === "grupo" ? "grupo" : "campa\xF1a"}.`
+        ].join("\n");
+      } else {
+        accionJson = {
+          verbo: "tarea_externa",
+          plataforma: "google",
+          objeto: { campana: campaign, grupo: adGroup, keyword: searchTerm },
+          parametros: {
+            donde: "Google Ads",
+            que_hacer: `Crear keyword propia para "${searchTerm}" (exacta y frase) en un grupo con anuncio que la mencione.`
+          },
+          verificar: { metrica: "cpa", direccion: "baja", fecha: new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10) }
+        };
+        titulo = `Crear keyword propia para "${searchTerm}"${f.location ? ` \xB7 ${f.location}` : ""}`;
+        porQue = `Convierte a ${f.cpa_del_termino} contra ${f.cpa_del_grupo} del grupo que hoy lo sirve, con ${f.conversiones_30d} conversiones en 30 d\xEDas, y ninguna keyword del grupo lo cubre: lo dispara "${f.triggered_keyword}" por concordancia amplia. Comprarlo as\xED paga de m\xE1s y hunde la relevancia del anuncio.`;
+        prioridad = NOTION_PRIORITIES.ALTA;
+        comoHacerlo = [
+          `1. Campa\xF1as > ${campaign} > ${adGroup}.`,
+          `2. Crear grupo nuevo si el tema no encaja, o agregar la keyword al grupo actual.`,
+          `3. Agregar "${searchTerm}" en concordancia exacta y de frase.`,
+          `4. El anuncio del grupo tiene que mencionar el t\xE9rmino: si no, la relevancia no mejora.`,
+          `5. Verificar en 3 semanas que el CPA de ese t\xE9rmino baj\xF3 de ${f.cpa_del_termino}.`
+        ].join("\n");
+      }
+      const { data: inv } = await supabase.rpc("verificar_invariantes", { p_account: client, p_accion: accionJson });
+      const bloqueos = (inv || []).filter((i) => i.bloquea);
+      if (bloqueos.length) {
+        return res.status(409).json({ error: "Las invariantes bloquean este accionable.", invariantes: bloqueos, bloqueado: true });
+      }
+      const page = await notion.pages.create({
+        parent: { database_id: NOTION_BASES.ACCIONABLES },
+        properties: {
+          Accion: { title: [{ text: { content: titulo.slice(0, 200) } }] },
+          Estado: { select: { name: NOTION_STATES.PROPUESTO } },
+          Prioridad: { select: { name: prioridad } },
+          "Por que": { rich_text: [{ text: { content: porQue.slice(0, 1900) } }] },
+          "Como hacerlo": { rich_text: [{ text: { content: comoHacerlo.slice(0, 1900) } }] },
+          "Accion JSON": { rich_text: [{ text: { content: "`" + JSON.stringify(accionJson) + "`" } }] },
+          Origen: { select: { name: "Andres" } }
+        }
+      });
+      res.json({ success: true, notion_id: page.id, titulo, accion: f.accion, invariantes_avisos: (inv || []).filter((i) => !i.bloquea) });
+    } catch (e) {
+      console.error("Error creando accionable desde t\xE9rmino:", e);
       res.status(500).json({ error: e.message });
     }
   });
@@ -4108,9 +4575,9 @@ Reporte completo: ${url}`;
       supabase.rpc("volcar_semillas"),
       supabase.rpc("volcar_crons")
     ]);
-    const err = e.error || s2.error || c.error;
-    if (err) return res.status(500).json({ error: err.message });
+    const errores = [e.error, s2.error, c.error].filter(Boolean).map((x) => x.message);
     res.json({
+      errores: errores.length ? errores : void 0,
       generado: (/* @__PURE__ */ new Date()).toISOString(),
       archivos: [
         { nombre: "00000000000001_linea_base.sql", kb: Math.round((e.data || "").length / 1024), url: "/api/respaldo/esquema" },
