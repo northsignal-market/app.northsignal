@@ -64,11 +64,15 @@ export function ReportesEditor({ activeClient }: Props) {
   const kpi = (k: string, f: (v: any) => string) => m[k] ? <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}><div className="text-[10px] text-[#F5F7FA] opacity-50 uppercase tracking-wider">{k === 'gasto' ? 'Inversión' : k === 'conversiones' ? 'Conversiones' : k.toUpperCase()}</div><div className="text-sm tabular text-[#EDEFF3]">{f(m[k].actual)}</div>{m[k].anterior != null && m[k].anterior ? <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{((m[k].actual - m[k].anterior) / m[k].anterior * 100 > 0 ? '+' : '')}{((m[k].actual - m[k].anterior) / m[k].anterior * 100).toFixed(0)}% vs anterior</div> : null}</div> : null;
 
   return (
-    <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+    /* Sin caja propia: la pestaña ya dice Reportes y una caja dentro de la
+       vista sumaba un cuarto nivel de marco alrededor del mismo contenido. */
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div>
-          <h2 className="text-[15px] font-medium text-[#EDEFF3]">Reportes al cliente</h2>
-          <p className="text-xs text-[#F5F7FA] opacity-60">El sistema redacta, vos revisás. Los números no se editan: salen de Supabase. Cada sección se regenera sola. Al aprobar, el reporte te llega a vos por correo con el texto listo para reenviar al cliente en su idioma; no sale solo.</p>
+        <div className="min-w-0">
+          <p className="text-xs leading-relaxed" style={{ color: '#ADADAD', maxWidth: '86ch' }}>
+            El sistema redacta, vos revisás. Los números salen de Supabase y no se editan.
+            Al aprobar, el reporte te llega <span className="text-[#EDEFF3]">a vos</span> por correo, listo para reenviar en el idioma del cliente: no sale solo.
+          </p>
         </div>
         {aviso && <span className="text-[11px] text-[#EDEFF3] px-3 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: 'var(--primary-faint)', border: '1px solid rgba(0,98,204,0.4)' }}>{aviso}</span>}
       </div>
@@ -76,9 +80,9 @@ export function ReportesEditor({ activeClient }: Props) {
       {/* Crear */}
       <div className="p-3 rounded-xl flex flex-wrap items-end gap-2" style={{ backgroundColor: 'var(--surface-2)' }}>
         <div className="flex gap-1.5">{[['semana', 'Última semana'], ['dos', 'Dos semanas'], ['mes', 'Mes pasado']].map(([k, l]) => <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#EDEFF3]" style={{ border: '1px solid var(--border)' }}>{l}</button>)}</div>
-        <input aria-label="Form" type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
+        <input aria-label="Form" type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className=" rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
         <span className="text-[11px] text-[#F5F7FA] opacity-50">a</span>
-        <input aria-label="Form" type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
+        <input aria-label="Form" type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className=" rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
         <button onClick={crear} disabled={!form.desde || !form.hasta || trabajando === 'crear'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">{trabajando === 'crear' ? 'Armando…' : 'Crear borrador'}</button>
       </div>
 
@@ -156,12 +160,12 @@ export function ReportesEditor({ activeClient }: Props) {
                       {editable && <button onClick={() => regenerar(b.etiqueta)} disabled={!!trabajando} className="text-[11px] text-[#4D9DFF] flex items-center gap-1 disabled:opacity-40"><RefreshCw size={11} className={trabajando === 'regen:' + b.etiqueta ? 'animate-spin' : ''} /> {trabajando === 'regen:' + b.etiqueta ? 'redactando…' : 'regenerar'}</button>}
                     </div>
                     {(b.texto !== undefined || !b.vinetas?.length) && (
-                      <textarea aria-label="B" value={b.texto || ''} disabled={!editable} onChange={e => setBloque(i, { texto: e.target.value })} rows={Math.max(2, Math.ceil((b.texto || '').length / 110))} placeholder="Párrafo (opcional)" className="w-full bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid var(--border)' }} />
+                      <textarea aria-label="B" value={b.texto || ''} disabled={!editable} onChange={e => setBloque(i, { texto: e.target.value })} rows={Math.max(2, Math.ceil((b.texto || '').length / 110))} placeholder="Párrafo (opcional)" className="w-full bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[var(--primary-text)] disabled:opacity-70" style={{ border: '1px solid var(--border)' }} />
                     )}
                     {(b.vinetas || []).map((v, k) => (
                       <div key={k} className="flex items-start gap-2">
                         <span className="text-[#F5F7FA] opacity-40 pt-1.5">–</span>
-                        <textarea aria-label="V" value={v} disabled={!editable} onChange={e => setBloque(i, { vinetas: b.vinetas!.map((x, j) => j === k ? e.target.value : x) })} rows={Math.max(1, Math.ceil(v.length / 110))} className="flex-1 bg-transparent px-2 py-1 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid transparent' }} onFocus={e => (e.target.style.borderColor = 'var(--border)')} onBlur={e => (e.target.style.borderColor = 'transparent')} />
+                        <textarea aria-label="V" value={v} disabled={!editable} onChange={e => setBloque(i, { vinetas: b.vinetas!.map((x, j) => j === k ? e.target.value : x) })} rows={Math.max(1, Math.ceil(v.length / 110))} className="flex-1 bg-transparent px-2 py-1 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[var(--primary-text)] disabled:opacity-70" style={{ border: '1px solid transparent' }} onFocus={e => (e.target.style.borderColor = 'var(--border)')} onBlur={e => (e.target.style.borderColor = 'transparent')} />
                         {editable && <button onClick={() => setBloque(i, { vinetas: b.vinetas!.filter((_, j) => j !== k) })} className="text-[#F5F7FA] opacity-30 hover:opacity-100 pt-1" title="Quitar viñeta">×</button>}
                       </div>
                     ))}

@@ -155,27 +155,26 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const fechaHoy = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="px-6 md:px-10 py-7 max-w-[1480px] mx-auto space-y-8">
+    <div className="px-5 md:px-7 py-5 max-w-[1440px] mx-auto space-y-5">
 
-      {/* Cabecera de página: título a la izquierda, filtro de cuentas a la derecha */}
+      {/* La fecha es el contexto; el nombre de la vista ya lo dice el menú.
+          Un h1 "Bandeja" arriba del menú que dice "Bandeja" era una fila
+          gastada en repetirse. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[19px] font-semibold text-[#FAFAFA] leading-tight">Bandeja</h1>
-          <p className="text-xs mt-0.5" style={LABEL}>{fechaHoy}</p>
-        </div>
-        <div className="flex p-1 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+        <p className="text-xs first-letter:uppercase" style={LABEL}>{fechaHoy}</p>
+        <div className="flex p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
           <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${!filtroCuenta ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>Todas</button>
           {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${filtroCuenta === c ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>{c}</button>)}
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_330px] gap-x-10 gap-y-10 items-start">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_312px] gap-x-8 gap-y-8 items-start">
 
         {/* ==================== COLUMNA PRINCIPAL ==================== */}
         <div className="min-w-0">
 
           {/* KPIs sin caja, separados por hairlines verticales */}
-          <div className="grid grid-cols-3 divide-x pb-6" style={HAIR}>
+          <div className="grid grid-cols-3 divide-x pb-5" style={HAIR}>
             <div className="pr-6">
               <div className="text-xs" style={LABEL}>Esperan tu criterio</div>
               <div className="text-2xl font-medium tabular mt-1 cifra-luz" style={{ letterSpacing: '-0.6px' }}>{total}</div>
@@ -198,7 +197,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           </div>
 
           {/* Lectura del sistema — el bloque grande y legible de la referencia */}
-          <div className="py-6 border-t" style={HAIR}>
+          <div className="py-5 border-t" style={HAIR}>
             <div className="flex items-center gap-1.5 text-xs mb-3" style={LABEL}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
               Lectura del sistema
@@ -272,7 +271,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             )}
           </div>
 
-          <p className="text-[10px] text-center pt-6 opacity-40" style={LABEL}>j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
+          <p className="text-[10px] text-center pt-5 opacity-40" style={LABEL}>j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
         </div>
 
         {/* ==================== RAIL DERECHO ==================== */}
@@ -412,7 +411,7 @@ function Grupo({ titulo, nota, n, urgente, abierto, onToggle, todo, tope, onVerT
       </button>
       {abierto && <div className="pb-1">{children}</div>}
       {abierto && !todo && n > tope && (
-        <button onClick={onVerTodo} className="w-full pb-2.5 pl-6 text-left text-[11px] text-[#4D9DFF] hover:opacity-80">
+        <button onClick={onVerTodo} className="w-full pb-2.5 pl-5 text-left text-[11px] text-[#4D9DFF] hover:opacity-80">
           ver los {n} de este grupo
         </button>
       )}
@@ -424,9 +423,9 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
   return (
     <div onClick={onClick}
       ref={el => { if (activa && el) el.scrollIntoView({ block: 'nearest' }); }}
-      className={`flex items-center gap-3 pl-6 pr-2 py-2 rounded-lg cursor-pointer transition-colors ${activa ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'}`}
+      className={`flex items-center gap-3 pl-5 pr-2 py-[7px] rounded-lg cursor-pointer transition-colors ${activa ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'}`}
       style={activa ? { boxShadow: 'inset 2px 0 0 var(--primary-text)' } : undefined}>
-      <span className="text-[10px] tabular w-24 shrink-0 truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }} title={cuenta}>{cuenta}</span>
+      <span className="text-[10px] tabular w-[86px] shrink-0 truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }} title={cuenta}>{cuenta}</span>
       <div className="flex-1 min-w-0">
         <div className="text-[13px] text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] truncate opacity-80" style={{ color: '#ADADAD' }}>{sub}</div>}
