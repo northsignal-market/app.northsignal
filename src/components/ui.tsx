@@ -157,24 +157,25 @@ export function DosPaneles({ id, izquierda, derecha, defIzq = 74, minIzq = 42, m
     window.addEventListener('resize', r);
     return () => window.removeEventListener('resize', r);
   }, []);
-  // El layout guardado se lee UNA vez al montar; si está corrupto se ignora y
-  // vale el default, nunca se rompe la vista por una preferencia vieja.
-  const guardado = useMemo<number[] | undefined>(() => {
+  // El Layout de la v4 NO es un array: es un objeto {idDelPanel: porcentaje}.
+  // Por eso los paneles llevan id EXPLÍCITO — con los autogenerados (`_r_1_`)
+  // la preferencia guardada deja de corresponder apenas cambia el árbol.
+  const guardado = useMemo<Record<string, number> | undefined>(() => {
     try {
       const v = JSON.parse(localStorage.getItem(CLAVE) || 'null');
-      return Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number') ? v : undefined;
+      return v && typeof v === 'object' && typeof v.izq === 'number' && typeof v.der === 'number' ? v : undefined;
     } catch { return undefined; }
   }, [CLAVE]);
 
   if (ancho < 1024) return <div className="space-y-8">{izquierda}{derecha}</div>;
   return (
     <Group orientation="horizontal" className="items-start"
-      defaultLayout={guardado || [defIzq, 100 - defIzq]}
+      defaultLayout={guardado || { izq: defIzq, der: 100 - defIzq }}
       // onLayoutChanged dispara al SOLTAR; onLayoutChange lo hace por frame del
       // puntero y está deprecado en la librería justamente por eso.
       onLayoutChanged={(l) => { try { localStorage.setItem(CLAVE, JSON.stringify(l)); } catch { /* modo privado */ } }}
     >
-      <PanelRP minSize={minIzq} className="min-w-0">{izquierda}</PanelRP>
+      <PanelRP id="izq" minSize={minIzq} className="min-w-0">{izquierda}</PanelRP>
       <Separator className="group/handle relative w-6 shrink-0 self-stretch flex items-center justify-center cursor-col-resize">
         {/* El hairline de siempre; al pasar el mouse se enciende para avisar
             que se puede mover. */}
@@ -183,7 +184,7 @@ export function DosPaneles({ id, izquierda, derecha, defIzq = 74, minIzq = 42, m
         <span className="absolute h-9 w-[3px] rounded-full opacity-0 group-hover/handle:opacity-100 transition-opacity"
           style={{ backgroundColor: 'var(--primary-text)' }} />
       </Separator>
-      <PanelRP minSize={minDer} className="min-w-0">{derecha}</PanelRP>
+      <PanelRP id="der" minSize={minDer} className="min-w-0">{derecha}</PanelRP>
     </Group>
   );
 }
