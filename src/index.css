@@ -176,30 +176,6 @@ body::before {
   }
 }
 
-/* ── BETA AMBIENT · vidrio en el chrome, sólido-primero ─────────────
-   Regla del informe 16 (Apple WWDC26 + setproduct + Raycast): el vidrio
-   va SOLO en el marco — header, sidebar, paleta, drawer, headers
-   pegajosos — con tinte DENSO ("fully tinted" como base, no como
-   degradación) y blur encima. Los datos siguen sobre sólido. Fallback:
-   sin soporte o con prefers-reduced-transparency, queda el sólido que
-   ya había — la media query desconocida evalúa false y Firefox ni entra. */
-@supports (backdrop-filter: blur(1px)) {
-  @media (prefers-reduced-transparency: no-preference) {
-    .glass-dense {
-      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 97%, #000000) 72%, transparent);
-      backdrop-filter: blur(22px) saturate(1.5);
-    }
-    .glass {
-      background: color-mix(in srgb, var(--surface-1) 76%, transparent);
-      backdrop-filter: blur(22px) saturate(1.5);
-    }
-    .grupo-sticky {
-      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 88%, #000000) 84%, transparent);
-      backdrop-filter: blur(16px) saturate(1.4);
-    }
-  }
-}
-
 /* ── BETA AMBIENT · el orbe ─────────────────────────────────────────
    Existe SOLO donde no hay datos (login, bienvenidas). UNA instancia,
    azul de la casa — jamás violeta, jamás en pantallas operativas
@@ -483,4 +459,32 @@ button:active, [role="button"]:active { transform: scale(0.97); }
 @media (forced-colors: active) {
   .glass, .glass-dense { border: 1px solid CanvasText; background: Canvas; }
   button, [role="button"] { forced-color-adjust: auto; }
+}
+
+/* ── BETA AMBIENT · vidrio en el chrome, sólido-primero ─────────────
+   Regla del informe 16 (Apple WWDC26 + setproduct + Raycast): el vidrio
+   va SOLO en el marco — header, sidebar, paleta, drawer, headers
+   pegajosos — con tinte DENSO ("fully tinted" como base, no como
+   degradación) y blur encima. Los datos siguen sobre sólido. Fallback:
+   sin soporte o con prefers-reduced-transparency, queda el sólido que
+   ya había — la media query desconocida evalúa false y Firefox ni entra.
+   VIVE AL FINAL DEL ARCHIVO a propósito: a igual especificidad gana la
+   última regla, y estas deben pisar los fondos sólidos base. */
+@supports (backdrop-filter: blur(1px)) {
+  @media (prefers-reduced-transparency: no-preference) {
+    .glass-dense {
+      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 97%, #000000) 72%, transparent);
+      backdrop-filter: blur(22px) saturate(1.5);
+    }
+    .glass {
+      background: color-mix(in srgb, var(--surface-1) 76%, transparent);
+      backdrop-filter: blur(22px) saturate(1.5);
+    }
+    .grupo-sticky {
+      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 88%, #000000) 84%, transparent);
+      backdrop-filter: blur(16px) saturate(1.4);
+    }
+    /* Colores forzados de Windows: si ese modo está activo, su regla de
+       arriba ya puso Canvas opaco; el blur acá no daña la legibilidad. */
+  }
 }
