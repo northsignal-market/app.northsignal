@@ -450,11 +450,11 @@ export function Sistema() {
               </div>
               <div className="space-y-0.5">
                 {latidos.map((l: any) => (
-                  <div key={l.tarea} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: l.en_silencio ? 'var(--bad-faint)' : 'var(--surface-2)' }}>
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.en_silencio ? 'var(--bad)' : '#4ADE80' }} />
+                  <div key={l.tarea} className={`flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs ${l.vigilado === false ? 'opacity-45' : ''}`} style={{ backgroundColor: l.en_silencio ? 'var(--bad-faint)' : 'var(--surface-2)' }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.en_silencio ? 'var(--bad)' : l.vigilado === false ? 'var(--border-strong)' : '#4ADE80' }} />
                     <span className={`w-52 shrink-0 truncate ${l.en_silencio ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA]'}`}>{String(l.tarea).replace(/_/g, ' ')}</span>
                     <span className="tabular text-[#F5F7FA] opacity-70 shrink-0 w-44">{l.horas_sin_ok != null ? `hace ${l.horas_sin_ok} h` : 'nunca corrió'} · tol. {l.tolerancia_horas} h</span>
-                    <span className="flex-1 text-[11px] text-[#F5F7FA] opacity-60 truncate" title={l.ultimo_error || ''}>{l.en_silencio ? (l.ultimo_error || 'sin error registrado: dejó de correr en silencio') : ''}</span>
+                    <span className="flex-1 text-[11px] text-[#F5F7FA] opacity-60 truncate" title={l.ultimo_error || ''}>{l.vigilado === false ? 'fuera de vigilancia · decisión registrada' : l.en_silencio ? (l.ultimo_error || 'sin error registrado: dejó de correr en silencio') : ''}</span>
                     <span className="text-[10px] tabular text-[#F5F7FA] opacity-40 shrink-0">{l.corridas_ok} ok{l.corridas_falla > 0 ? ` · ${l.corridas_falla} fallas` : ''}</span>
                   </div>
                 ))}
