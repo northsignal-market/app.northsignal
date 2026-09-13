@@ -76,6 +76,16 @@
   font-family: 'Inter', sans-serif;
 }
 
+html {
+  /* Higiene dark (informe 14): scrollbars nativas oscuras y sin saltos de
+     layout cuando aparece/desaparece la barra. Las anclas quedan libres del
+     header pegajoso. */
+  color-scheme: dark;
+  scrollbar-color: rgba(245, 247, 250, 0.25) transparent;
+}
+main { scrollbar-gutter: stable; }
+[id] { scroll-margin-top: 72px; }
+
 html, body {
   font-family: 'Inter', sans-serif;
   font-weight: 400;
