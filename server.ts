@@ -3941,8 +3941,29 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         }
         resumen.push({ cuenta: c.account, keywords: lista.length, filas: aGuardar.length, estado: 'ok' });
       } catch (e: any) {
-        // Una cuenta que falla no debe tumbar a las otras tres.
-        resumen.push({ cuenta: c.account, estado: 'falló', error: String(e?.message || e).slice(0, 200) });
+        const msg = String(e?.message || e);
+        // Google NO permite Keyword Planner con acceso "explorer" (probado en
+        // producción el 13/9/2026; la documentación no lo dice). No es un bug
+        // nuestro ni un dato faltante: es un permiso que hay que pedir, y la
+        // diferencia importa — un "falló" genérico haría buscar el error en el
+        // código durante horas.
+        const sinPermiso = /explorer access|basic or standard access|not allowed for use/i.test(msg);
+        if (sinPermiso) {
+          resumen.push({ cuenta: c.account, estado: 'requiere_acceso_basic', error: msg.slice(0, 200) });
+          try {
+            await supabase.from('alertas').upsert({
+              account: c.account, nivel: 'semana', tipo: 'acceso_api', origen: 'mercado',
+              titulo: 'Keyword Planner necesita acceso Basic en el token de Google',
+              detalle: 'La API rechaza las consultas de demanda con el nivel actual (explorer). El código y la tabla están listos: solo falta el permiso.',
+              accion: 'Pedir Basic access en el Centro de API de Google Ads (Herramientas › Configuración › Centro de API). Aprueban en días y es gratis. Mientras tanto, la capa de demanda queda vacía y el sistema NO puede distinguir una caída de mercado de una caída propia.',
+              estado: 'abierta', fecha_dato: new Date().toISOString().slice(0, 10),
+              dedupe_key: 'acceso|keyword_planner|' + c.account,
+            }, { onConflict: 'dedupe_key' });
+          } catch { /* la alerta es el aviso, no el dato */ }
+        } else {
+          // Una cuenta que falla no debe tumbar a las otras tres.
+          resumen.push({ cuenta: c.account, estado: 'falló', error: msg.slice(0, 200) });
+        }
       }
     }
 
@@ -3964,7 +3985,19 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       return res.status(500).json({ error: error.message });
     }
     const { data: serie } = await supabase.from('v_demanda_mensual').select('*').eq('account', client).order('mes');
-    res.json({ disponible: true, resumen: data || null, serie: serie || [] });
+    // Sin datos, decir POR QUÉ: "vacío" y "bloqueado por permisos" son cosas
+    // distintas y confundirlas manda a buscar un bug donde hay un trámite.
+    if (!serie?.length) {
+      const { data: bloqueo } = await supabase.from('alertas')
+        .select('titulo, accion').eq('dedupe_key', 'acceso|keyword_planner|' + client).maybeSingle();
+      return res.json({
+        disponible: false, resumen: null, serie: [],
+        aviso: bloqueo
+          ? 'Keyword Planner necesita acceso Basic en el token de Google: ' + (bloqueo.accion || '')
+          : 'Todavía no se capturó demanda para esta cuenta. Se pobla sola el día 3 de cada mes.',
+      });
+    }
+    res.json({ disponible: true, resumen: data || null, serie });
   });
 
   /** La presión competitiva detectada con datos propios (sin Keyword Planner). */

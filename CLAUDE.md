@@ -70,6 +70,14 @@ el ranking perdido pero el CPC **cae**). Antes de recomendar subir una puja por 
 ranking, mirá cuál de los tres es: subir la puja cuando el problema es el anuncio paga más
 caro el mismo lugar.
 
+> ⚠️ **La demanda todavía NO se está capturando.** Google rechaza Keyword Planner con el
+> nivel de acceso actual del developer token: *"This method is not allowed for use with
+> explorer access. Please apply for basic or standard access."* (probado en producción el
+> 13/9/2026 — la documentación de Google no lo menciona). El código, la tabla, el cron y las
+> vistas están listos y funcionan apenas se apruebe **Basic access**, que se pide gratis en
+> el Centro de API de Google Ads. Hasta entonces, la capa de demanda está vacía **y eso no
+> es un cero**: el sistema no puede distinguir una caída de mercado de una caída propia.
+
 **Demanda** (`demanda_mercado` + `v_mercado_vs_nosotros`, Keyword Planner): el único lugar
 donde Google dice cuán grande es la subasta. Sirve para no culpar a la gestión de lo que es
 estacionalidad. **Es mensual, redondeada y agrupa variantes cercanas**: es un índice
