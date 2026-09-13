@@ -3693,7 +3693,8 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Corrige SOLO métricas (gasto, conversiones, valor y sus derivadas), nunca
   // estructura ni semanas que el script no escribió; tope de correcciones por
   // capa para que un bug propio no arrase; el resultado queda en
-  // `reconciliaciones`, que vigila la relación api_reconcilia_a_diario.
+  // `reconciliaciones_api` (no confundir con `reconciliaciones`, que reconcilia
+  // ACCIONABLES), y lo vigila la relación api_reconcilia_a_diario.
   app.all("/api/cron/reconciliar-api", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
@@ -3707,7 +3708,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const resumen: any[] = [];
     const registrar = async (r: any) => {
       resumen.push(r);
-      try { await supabase.from('reconciliaciones').insert(r); } catch (e: any) { console.error('[reconciliar] no pude registrar: ' + e.message); }
+      try { await supabase.from('reconciliaciones_api').insert(r); } catch (e: any) { console.error('[reconciliar] no pude registrar: ' + e.message); }
     };
 
     for (const cta of cuentas) {
@@ -3841,7 +3842,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Últimas reconciliaciones, para Sistema › Integridad
   app.get("/api/reconciliaciones", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data } = await supabase.from('reconciliaciones').select('*').order('corrida', { ascending: false }).limit(40);
+    const { data } = await supabase.from('reconciliaciones_api').select('*').order('corrida', { ascending: false }).limit(40);
     res.json(data || []);
   });
 
