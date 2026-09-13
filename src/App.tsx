@@ -8,8 +8,6 @@ import { Cuenta, type SegmentoCuenta } from './components/Cuenta';
 import { Campana, type Novedad } from './components/Campana';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
-import { Inicio } from './components/Inicio';
-import { Hoy } from './components/Hoy';
 import { Accionables } from './components/Accionables';
 import { Semana } from './components/Semana';
 import { Briefs } from './components/Briefs';
