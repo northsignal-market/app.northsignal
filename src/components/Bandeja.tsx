@@ -18,6 +18,7 @@ import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
+import { fmtFechaCorta } from './ui';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
 
@@ -141,8 +142,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 <div className="text-xs text-[#FFFFFF] truncate">{n.titulo}</div>
                 {n.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{n.texto}</div>}
               </div>
-              {/* La vista agrupada no trae "creada" sino "ultima": el String(undefined).slice(5,16) mostraba "ined" en cada fila */}
-              <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(n.ultima || n.creada) ? String(n.ultima || n.creada).slice(5, 16).replace('T', ' ') : ''}</span>
+              <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(() => { const v = n.ultima || n.creada; return v ? `${fmtFechaCorta(v)} ${String(v).slice(11, 16)}` : ''; })()}</span>
             </div>
           ))}
           {novs.length > 12 && <div className="px-4 py-1.5 text-[10px] text-[#F5F7FA] opacity-40" style={{ borderTop: '1px solid var(--border)' }}>y {novs.length - 12} más</div>}
@@ -220,7 +220,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           {confirmar.length > 0 && (
             <Grupo titulo="Esperan tu confirmación" n={confirmar.length}>
               {confirmar.map(a => (
-                <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${String(a.vence).slice(5)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
+                <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${fmtFechaCorta(a.vence)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
               ))}
             </Grupo>
           )}
@@ -263,14 +263,14 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           <div className="space-y-1">
             {(ciclo.impactos || []).slice(0, 5).map((i: any, k: number) => (
               <div key={k} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{String(i.ejecutado_el).slice(5)}</span>
+                <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{fmtFechaCorta(i.ejecutado_el)}</span>
                 <span className="text-[#F5F7FA] flex-1 truncate">{i.account} · {i.titulo}</span>
                 <span className="tabular text-[#FFFFFF] shrink-0">{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${Number(i.variacion_pct).toFixed(0)}%` : (i.veredicto || '').split(':')[0]}</span>
               </div>
             ))}
             {(ciclo.predicciones || []).filter((p: any) => p.acerto !== null).slice(0, 4).map((p: any) => (
               <div key={p.id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">sem {String(p.semana).slice(5)}</span>
+                <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">sem {fmtFechaCorta(p.semana)}</span>
                 <span className="text-[#F5F7FA] flex-1">{p.account} · {p.metrica} entre {p.valor_min} y {p.valor_max}</span>
                 <span className={`shrink-0 ${p.acerto ? 'text-[#FFFFFF]' : 'text-[#0062CC]'}`}>{p.acerto ? 'acertó' : 'falló'}: {p.valor_real}</span>
               </div>
