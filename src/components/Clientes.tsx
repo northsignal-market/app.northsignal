@@ -243,7 +243,9 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
   }, [notionBriefs, activeClient]);
 
-  const weeksAnalyzed = clientBriefs.length || 3;
+  // Sin || 3: con cero briefs el warning decía "tentativas (3 semanas)" con un
+  // número fabricado. Cero es cero, y se dice.
+  const weeksAnalyzed = clientBriefs.length;
   const isTentative = weeksAnalyzed < 4;
 
   // Open actionables
@@ -256,20 +258,20 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
     return clientActionables.filter(a => a.naturaleza === NOTION_NATURALEZA.HIPOTESIS || Boolean(a.que_lo_confirmaria));
   }, [clientActionables]);
 
-  // Learned facts
-  const learnings = useMemo(() => {
-    return [
-      {
-        date: '2026-08-25',
-        title: 'Sensibilidad a la hora del día en conversiones B2B',
-        detail: 'El 68% de las conversiones efectivas ocurren entre las 09:00 y las 14:00 horas. Ajuste de programación horaria recomendado.'
-      },
-      {
-        date: '2026-08-12',
-        title: 'Canibalización entre términos genéricos y de marca',
-        detail: 'Los términos genéricos con concordancia amplia sin negativas exactas absorben presupuesto con CPA 2.4x superior.'
-      }
-    ];
+  // Lecciones REALES de la base (tabla lecciones, via /api/aprendido). Antes acá
+  // había dos aprendizajes INVENTADOS hardcodeados que se mostraban con badge
+  // "Validado": conocimiento fabricado disfrazado de medido, el peor bug posible
+  // en un sistema cuyo contrato es no inventar números.
+  const [lecciones, setLecciones] = useState<any[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    import('./ui').then(({ fetchJSON }) =>
+      fetchJSON<any>('/api/aprendido', null).then(d => {
+        if (!vivo || !d?.lecciones) return;
+        setLecciones(d.lecciones.filter((l: any) => !l.account || l.account === activeClient));
+      })
+    );
+    return () => { vivo = false; };
   }, [activeClient]);
 
   return (
@@ -765,21 +767,22 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         </div>
 
         <div className="space-y-2.5">
-          {learnings.map((l, i) => (
-            <div 
-              key={i}
+          {lecciones.length === 0 ? (
+            <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía no hay lecciones consolidadas para {activeClient}. Las escribe el sistema cuando una decisión se confirma o se refuta con datos.</p>
+          ) : lecciones.slice(0, 6).map((l: any, i: number) => (
+            <div
+              key={l.id || i}
               className="p-3.5 rounded-xl space-y-1 text-xs"
               style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
             >
               <div className="flex items-center justify-between text-[11px] text-[#F5F7FA] opacity-60">
-                <span className="tabular">{l.date}</span>
-                <span className="font-semibold text-[#FFFFFF]">Validado</span>
-              </div>
-              <div className="font-semibold text-[#FFFFFF]">
-                {l.title}
+                <span className="tabular">{l.fecha}</span>
+                <span className="font-semibold text-[#FFFFFF]" title={`Confianza ${l.confianza ?? '—'}${l.veces_confirmada ? ` · confirmada ${l.veces_confirmada} vez${l.veces_confirmada !== 1 ? 'es' : ''}` : ''}`}>
+                  {l.tipo === 'acierto' ? 'Acierto' : l.tipo === 'error' ? 'Error aprendido' : l.tipo === 'omision' ? 'Omisión' : 'Lección'}
+                </span>
               </div>
               <p className="text-[#F5F7FA] opacity-80 leading-relaxed">
-                {l.detail}
+                {l.leccion}
               </p>
             </div>
           ))}

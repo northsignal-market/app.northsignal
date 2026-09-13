@@ -29,6 +29,7 @@ import type { Actionable } from './types';
 const RUTA_VIEJA: Record<string, { tab: string; seg?: string }> = {
   inicio: { tab: 'bandeja' }, hoy: { tab: 'bandeja' }, accionables: { tab: 'cuenta', seg: 'accionables' }, semana: { tab: 'cuenta', seg: 'semana' },
   briefs: { tab: 'cuenta', seg: 'brief' }, clientes: { tab: 'cuenta', seg: 'diagnostico' },
+  memoria: { tab: 'cuenta', seg: 'memoria' }, reportes: { tab: 'cuenta', seg: 'reportes' },
 };
 function getInitialPage() {
   const params = new URLSearchParams(window.location.search);

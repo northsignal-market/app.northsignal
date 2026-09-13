@@ -17,8 +17,8 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     >
       {/* Header: Logo NorthSignal — clic lleva a Inicio */}
       <button 
-        onClick={() => onTabChange('inicio')}
-        title="Ir a Inicio"
+        onClick={() => onTabChange('bandeja')}
+        title="Ir a la Bandeja"
         className="hidden sm:flex h-16 items-center px-3.5 shrink-0 overflow-hidden text-left transition-colors hover:bg-white/5 cursor-pointer w-full"
         style={{ borderBottom: '1px solid var(--border)' }}
       >
@@ -73,9 +73,13 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           onClick={async () => {
             try {
               await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-              useAppStore.getState().setIsAuthenticated(false);
             } catch (e) {
               console.error('Logout failed');
+            } finally {
+              // Sin esto quedaba un token zombi: la cookie moría pero el Bearer
+              // guardado seguía autenticando hasta que alguien lo borrara a mano.
+              localStorage.removeItem('auth_token');
+              useAppStore.getState().setIsAuthenticated(false);
             }
           }}
           title="Cerrar Sesión"

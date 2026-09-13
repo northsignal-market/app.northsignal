@@ -77,8 +77,9 @@ export function LoginScreen() {
               />
             </div>
             
+            {/* Un error en azul de marca se lee como acento, no como alerta */}
             {error && (
-              <div className="text-[#0062CC] text-sm text-center bg-[#0062CC]/10 border border-[#0062CC]/20 py-2.5 rounded-xl font-medium animate-in fade-in slide-in-from-top-1">
+              <div className="text-[#F97066] text-sm text-center bg-[#F97066]/10 border border-[#F97066]/25 py-2.5 rounded-xl font-medium animate-in fade-in slide-in-from-top-1">
                 {error}
               </div>
             )}

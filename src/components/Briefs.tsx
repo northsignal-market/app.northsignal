@@ -77,11 +77,19 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
   // Extract provisional days note if any
   const provisionalDays = selectedBrief?.provisional_days || 0;
 
-  // Mentioned actionables
-  const mentionedActions = useMemo(() => {
+  // Accionables del brief. El || con cliente hacía que "vinculados a este
+  // período" mostrara TODOS los de la cuenta, de cualquier semana. Si el brief
+  // no tiene vinculados, se cae a los de la cuenta pero diciéndolo.
+  const vinculadosAlBrief = useMemo(() => {
     if (!selectedBrief) return [];
-    return actionables.filter(a => a.brief_id === selectedBrief.id || a.client.toLowerCase() === activeClient.toLowerCase());
-  }, [selectedBrief, actionables, activeClient]);
+    return actionables.filter(a => a.brief_id === selectedBrief.id);
+  }, [selectedBrief, actionables]);
+  const mentionedActions = useMemo(() => {
+    if (vinculadosAlBrief.length) return vinculadosAlBrief;
+    if (!selectedBrief) return [];
+    return actionables.filter(a => a.client.toLowerCase() === activeClient.toLowerCase());
+  }, [vinculadosAlBrief, selectedBrief, actionables, activeClient]);
+  const sonDelBrief = vinculadosAlBrief.length > 0;
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -256,7 +264,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
               {mentionedActions.length > 0 && onOpenActionable && (
                 <div className="pt-4 border-t space-y-2" style={{ borderColor: 'var(--border)' }}>
                   <span className="text-xs font-semibold text-[#FFFFFF] uppercase tracking-wider block">
-                    Accionables vinculados a este período
+                    {sonDelBrief ? 'Accionables vinculados a este brief' : `Accionables de ${activeClient} (el brief no tiene vinculados propios)`}
                   </span>
                   <div className="space-y-1.5">
                     {mentionedActions.slice(0, 4).map(act => (

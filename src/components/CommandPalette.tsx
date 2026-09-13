@@ -64,6 +64,8 @@ export function CommandPalette({
     { id: 'clientes', label: 'Cuenta › Diagnóstico: por qué está donde está' },
     { id: 'briefs', label: 'Cuenta › Brief del lunes' },
     { id: 'accionables', label: 'Cuenta › Todos los accionables' },
+    { id: 'memoria', label: 'Cuenta › Memoria: hipótesis, aprendizajes, doc maestro' },
+    { id: 'reportes', label: 'Cuenta › Reportes: borradores para aprobar y enviados' },
     { id: 'datos', label: 'Datos: tablas por campaña, grupo, keyword, término' },
     { id: 'herramientas', label: 'Herramientas: escribir anuncios, guía de operación' },
     { id: 'sistema', label: 'Sistema: salud, aprendizaje, automatización, soporte' },
