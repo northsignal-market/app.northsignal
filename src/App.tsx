@@ -267,7 +267,7 @@ function App() {
     <div className={`flex h-full overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
       <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} abierta={navAbierta} />
 
-      <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-200 ease-out pb-14 sm:pb-0 ${navAbierta ? 'sm:ml-16' : 'sm:ml-0'}`}>
+      <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-200 ease-out pb-14 sm:pb-0 ${navAbierta ? 'sm:ml-52' : 'sm:ml-0'}`}>
         
         {/* Header: una fila, cinco cosas con función — cuentas, estado, novedades, ⌘K.
             Sin etiquetas ni perfil: en una app de un solo operador, "Andrés · Operador

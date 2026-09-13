@@ -17,12 +17,16 @@ interface SidebarProps {
 
 export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = true, abierta = true }: SidebarProps) {
   return (
+    /* Dos estados honestos: ABIERTA (208px con los nombres a la vista) u OCULTA
+       (0px). Antes "abierta" era un rail de 64px que solo mostraba los nombres
+       al pasar el mouse — o sea que nunca se veía abierta, y un menú que hay que
+       adivinar no está abierto: está permanentemente contraído. */
     <aside
       aria-hidden={!abierta}
       className={`glass-dense group fixed z-50 transition-all duration-200 ease-out overflow-hidden
         bottom-0 left-0 right-0 h-14 flex-row items-center justify-around flex
         sm:top-0 sm:bottom-auto sm:right-auto sm:h-full sm:flex-col sm:justify-start
-        ${abierta ? 'sm:w-16 sm:hover:w-60' : 'sm:w-0 sm:border-0 sm:pointer-events-none'}`}
+        ${abierta ? 'sm:w-52' : 'sm:w-0 sm:border-0 sm:pointer-events-none'}`}
       style={{ borderRadius: 0, borderTop: 0, borderBottom: 0, borderLeft: 0 }}
     >
       {/* Header: Logo NorthSignal — clic lleva a Inicio */}
@@ -44,7 +48,7 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
               referrerPolicy="no-referrer"
             />
           </div>
-          <span className="font-bold text-[#EDEFF3] tracking-tight text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <span className="font-bold text-[#EDEFF3] tracking-tight text-sm whitespace-nowrap">
             North Signal
           </span>
         </div>
@@ -74,7 +78,7 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
           <div className="w-5 h-5 shrink-0 flex items-center justify-center">
             <Search size={16} />
           </div>
-          <span className="text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 tabular">
+          <span className="text-[10px] whitespace-nowrap tabular" style={{ color: '#ADADAD' }}>
             Buscar · ⌘K
           </span>
         </button>
@@ -101,7 +105,7 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
           <div className="w-6 h-6 shrink-0 flex items-center justify-center">
             <LogOut size={16} />
           </div>
-          <span className="text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <span className="text-xs font-semibold whitespace-nowrap">
             Cerrar Sesión
           </span>
         </button>
@@ -150,7 +154,7 @@ function NavItem({
       </div>
       {/* En móvil el nombre va debajo del icono y siempre visible: no hay hover en un
           dedo, así que una barra que se expande al pasar el mouse deja iconos sin nombre. */}
-      <span className="text-[9px] whitespace-nowrap sm:text-xs sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity sm:duration-300">
+      <span className="text-[9px] whitespace-nowrap sm:text-xs">
         {label}
       </span>
     </button>
