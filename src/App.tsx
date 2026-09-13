@@ -276,7 +276,15 @@ function App() {
         {bandaEntorno.texto}
       </div>
     )}
-    <div className={`flex h-full overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
+    {/* SIN select-none acá. Estaba puesto sobre el contenedor de TODA la app,
+        así que no se podía seleccionar un solo carácter en ningún lado: ni una
+        cifra, ni el nombre de una campaña, ni el análisis del agente. En una
+        app cuyo trabajo es leer números y reenviar reportes, eso es grave — y
+        no se nota hasta que intentás copiar algo.
+
+        El user-select vive donde molesta el arrastre y no hay nada que copiar:
+        la nav y el header. El contenido se selecciona. */}
+    <div className={`flex h-full overflow-hidden ${bandaEntorno ? 'pt-6' : ''}`}>
       <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} abierta={navAbierta} />
 
       <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-200 ease-out pb-14 sm:pb-0 ${navAbierta ? 'sm:ml-52' : 'sm:ml-0'}`}>
@@ -285,7 +293,7 @@ function App() {
             Sin etiquetas ni perfil: en una app de un solo operador, "Andrés · Operador
             Principal" era decoración ocupando el lugar de la información. */}
         <header
-          className="glass-dense h-14 flex items-center justify-between gap-3 px-3 md:px-5 shrink-0 z-10"
+          className="glass-dense h-14 flex items-center justify-between gap-3 px-3 md:px-5 shrink-0 z-10 select-none"
           style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0 }}
         >
           <div className="flex items-center gap-2.5 min-w-0">

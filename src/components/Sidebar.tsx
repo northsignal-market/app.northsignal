@@ -23,7 +23,7 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
        adivinar no está abierto: está permanentemente contraído. */
     <aside
       aria-hidden={!abierta}
-      className={`glass-dense group fixed z-50 transition-all duration-200 ease-out overflow-hidden
+      className={`glass-dense group fixed z-50 transition-all duration-200 ease-out overflow-hidden select-none
         bottom-0 left-0 right-0 h-14 flex-row items-center justify-around flex
         sm:top-0 sm:bottom-auto sm:right-auto sm:h-full sm:flex-col sm:justify-start
         ${abierta ? 'sm:w-52' : 'sm:w-0 sm:border-0 sm:pointer-events-none'}`}
