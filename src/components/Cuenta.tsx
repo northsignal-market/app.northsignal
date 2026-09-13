@@ -42,7 +42,7 @@ export function Cuenta({ segmento, onSegmento, onOpenActionable, briefId, onNavi
         <div className="flex items-center gap-3 mb-3">
           <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             {cuentas.map(c => (
-              <button key={c} onClick={() => setSelectedClient(c)} className={`px-3 py-1 rounded-md text-xs font-medium ${cuenta === c ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>{c}</button>
+              <button key={c} onClick={() => setSelectedClient(c)} className={`px-3 py-1 rounded-md text-xs font-medium ${cuenta === c ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>{c}</button>
             ))}
           </div>
           <span className="text-[11px] text-[#F5F7FA] opacity-50">{abiertos > 0 ? `${abiertos} accionable${abiertos !== 1 ? 's' : ''} abierto${abiertos !== 1 ? 's' : ''}` : 'sin accionables abiertos'}</span>
@@ -50,7 +50,7 @@ export function Cuenta({ segmento, onSegmento, onOpenActionable, briefId, onNavi
         <div className="flex gap-0.5 -mb-px overflow-x-auto">
           {SEGMENTOS.map(s => (
             <button key={s.id} onClick={() => onSegmento(s.id)} title={s.ayuda}
-              className={`px-3.5 py-2 text-xs whitespace-nowrap transition-colors ${segmento === s.id ? 'text-[#FFFFFF] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}
+              className={`px-3.5 py-2 text-xs whitespace-nowrap transition-colors ${segmento === s.id ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}
               style={{ borderBottom: segmento === s.id ? '2px solid var(--primary)' : '2px solid transparent' }}>
               {s.label}{s.id === 'accionables' && abiertos > 0 ? <span className="ml-1 text-[10px] opacity-60">{abiertos}</span> : null}
             </button>

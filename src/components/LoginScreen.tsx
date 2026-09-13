@@ -55,8 +55,8 @@ export function LoginScreen() {
           </div>
           
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-semibold text-[#FFFFFF] tracking-tight mb-1.5">
-              NorthSignal <span className="text-[#0062CC]">OS</span>
+            <h2 className="text-2xl font-semibold text-[#EDEFF3] tracking-tight mb-1.5">
+              NorthSignal <span className="text-[#4D9DFF]">OS</span>
             </h2>
             <p className="text-[#F5F7FA]/60 text-xs font-medium tracking-wider uppercase">
               Control de Rendimiento & Operaciones
@@ -73,7 +73,7 @@ export function LoginScreen() {
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl px-4 py-3.5 text-[#FFFFFF] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC]/60 focus:ring-1 focus:ring-[#0062CC]/60 transition-all shadow-inner"
+                className="w-full bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl px-4 py-3.5 text-[#EDEFF3] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC]/60 focus:ring-1 focus:ring-[#0062CC]/60 transition-all shadow-inner"
               />
             </div>
             
@@ -87,7 +87,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={isLoading || !password}
-              className="w-full bg-[#0062CC] text-[#FFFFFF] font-semibold py-3.5 rounded-xl hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-[0_8px_16px_rgba(0,98,204,0.2)] hover:shadow-[0_8px_20px_rgba(0,98,204,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+              className="w-full bg-[#0062CC] text-[#EDEFF3] font-semibold py-3.5 rounded-xl hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-[0_8px_16px_rgba(0,98,204,0.2)] hover:shadow-[0_8px_20px_rgba(0,98,204,0.3)] hover:-translate-y-0.5 active:translate-y-0"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-[#FFFFFF]/20 border-t-[#FFFFFF] rounded-full animate-spin" />

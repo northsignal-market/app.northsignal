@@ -102,7 +102,7 @@ export function DatosCadena({ account, moneda }: Props) {
   // Contexto fijo a la izquierda: la regla de oro
   const tdCtx = (local: any, campana?: any, grupo?: any) => (
     <td className="px-3 py-2 text-left text-[11px] whitespace-nowrap">
-      <span className="text-[#FFFFFF]">{local || <span className="opacity-50 italic">corporativa</span>}</span>
+      <span className="text-[#EDEFF3]">{local || <span className="opacity-50 italic">corporativa</span>}</span>
       {campana && <span className="text-[#F5F7FA] opacity-40"> · {String(campana).length > 26 ? String(campana).slice(0, 26) + '…' : campana}</span>}
       {grupo && <span className="text-[#F5F7FA] opacity-40"> · {grupo}</span>}
     </td>
@@ -117,15 +117,15 @@ export function DatosCadena({ account, moneda }: Props) {
           {migas.map((m, i) => (
             <React.Fragment key={i}>
               {i > 0 && <ChevronRight size={12} className="text-[#F5F7FA] opacity-30" />}
-              <button onClick={() => volverA(i)} className={i === migas.length - 1 ? 'text-[#FFFFFF] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}>{m.label}</button>
+              <button onClick={() => volverA(i)} className={i === migas.length - 1 ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}>{m.label}</button>
             </React.Fragment>
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <select aria-label="Semanas" value={semanas} onChange={e => setSemanas(Number(e.target.value))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#FFFFFF]">
+          <select aria-label="Semanas" value={semanas} onChange={e => setSemanas(Number(e.target.value))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-[11px] text-[#EDEFF3]">
             {[1, 2, 4, 8, 13].map(n => <option key={n} value={n}>{n === 1 ? 'Última semana' : `Últimas ${n} semanas`}</option>)}
           </select>
-          <button onClick={() => ir('transversal')} className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 ${nivel === 'transversal' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA]'}`} style={{ border: '1px solid var(--border)' }}>
+          <button onClick={() => ir('transversal')} className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 ${nivel === 'transversal' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA]'}`} style={{ border: '1px solid var(--border)' }}>
             <Sparkles size={11} /> Keywords entre locales
           </button>
         </div>
@@ -140,7 +140,7 @@ export function DatosCadena({ account, moneda }: Props) {
             return (
               <button key={n.id} onClick={() => setNivel(n.id)} disabled={bloqueado}
                 title={bloqueado ? 'Elegí un local o una campaña primero: sin contexto son miles de filas' : ''}
-                className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 disabled:opacity-30 ${activo ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA]'}`} style={{ border: '1px solid var(--border)' }}>
+                className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 disabled:opacity-30 ${activo ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA]'}`} style={{ border: '1px solid var(--border)' }}>
                 <n.icono size={11} /> {n.label}
               </button>
             );
@@ -167,50 +167,50 @@ export function DatosCadena({ account, moneda }: Props) {
                 {ordenadas.map((f, i) => (
                   <tr key={i} className="hover:bg-white/5" style={{ borderTop: '1px solid var(--border)' }}>
                     {nivel === 'objetivos' && <>
-                      <td className="px-3 py-2 text-left"><button onClick={() => ir('locales', { objetivo: f.objetivo })} className="text-xs text-[#FFFFFF] hover:text-[#0062CC]">{f.nombre}</button></td>
+                      <td className="px-3 py-2 text-left"><button onClick={() => ir('locales', { objetivo: f.objetivo })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF]">{f.nombre}</button></td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.metrica === 'roas' ? 'ROAS' : f.metrica === 'conversiones' ? 'Conversiones' : 'CPA'}</td>
                       {td(f.campanas)}{td(f.campanas_activas)}{td(f.locales)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
                       <td className="px-3 py-2 text-right tabular text-xs text-[#F5F7FA]">{f.metrica === 'roas' ? fmt(f.roas) + 'x' : '—'}</td>
                     </>}
                     {nivel === 'locales' && <>
-                      <td className="px-3 py-2 text-left"><button onClick={() => ir('campanas', { local: f.location })} className="text-xs text-[#FFFFFF] hover:text-[#0062CC]">{f.location}</button></td>
+                      <td className="px-3 py-2 text-left"><button onClick={() => ir('campanas', { local: f.location })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF]">{f.location}</button></td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{String(f.grupo_par || '').replace('_', ' ')}</td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.objetivo}</td>
                       {td(f.clics)}{td(f.conv)}{td(f.gasto, 'moneda')}
-                      {td(f.tasa_cruda, 'pct', 'opacity-50')}{td(f.tasa_ajustada, 'pct', 'text-[#FFFFFF]')}
+                      {td(f.tasa_cruda, 'pct', 'opacity-50')}{td(f.tasa_ajustada, 'pct', 'text-[#EDEFF3]')}
                       <td className="px-3 py-2 text-right text-xs text-[#F5F7FA] tabular">{f.puesto} de {f.de_cuantos}</td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60 max-w-[220px] truncate" title={f.lectura}>{String(f.evidencia || '').split(':')[0]}</td>
                     </>}
                     {nivel === 'campanas' && <>
                       {tdCtx(f.location)}
-                      <td className="px-3 py-2 text-left"><button onClick={() => ir('grupos', { local: f.location, campana: f.campana })} className="text-xs text-[#FFFFFF] hover:text-[#0062CC] flex items-center gap-1">{f.campana}{f.ai_max && <span className="text-[9px] px-1 rounded bg-[#0062CC]/25 text-[#FFFFFF]">AI Max</span>}</button></td>
+                      <td className="px-3 py-2 text-left"><button onClick={() => ir('grupos', { local: f.location, campana: f.campana })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF] flex items-center gap-1">{f.campana}{f.ai_max && <span className="text-[9px] px-1 rounded bg-[#0062CC]/25 text-[#EDEFF3]">AI Max</span>}</button></td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.objetivo}</td>
-                      <td className="px-3 py-2 text-left text-[11px]"><span className={f.estado === 'ENABLED' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-50'}>{f.estado === 'FINALIZADA' ? 'terminada' : f.estado === 'ENABLED' ? 'activa' : f.estado === 'PAUSED' ? 'pausada' : String(f.estado).toLowerCase()}</span></td>
+                      <td className="px-3 py-2 text-left text-[11px]"><span className={f.estado === 'ENABLED' ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-50'}>{f.estado === 'FINALIZADA' ? 'terminada' : f.estado === 'ENABLED' ? 'activa' : f.estado === 'PAUSED' ? 'pausada' : String(f.estado).toLowerCase()}</span></td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-50 tabular">{f.fin || '—'}</td>
                       {td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
                     </>}
                     {nivel === 'grupos' && <>
                       {tdCtx(f.location, f.campana)}
-                      <td className="px-3 py-2 text-left"><button onClick={() => ir('keywords', { local: f.location, campana: f.campana, grupo: f.grupo })} className="text-xs text-[#FFFFFF] hover:text-[#0062CC]">{f.grupo}</button></td>
+                      <td className="px-3 py-2 text-left"><button onClick={() => ir('keywords', { local: f.location, campana: f.campana, grupo: f.grupo })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF]">{f.grupo}</button></td>
                       {td(f.keywords)}{td(f.clics)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}{td(f.ctr, 'pct')}
                     </>}
                     {nivel === 'keywords' && <>
                       {tdCtx(f.location, f.campana, f.grupo)}
-                      <td className="px-3 py-2 text-left text-xs text-[#FFFFFF]">{f.keyword}</td>
+                      <td className="px-3 py-2 text-left text-xs text-[#EDEFF3]">{f.keyword}</td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.concordancia === 'EXACT' ? 'exacta' : f.concordancia === 'PHRASE' ? 'frase' : 'amplia'}</td>
                       {td(f.qs)}{td(f.clics)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
                     </>}
                     {nivel === 'terminos' && <>
                       {tdCtx(f.location, f.campana, f.grupo)}
-                      <td className="px-3 py-2 text-left text-xs text-[#FFFFFF]">{f.termino}</td>
+                      <td className="px-3 py-2 text-left text-xs text-[#EDEFF3]">{f.termino}</td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-50">{f.disparo_por}</td>
                       {td(f.clics)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
                     </>}
                     {nivel === 'transversal' && <>
-                      <td className="px-3 py-2 text-left text-xs text-[#FFFFFF]">{f.keyword}</td>
+                      <td className="px-3 py-2 text-left text-xs text-[#EDEFF3]">{f.keyword}</td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.match_type === 'EXACT' ? 'exacta' : f.match_type === 'PHRASE' ? 'frase' : 'amplia'}</td>
                       {td(f.locales)}
-                      <td className="px-3 py-2 text-right tabular text-xs text-[#FFFFFF]">{f.locales_que_convierten}</td>
+                      <td className="px-3 py-2 text-right tabular text-xs text-[#EDEFF3]">{f.locales_que_convierten}</td>
                       {td(f.clics)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-70 max-w-[300px]">{f.lectura}</td>
                     </>}

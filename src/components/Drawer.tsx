@@ -104,7 +104,7 @@ export function Drawer({
             )}
             <div className="min-w-0">
               {title && (
-                <div className="text-sm font-bold text-[#FFFFFF] truncate">
+                <div className="text-sm font-bold text-[#EDEFF3] truncate">
                   {title}
                 </div>
               )}

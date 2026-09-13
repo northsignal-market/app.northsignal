@@ -38,7 +38,7 @@ class Limite extends Base {
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3 p-8 text-center">
         <AlertCircle size={28} className="text-[#fca5a5]" />
-        <h2 className="text-sm font-medium text-[#FFFFFF]">
+        <h2 className="text-sm font-medium text-[#EDEFF3]">
           Esta pantalla falló{self.props.nombre ? `: ${self.props.nombre}` : ''}
         </h2>
         <p className="text-xs text-[#F5F7FA] opacity-70 max-w-md leading-relaxed break-words">
@@ -49,7 +49,7 @@ class Limite extends Base {
           o abrí un ticket desde ahí con este mensaje.
         </p>
         <button onClick={self.reintentar} aria-label="Reintentar" title="Reintentar"
-          className="mt-1 px-3 py-1.5 rounded-lg text-[11px] text-[#FFFFFF] flex items-center gap-1.5"
+          className="mt-1 px-3 py-1.5 rounded-lg text-[11px] text-[#EDEFF3] flex items-center gap-1.5"
           style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <RefreshCw size={12} /> Reintentar
         </button>

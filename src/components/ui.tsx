@@ -73,7 +73,7 @@ export function PageShell({ titulo, subtitulo, derecha, children }: {
       {(titulo || derecha) && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            {titulo && <h1 className="text-xl text-[#FFFFFF] leading-tight">{titulo}</h1>}
+            {titulo && <h1 className="text-xl text-[#EDEFF3] leading-tight">{titulo}</h1>}
             {subtitulo && <p className="text-xs text-[#F5F7FA] opacity-60 mt-1">{subtitulo}</p>}
           </div>
           {derecha && <div className="flex items-center gap-2 shrink-0">{derecha}</div>}
@@ -92,7 +92,7 @@ export function Seccion({ titulo, descripcion, derecha, children }: {
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-[13px] font-medium text-[#FFFFFF] tracking-wide">{titulo}</h2>
+          <h2 className="text-[13px] font-medium text-[#EDEFF3] tracking-wide">{titulo}</h2>
           {descripcion && <p className="text-[11px] text-[#F5F7FA] opacity-50 mt-0.5">{descripcion}</p>}
         </div>
         {derecha && <div className="flex items-center gap-2 flex-wrap">{derecha}</div>}
@@ -133,7 +133,7 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional 
         <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{label}</span>
         {provisional && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }} title="Los días recientes maduran: este número todavía se mueve">madurando</span>}
       </div>
-      <div className="text-lg text-[#FFFFFF] tabular mt-1 leading-tight">{valor}</div>
+      <div className="text-lg text-[#EDEFF3] tabular mt-1 leading-tight">{valor}</div>
       <div className="flex items-baseline gap-2 mt-0.5 min-h-[14px]">
         {d != null && (
           <span className="text-[11px] tabular" style={{ color: bueno ? 'var(--text-secondary)' : '#E8A13C' }}>
@@ -175,7 +175,7 @@ export function Collapsible({ titulo, resumen, abiertoInicial = false, children 
   return (
     <div className="glass" style={{ borderRadius: 'var(--r-tarjeta)' }}>
       <button onClick={() => setAbierto(a => !a)} className="w-full flex items-center justify-between gap-3 px-4 md:px-5 py-3 text-left">
-        <span className="text-[13px] font-medium text-[#FFFFFF]">{titulo}</span>
+        <span className="text-[13px] font-medium text-[#EDEFF3]">{titulo}</span>
         <span className="flex items-center gap-2 shrink-0">
           {resumen && <span className="text-[11px] text-[#F5F7FA] opacity-50">{resumen}</span>}
           <ChevronDown size={14} className={`text-[#F5F7FA] opacity-50 transition-transform ${abierto ? 'rotate-180' : ''}`} />
@@ -197,7 +197,7 @@ export function Chips<T extends string>({ opciones, valor, onChange }: {
     <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
       {opciones.map(o => (
         <button key={o.id} onClick={() => onChange(o.id)} title={o.title}
-          className={`px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${valor === o.id ? 'bg-[#0062CC] text-[#FFFFFF] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
+          className={`px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${valor === o.id ? 'bg-[#0062CC] text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
           {o.label}
         </button>
       ))}
@@ -254,12 +254,12 @@ export function RangoFechas({ valor, onChange, presets = ['7d', '14d', 'semana',
       <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         {presets.map(p => (
           <button key={p} onClick={() => { setAbierto(false); onChange(rangoPreset(p)); }}
-            className={`px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${activo === p ? 'bg-[#0062CC] text-[#FFFFFF] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
+            className={`px-2.5 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${activo === p ? 'bg-[#0062CC] text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
             {LABELS[p] || p}
           </button>
         ))}
         <button onClick={() => { setDDesde(valor.desde); setDHasta(valor.hasta); setAbierto(a => !a); }}
-          className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 transition-colors ${!activo ? 'bg-[#0062CC] text-[#FFFFFF] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
+          className={`px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1 transition-colors ${!activo ? 'bg-[#0062CC] text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}>
           <Calendar size={11} /> {!activo ? `${fmtFechaCorta(valor.desde)} – ${fmtFechaCorta(valor.hasta)}` : 'Elegir'}
           <ChevronDown size={11} className={abierto ? 'rotate-180 transition-transform' : 'transition-transform'} />
         </button>
@@ -274,7 +274,7 @@ export function RangoFechas({ valor, onChange, presets = ['7d', '14d', 'semana',
           <button
             onClick={() => { if (!fueraDeVentana && dDesde && dHasta && dDesde <= dHasta) { onChange({ desde: dDesde, hasta: dHasta, etiqueta: 'Personalizado' }); setAbierto(false); } }}
             disabled={!!fueraDeVentana || !dDesde || !dHasta || dDesde > dHasta}
-            className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">
+            className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">
             Aplicar
           </button>
         </div>

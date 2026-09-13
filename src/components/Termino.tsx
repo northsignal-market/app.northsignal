@@ -25,7 +25,7 @@ export function Termino({ t, children, className = '' }: { t: string; children?:
         <Tooltip.Content side="top" sideOffset={6} collisionPadding={8}
           className="z-[100] max-w-[280px] rounded-lg px-3 py-2 text-[11px] leading-relaxed text-[#F5F7FA]"
           style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-          <span className="font-semibold text-[#FFFFFF]">{t}</span>
+          <span className="font-semibold text-[#EDEFF3]">{t}</span>
           <span className="opacity-90"> · {def}</span>
           <Tooltip.Arrow style={{ fill: 'var(--surface-2)' }} />
         </Tooltip.Content>

@@ -69,7 +69,7 @@ function CommentsThread({ actionableId }: { actionableId: string }) {
             <div key={c.id} className={`flex gap-2 ${propio ? 'flex-row-reverse' : ''}`}>
               <div className="w-7 shrink-0">{!mismoAutor && <Avatar actor={c.actor} />}</div>
               <div className={`max-w-[88%] min-w-0 ${propio ? 'items-end' : ''}`}>
-                {!mismoAutor && <div className={`text-[10px] mb-0.5 ${propio ? 'text-right' : ''}`}><span className="font-semibold text-[#FFFFFF]">{act.nombre}</span> <span className="text-[#F5F7FA] opacity-40">{haceCuanto(c.created_at)}{c.created_at ? ' · ' + new Date(c.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>}
+                {!mismoAutor && <div className={`text-[10px] mb-0.5 ${propio ? 'text-right' : ''}`}><span className="font-semibold text-[#EDEFF3]">{act.nombre}</span> <span className="text-[#F5F7FA] opacity-40">{haceCuanto(c.created_at)}{c.created_at ? ' · ' + new Date(c.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>}
                 <div className="px-3 py-2 rounded-xl text-xs text-[#F5F7FA] whitespace-pre-wrap leading-relaxed" style={{ backgroundColor: propio ? 'var(--primary-faint)' : 'var(--surface-2)', border: propio ? '1px solid rgba(0,98,204,0.35)' : '1px solid var(--border)', borderTopLeftRadius: propio || mismoAutor ? undefined : 4, borderTopRightRadius: propio && !mismoAutor ? 4 : undefined }}>
                   {c.cuerpo}
                 </div>
@@ -82,8 +82,8 @@ function CommentsThread({ actionableId }: { actionableId: string }) {
       <form onSubmit={sendComment} className="flex gap-2 items-end">
         <textarea rows={2} placeholder="Respondé acá. Los agentes lo leen en su próxima corrida." value={newText} onChange={e => setNewText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendComment(e as any); }}
-          className="flex-1 bg-transparent px-3 py-2 rounded-lg text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC] resize-none" style={{ border: '1px solid var(--border-strong)' }} />
-        <button type="submit" disabled={sending || !newText.trim()} className="px-3 py-2 rounded-lg bg-[#0062CC] hover:opacity-90 disabled:opacity-40 text-[#FFFFFF] text-xs font-semibold flex items-center gap-1 transition-opacity shrink-0" title="Enviar (Cmd+Enter)"><Send size={12} /></button>
+          className="flex-1 bg-transparent px-3 py-2 rounded-lg text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 focus:outline-none focus:border-[#0062CC] resize-none" style={{ border: '1px solid var(--border-strong)' }} />
+        <button type="submit" disabled={sending || !newText.trim()} className="px-3 py-2 rounded-lg bg-[#0062CC] hover:opacity-90 disabled:opacity-40 text-[#EDEFF3] text-xs font-semibold flex items-center gap-1 transition-opacity shrink-0" title="Enviar (Cmd+Enter)"><Send size={12} /></button>
       </form>
     </div>
   );
@@ -383,11 +383,11 @@ export function ActionableDrawerContent({
       {/* Top Metadata Badges */}
       <div className="flex items-center justify-between gap-2 flex-wrap pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30">
+          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30">
             {action.client}
           </span>
           <select aria-label="Action" value={action.status} onChange={e => cambiarEstado(e.target.value)} title="Estado. Descartar pide el motivo; Hecho pone la fecha de hoy."
-            className="px-2 py-0.5 rounded text-[11px] text-[#FFFFFF] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
+            className="px-2 py-0.5 rounded text-[11px] text-[#EDEFF3] bg-[#1A1F36] border border-[#0062CC]/30 cursor-pointer">
             {['Propuesto', 'Bloqueado', 'En curso', 'Hecho', 'Descartado'].map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select aria-label="Action" value={action.priority || 'Media'} onChange={e => cambiarPrioridad(e.target.value)} title="Prioridad"
@@ -401,7 +401,7 @@ export function ActionableDrawerContent({
             </span>
           )}
           <span className={`px-2 py-0.5 rounded text-[11px] ${
-            isEnDisputa ? 'border-l-2 border-[#0062CC] font-semibold text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'
+            isEnDisputa ? 'border-l-2 border-[#0062CC] font-semibold text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'
           }`} style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
             {action.revision_ia || 'Sin revisar'}
           </span>
@@ -411,7 +411,7 @@ export function ActionableDrawerContent({
         <button
           onClick={() => cambiarEstado(isDone ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO)}
           className={`px-3 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-            isDone ? 'bg-white/15 text-[#FFFFFF]' : 'bg-[#0062CC] text-[#FFFFFF]'
+            isDone ? 'bg-white/15 text-[#EDEFF3]' : 'bg-[#0062CC] text-[#EDEFF3]'
           }`}
         >
           <Check size={13} />
@@ -429,8 +429,8 @@ export function ActionableDrawerContent({
         }}
       >
         <div className="flex items-start gap-2">
-          {isEnDisputa && <AlertCircle size={16} className="text-[#0062CC] shrink-0 mt-0.5" />}
-          <h2 className="text-sm font-bold text-[#FFFFFF] leading-snug">
+          {isEnDisputa && <AlertCircle size={16} className="text-[#4D9DFF] shrink-0 mt-0.5" />}
+          <h2 className="text-sm font-bold text-[#EDEFF3] leading-snug">
             {action.title}
           </h2>
         </div>
@@ -459,7 +459,7 @@ export function ActionableDrawerContent({
       {contexto && (contexto.versiones?.length > 1 || contexto.relaciones?.length > 0) && (
         <div className="p-3.5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: contexto.bloqueo ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
           {contexto.bloqueo && (
-            <div className="text-xs text-[#FFFFFF]"><span className="font-semibold">No se ejecuta todavía.</span> <span className="opacity-80">{contexto.bloqueo}</span></div>
+            <div className="text-xs text-[#EDEFF3]"><span className="font-semibold">No se ejecuta todavía.</span> <span className="opacity-80">{contexto.bloqueo}</span></div>
           )}
           {contexto.relaciones?.length > 0 && (
             <div className="space-y-1.5">
@@ -470,7 +470,7 @@ export function ActionableDrawerContent({
                 return (
                   <div key={r.id} className="px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: r.severidad === 'bloquea' ? '2px solid var(--primary)' : '2px solid transparent' }}>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="text-xs text-[#F5F7FA]"><span className="opacity-60">{verbo}</span> <span className="text-[#FFFFFF]">{otro}</span></div>
+                      <div className="text-xs text-[#F5F7FA]"><span className="opacity-60">{verbo}</span> <span className="text-[#EDEFF3]">{otro}</span></div>
                       {r.severidad === 'bloquea' && <button onClick={() => resolverRelacion(r.id)} className="text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100 shrink-0" title="Marcar como resuelto o deliberado">es deliberado</button>}
                     </div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{r.motivo}</div>
@@ -487,7 +487,7 @@ export function ActionableDrawerContent({
                   <div className="text-[10px] text-[#F5F7FA] opacity-50 tabular">v{v.version} · {String(v.fecha).slice(0, 16).replace('T', ' ')}{v.motivo ? ` · ${v.motivo}` : ''}</div>
                   {Object.entries(v.diff || {}).map(([campo, cambio]: any) => (
                     <div key={campo} className="text-[11px] mt-1">
-                      <span className="text-[#FFFFFF]">{NOMBRE_CAMPO[campo] || campo}:</span>
+                      <span className="text-[#EDEFF3]">{NOMBRE_CAMPO[campo] || campo}:</span>
                       {campo === 'accion' ? <span className="text-[#F5F7FA] opacity-70"> {cambio.antes?.verbo || '—'} → {cambio.despues?.verbo || '—'}{cambio.despues?.objeto?.keyword ? ` · ${cambio.despues.objeto.keyword}` : ''}</span>
                         : <span className="text-[#F5F7FA] opacity-70"> <s className="opacity-50">{String(cambio.antes ?? '—').slice(0, 120)}</s> → {String(cambio.despues ?? '—').slice(0, 160)}</span>}
                     </div>
@@ -502,7 +502,7 @@ export function ActionableDrawerContent({
       {/* Si es una pregunta, decirlo claro: no hay nada que tocar en Google Ads */}
       {esPregunta && (
         <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">{accionActual.verbo === 'preguntar_cliente' ? `Pregunta para ${accionActual.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
+          <span className="font-semibold text-[#EDEFF3] text-xs block mb-1">{accionActual.verbo === 'preguntar_cliente' ? `Pregunta para ${accionActual.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
           <p className="text-xs text-[#F5F7FA] leading-relaxed">{accionActual.parametros?.pregunta}</p>
           {accionActual.parametros?.dato_que_falta && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Lo que falta para decidir: {accionActual.parametros.dato_que_falta}</p>}
           <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
@@ -512,7 +512,7 @@ export function ActionableDrawerContent({
         const err = String(contexto?.actual?.accion_error || action.accion_error);
         if (err.startsWith('INVARIANTE')) return (
           <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
-            <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Viola una regla que no se negocia</span>
+            <span className="font-semibold text-[#EDEFF3] text-xs block mb-1">Viola una regla que no se negocia</span>
             {err.replace(/^INVARIANTE: /, '').split(' | ').map((m, i) => <p key={i} className="text-xs text-[#F5F7FA] leading-relaxed mb-1">{m}</p>)}
             <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">El sistema no lo ejecuta y no debería ejecutarse a mano. Descartalo o pedile a la tarea del lunes que lo reformule.</p>
           </div>
@@ -523,7 +523,7 @@ export function ActionableDrawerContent({
           if (esPregunta) return null;
           return (
             <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-              <span className="font-semibold text-[#FFFFFF] text-xs block mb-1">Esto se hace a mano</span>
+              <span className="font-semibold text-[#EDEFF3] text-xs block mb-1">Esto se hace a mano</span>
               <p className="text-xs text-[#F5F7FA] leading-relaxed">{err.replace(/^No ejecutable por script: /, '').replace(/ Se hace a mano con los pasos de "Como hacerlo"\.?$/, '')}</p>
               <p className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">Los pasos están en "Cómo hacerlo". Cuando lo termines, anotá el resultado y marcalo Hecho.</p>
             </div>
@@ -565,7 +565,7 @@ export function ActionableDrawerContent({
                 return `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`;
               })()} Un script lo ejecuta dentro de la próxima hora.</p>
               <div className="flex gap-2">
-                <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
+                <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
                 <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
               </div>
             </>
@@ -582,7 +582,7 @@ export function ActionableDrawerContent({
         if (!pasos.length) return null;
         return (
           <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)', borderLeft: '2px solid var(--primary)' }}>
-            <span className="font-semibold text-[#FFFFFF] text-xs block">Cómo hacerlo{rec ? ` · ${rec.titulo}` : ''}</span>
+            <span className="font-semibold text-[#EDEFF3] text-xs block">Cómo hacerlo{rec ? ` · ${rec.titulo}` : ''}</span>
             <ol className="space-y-1.5 pl-1">
               {pasos.map((p, i) => (
                 <li key={i} className="flex gap-2.5 text-xs text-[#F5F7FA] leading-relaxed">
@@ -603,8 +603,8 @@ export function ActionableDrawerContent({
           className="p-3 rounded-xl space-y-1.5"
           style={{ backgroundColor: 'var(--surface-2)', borderLeft: '2px solid var(--primary)', border: '1px solid var(--border)' }}
         >
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
-            <ShieldAlert size={14} className="text-[#0062CC]" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#EDEFF3]">
+            <ShieldAlert size={14} className="text-[#4D9DFF]" />
             <span>La segunda opinión no coincide</span>
           </div>
           <p className="text-xs text-[#F5F7FA] opacity-85 leading-relaxed">
@@ -620,7 +620,7 @@ export function ActionableDrawerContent({
           style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
         >
           <div className="space-y-0.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#EDEFF3]">
               <Clock size={13} className="text-[#F5F7FA] opacity-70" />
               <span>Esperando tu confirmación</span>
             </div>
@@ -630,7 +630,7 @@ export function ActionableDrawerContent({
           </div>
           <button
             onClick={handleConfirmHypothesis}
-            className="px-3 py-1 bg-[#0062CC] hover:opacity-90 text-[#FFFFFF] rounded-md text-xs font-semibold shrink-0"
+            className="px-3 py-1 bg-[#0062CC] hover:opacity-90 text-[#EDEFF3] rounded-md text-xs font-semibold shrink-0"
           >
             Confirmar
           </button>
@@ -643,11 +643,11 @@ export function ActionableDrawerContent({
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-[#FFFFFF] text-xs uppercase tracking-wider">
+          <span className="font-semibold text-[#EDEFF3] text-xs uppercase tracking-wider">
             Registrá lo que hiciste
           </span>
           {savedSuccess && (
-            <span className="text-[11px] font-medium text-[#FFFFFF] flex items-center gap-1">
+            <span className="text-[11px] font-medium text-[#EDEFF3] flex items-center gap-1">
               <Check size={12} /> Guardado
             </span>
           )}
@@ -661,7 +661,7 @@ export function ActionableDrawerContent({
             <select aria-label="Naturaleza"
               value={naturaleza}
               onChange={(e) => setNaturaleza(e.target.value as any)}
-              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] outline-none"
+              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] outline-none"
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
               <option value={NOTION_NATURALEZA.DATO} className="bg-[#1A1F36]">Dato</option>
@@ -678,7 +678,7 @@ export function ActionableDrawerContent({
               type="date"
               value={ejecutadoEl}
               onChange={(e) => setEjecutadoEl(e.target.value)}
-              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] outline-none tabular"
+              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] outline-none tabular"
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             />
           </div>
@@ -693,7 +693,7 @@ export function ActionableDrawerContent({
             value={queLoConfirmaria}
             onChange={(e) => setQueLoConfirmaria(e.target.value)}
             placeholder="Ej: Si el CPA de betreuung se mantiene bajo 45€..."
-            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 outline-none"
+            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
           />
         </div>
@@ -707,7 +707,7 @@ export function ActionableDrawerContent({
             value={causaRaiz}
             onChange={(e) => setCausaRaiz(e.target.value)}
             placeholder="Ej: Cambio en presupuesto de campaña Search..."
-            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 outline-none"
+            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
           />
         </div>
@@ -721,7 +721,7 @@ export function ActionableDrawerContent({
             onChange={(e) => setResultadoObservado(e.target.value)}
             placeholder="Impacto en conversiones, CPA o tráfico tras la ejecución..."
             rows={2}
-            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 outline-none"
+            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
           />
         </div>
@@ -730,7 +730,7 @@ export function ActionableDrawerContent({
           <button
             onClick={handleSaveTracking}
             disabled={savingDetails}
-            className="px-3.5 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#FFFFFF] text-xs font-semibold transition-opacity"
+            className="px-3.5 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#EDEFF3] text-xs font-semibold transition-opacity"
           >
             {savingDetails ? 'Guardando...' : 'Guardar Trazabilidad'}
           </button>
@@ -743,8 +743,8 @@ export function ActionableDrawerContent({
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <div className="space-y-0.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
-            <Cpu size={14} className="text-[#0062CC]" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#EDEFF3]">
+            <Cpu size={14} className="text-[#4D9DFF]" />
             <span>Auditoría de 2da Opinión Gemini</span>
           </div>
           <p className="text-[11px] text-[#F5F7FA] opacity-65">
@@ -754,7 +754,7 @@ export function ActionableDrawerContent({
         <button aria-label="Analizar con IA" title="Analizar con IA"
           onClick={handleAnalyze}
           disabled={analyzing}
-          className="px-3 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#FFFFFF] text-xs font-semibold shrink-0 flex items-center gap-1"
+          className="px-3 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#EDEFF3] text-xs font-semibold shrink-0 flex items-center gap-1"
         >
           <Sparkles size={12} />
           <span>{analyzing ? 'Auditando...' : 'Pedir 2da Opinión'}</span>
@@ -767,7 +767,7 @@ export function ActionableDrawerContent({
           style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
         >
           <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-[#FFFFFF]">Resultado: {geminiResult.consenso}</span>
+            <span className="font-semibold text-[#EDEFF3]">Resultado: {geminiResult.consenso}</span>
           </div>
           <p className="text-xs text-[#F5F7FA] opacity-85 whitespace-pre-wrap leading-relaxed">
             {geminiResult.segunda_opinion}
@@ -781,13 +781,13 @@ export function ActionableDrawerContent({
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFFFFF]">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#EDEFF3]">
             <History size={14} />
             <span>Registro Manual de Cambios</span>
           </div>
           <button
             onClick={() => setShowLogForm(!showLogForm)}
-            className="text-xs text-[#0062CC] hover:underline font-semibold"
+            className="text-xs text-[#4D9DFF] hover:underline font-semibold"
           >
             {showLogForm ? 'Cancelar' : '+ Registrar Cambio'}
           </button>
@@ -796,7 +796,7 @@ export function ActionableDrawerContent({
         {showLogForm && (
           <form onSubmit={handleSubmitOperatorLog} className="pt-2 space-y-2.5">
             {logSuccess && (
-              <div className="text-[11px] text-[#FFFFFF] flex items-center gap-1">
+              <div className="text-[11px] text-[#EDEFF3] flex items-center gap-1">
                 <Check size={12} /> Cambio guardado en operator_log
               </div>
             )}
@@ -810,7 +810,7 @@ export function ActionableDrawerContent({
                 placeholder="Ej: Aumento de presupuesto diario de 30 a 50 EUR"
                 value={logQueCambio}
                 onChange={e => setLogQueCambio(e.target.value)}
-                className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+                className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
                 style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
               />
             </div>
@@ -825,7 +825,7 @@ export function ActionableDrawerContent({
                   placeholder="Ej: 30 EUR"
                   value={logValorAnterior}
                   onChange={e => setLogValorAnterior(e.target.value)}
-                  className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none tabular"
+                  className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none tabular"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 />
               </div>
@@ -838,7 +838,7 @@ export function ActionableDrawerContent({
                   placeholder="Ej: 50 EUR"
                   value={logValorNuevo}
                   onChange={e => setLogValorNuevo(e.target.value)}
-                  className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none tabular"
+                  className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none tabular"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 />
               </div>
@@ -853,7 +853,7 @@ export function ActionableDrawerContent({
                 placeholder="Motivo del cambio..."
                 value={logPorQue}
                 onChange={e => setLogPorQue(e.target.value)}
-                className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+                className="w-full bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
                 style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
               />
             </div>
@@ -862,7 +862,7 @@ export function ActionableDrawerContent({
               <button
                 type="submit"
                 disabled={savingLog || !logQueCambio.trim()}
-                className="px-3 py-1 bg-[#0062CC] text-[#FFFFFF] rounded text-xs font-semibold disabled:opacity-50"
+                className="px-3 py-1 bg-[#0062CC] text-[#EDEFF3] rounded text-xs font-semibold disabled:opacity-50"
               >
                 {savingLog ? 'Guardando...' : 'Guardar en Bitácora'}
               </button>
@@ -876,14 +876,14 @@ export function ActionableDrawerContent({
         className="p-3.5 rounded-xl space-y-2"
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
-        <span className="font-semibold text-[#FFFFFF] text-xs uppercase tracking-wider block">
+        <span className="font-semibold text-[#EDEFF3] text-xs uppercase tracking-wider block">
           Ver más
         </span>
         <div className="flex flex-wrap gap-2 pt-1">
           {action.brief_id && onNavigateToBrief && (
             <button
               onClick={() => onNavigateToBrief(action.brief_id!)}
-              className="px-2.5 py-1 rounded text-xs font-medium text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1"
+              className="px-2.5 py-1 rounded text-xs font-medium text-[#EDEFF3] hover:bg-white/10 flex items-center gap-1"
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
               <ExternalLink size={12} />
@@ -894,7 +894,7 @@ export function ActionableDrawerContent({
           {possibleKeyword && onNavigateToKeyword && (
             <button
               onClick={() => onNavigateToKeyword(possibleKeyword)}
-              className="px-2.5 py-1 rounded text-xs font-medium text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1"
+              className="px-2.5 py-1 rounded text-xs font-medium text-[#EDEFF3] hover:bg-white/10 flex items-center gap-1"
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
               <ArrowRight size={12} />
@@ -914,11 +914,11 @@ export function ActionableDrawerContent({
                 <button
                   key={ra.id}
                   onClick={() => onNavigateToActionable(ra.id)}
-                  className="w-full text-left p-2 rounded text-xs text-[#F5F7FA] hover:text-[#FFFFFF] transition-colors flex items-center justify-between"
+                  className="w-full text-left p-2 rounded text-xs text-[#F5F7FA] hover:text-[#EDEFF3] transition-colors flex items-center justify-between"
                   style={{ backgroundColor: 'var(--surface-2)' }}
                 >
                   <span className="truncate pr-2">{ra.title}</span>
-                  <ArrowRight size={12} className="shrink-0 text-[#0062CC]" />
+                  <ArrowRight size={12} className="shrink-0 text-[#4D9DFF]" />
                 </button>
               ))}
             </div>

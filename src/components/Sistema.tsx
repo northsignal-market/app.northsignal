@@ -161,10 +161,10 @@ export function Sistema() {
       derecha={
         <button aria-label="Actualizar" title="Actualizar"
           onClick={fetchHealth}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1.5 transition-colors shrink-0"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#EDEFF3] hover:bg-white/10 flex items-center gap-1.5 transition-colors shrink-0"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-1)' }}
         >
-          <RefreshCw size={13} className={loading ? 'animate-spin text-[#0062CC]' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin text-[#4D9DFF]' : ''} />
           <span>Actualizar</span>
         </button>
       }
@@ -175,7 +175,7 @@ export function Sistema() {
         {GRUPOS.map(g => {
           const n = g.id === 'automatizacion' ? alertas.length + ejecuciones.filter((e: any) => e.estado === 'pendiente').length : g.id === 'soporte' ? tickets.filter((t: any) => t.estado === 'abierto').length : 0;
           return (
-            <button key={g.id} onClick={() => setGrupo(g.id)} title={g.ayuda} className={`px-3.5 py-1.5 rounded-lg text-xs transition-colors ${grupo === g.id ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>
+            <button key={g.id} onClick={() => setGrupo(g.id)} title={g.ayuda} className={`px-3.5 py-1.5 rounded-lg text-xs transition-colors ${grupo === g.id ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'}`}>
               {g.label}{n > 0 ? <span className="ml-1.5 text-[10px] opacity-70">{n}</span> : null}
             </button>
           );
@@ -188,15 +188,15 @@ export function Sistema() {
         <div className="space-y-4">
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lecciones</h2>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lecciones</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.</p>
             </div>
             {aprendido.lecciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía ninguna. La tarea del lunes escribe al menos una por cuenta.</p> : (
               <div className="space-y-1.5">
                 {aprendido.lecciones.map((l: any) => (
-                  <div key={l.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: l.tipo === 'error' ? '2px solid var(--primary)' : '2px solid transparent' }}>
+                  <div key={l.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: l.tipo === 'error' ? '2px solid var(--bad)' : '2px solid transparent' }}>
                     <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{l.tipo}</span><span>{l.account || 'general'} · {fmtFechaCorta(l.fecha)}</span><span className="ml-auto tabular">confianza {Math.round(l.confianza * 100)}%{l.veces_confirmada > 1 ? ` · vista ${l.veces_confirmada} veces` : ''}</span></div>
-                    <div className="text-xs text-[#FFFFFF] mt-0.5">{l.leccion}</div>
+                    <div className="text-xs text-[#EDEFF3] mt-0.5">{l.leccion}</div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{l.contexto} → {l.decision} → {l.resultado}</div>
                   </div>
                 ))}
@@ -205,17 +205,17 @@ export function Sistema() {
           </div>
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprendió afuera</h2>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprendió afuera</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
             </div>
             <div className="space-y-1.5">
               {aprendido.conocimiento.map((k: any) => (
                 <div key={k.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{k.tema}</span><span>{fmtFechaCorta(k.fecha)}</span>{k.vigente_hasta && <span>· hasta {fmtFechaCorta(k.vigente_hasta)}</span>}<span className="ml-auto">{(k.aplica_a || []).join(', ')} · {String(k.fuente_tipo).replace(/_/g, ' ')}{k.verificado ? ' · verificado' : ''}</span></div>
-                  <div className="text-xs text-[#FFFFFF] mt-0.5">{k.titulo}</div>
+                  <div className="text-xs text-[#EDEFF3] mt-0.5">{k.titulo}</div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-70 mt-0.5">{k.resumen}</div>
                   {k.accion_derivada && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-50">Qué hacer:</span> {k.accion_derivada}</div>}
-                  <a href={String(k.fuente).split(' ')[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#0062CC] opacity-70 hover:opacity-100">{String(k.fuente).split(' ')[0].slice(0, 70)}</a>
+                  <a href={String(k.fuente).split(' ')[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#4D9DFF] opacity-70 hover:opacity-100">{String(k.fuente).split(' ')[0].slice(0, 70)}</a>
                 </div>
               ))}
             </div>
@@ -223,14 +223,14 @@ export function Sistema() {
           {(aprendido.invalidos || []).length > 0 && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Accionables que no cumplen el estándar</h2>
+                <h2 className="text-[15px] font-medium text-[#EDEFF3]">Accionables que no cumplen el estándar</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
               </div>
               <div className="space-y-1">
                 {aprendido.invalidos.map((a: any) => (
                   <div key={a.notion_id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[#F5F7FA] opacity-50 w-14 shrink-0">{a.account}</span>
-                    <span className="text-[#FFFFFF] flex-1 truncate">{a.titulo}</span>
+                    <span className="text-[#EDEFF3] flex-1 truncate">{a.titulo}</span>
                     <span className="text-[10px] text-[#F5F7FA] opacity-50 shrink-0 max-w-[280px] truncate" title={a.accion_error}>{a.accion_error}</span>
                   </div>
                 ))}
@@ -240,13 +240,13 @@ export function Sistema() {
           {aprendido.acierto_por_tipo.length > 0 && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué tipo de cambio funciona en cada cuenta</h2>
+                <h2 className="text-[15px] font-medium text-[#EDEFF3]">Qué tipo de cambio funciona en cada cuenta</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60">Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que "suele empeorar" sin decir por qué esta vez es distinto.</p>
               </div>
               <div className="space-y-1">
                 {aprendido.acierto_por_tipo.map((t: any, i: number) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="text-[#FFFFFF] w-16 shrink-0">{t.account}</span><span className="text-[#F5F7FA] w-28 shrink-0">{t.tipo}</span>
+                    <span className="text-[#EDEFF3] w-16 shrink-0">{t.account}</span><span className="text-[#F5F7FA] w-28 shrink-0">{t.tipo}</span>
                     <span className="tabular text-[#F5F7FA] opacity-70 w-24 shrink-0">{t.mejoraron}/{t.n} mejoraron</span>
                     <span className="text-[#F5F7FA] opacity-80 flex-1">{t.veredicto}</span>
                     {t.variacion_promedio_pct != null && <span className="tabular text-[#F5F7FA] opacity-60">{t.variacion_promedio_pct > 0 ? '+' : ''}{t.variacion_promedio_pct}%</span>}
@@ -263,7 +263,7 @@ export function Sistema() {
       {enGrupo('alertas') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Alertas</h2>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Alertas</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
           </div>
           {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
@@ -276,12 +276,12 @@ export function Sistema() {
                         <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
                         <span className="text-[10px] text-[#F5F7FA] opacity-40">{a.account || 'Sistema'} · {a.origen}</span>
                       </div>
-                      <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{a.titulo}</div>
+                      <div className="text-xs text-[#EDEFF3] font-medium mt-0.5">{a.titulo}</div>
                       {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
                       {a.accion && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
                     </div>
                     <div className="flex flex-col gap-1 shrink-0">
-                      <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#FFFFFF]">Resuelta</button>
+                      <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#EDEFF3]">Resuelta</button>
                       <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) accionAlerta(a.id, 'silenciar', { dias: 7, por_que: pq }); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
                     </div>
                   </div>
@@ -296,7 +296,7 @@ export function Sistema() {
       {enGrupo('ejecuciones') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprobaste para que el sistema ejecute</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
           </div>
           {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
@@ -304,8 +304,8 @@ export function Sistema() {
               {ejecuciones.map((e: any) => (
                 <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(e.aprobada_el)} {String(e.aprobada_el).slice(11, 16)}</span>
-                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
-                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
+                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#EDEFF3]' : e.estado === 'fallida' ? 'text-[#F97066]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
+                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#EDEFF3]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
                   {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
                 </div>
               ))}
@@ -319,7 +319,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: politicas.general ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
           <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <div>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Qué puede hacer el sistema sin preguntarte</h2>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3]">Qué puede hacer el sistema sin preguntarte</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas y cambios de concordancia, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
             </div>
             <label className="flex items-center gap-2 shrink-0 cursor-pointer">
@@ -333,14 +333,14 @@ export function Sistema() {
             {politicas.politicas.map((p: any) => (
               <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-70' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#FFFFFF]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios', cambiar_concordancia: 'Cambiar concordancia de keywords' } as any)[p.tipo]}</span></label>
+                  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#EDEFF3]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios', cambiar_concordancia: 'Cambiar concordancia de keywords' } as any)[p.tipo]}</span></label>
                   <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-                    {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
+                    {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-[#F5F7FA]">
-                  <label className="flex items-center gap-1.5">Confianza mínima <input aria-label="P" type="number" step="0.05" min="0.5" max="1" value={p.confianza_min} onChange={e => guardarPolitica(p.tipo, { confianza_min: Number(e.target.value) })} className="w-14 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /></label>
-                  {p.tipo === 'pausar_keyword' && <label className="flex items-center gap-1.5">Solo si gastó menos de <input type="number" value={p.gasto_max ?? ''} placeholder="sin tope" onChange={e => guardarPolitica(p.tipo, { gasto_max: e.target.value === '' ? null : Number(e.target.value) })} className="w-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#FFFFFF]" /> en 14 días</label>}
+                  <label className="flex items-center gap-1.5">Confianza mínima <input aria-label="P" type="number" step="0.05" min="0.5" max="1" value={p.confianza_min} onChange={e => guardarPolitica(p.tipo, { confianza_min: Number(e.target.value) })} className="w-14 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#EDEFF3]" /></label>
+                  {p.tipo === 'pausar_keyword' && <label className="flex items-center gap-1.5">Solo si gastó menos de <input type="number" value={p.gasto_max ?? ''} placeholder="sin tope" onChange={e => guardarPolitica(p.tipo, { gasto_max: e.target.value === '' ? null : Number(e.target.value) })} className="w-16 bg-[#1A1F36] border border-[#0062CC]/30 rounded px-1.5 py-0.5 text-xs text-[#EDEFF3]" /> en 14 días</label>}
                   <div className="flex items-center gap-1.5">Lo puede proponer: {['Semanal', 'Pulso diario', 'Anomalias'].map(o => (
                     <label key={o} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.solo_origen || []).includes(o)} onChange={e => guardarPolitica(p.tipo, { solo_origen: e.target.checked ? [...(p.solo_origen || []), o] : (p.solo_origen || []).filter((x: string) => x !== o) })} className="accent-[#0062CC]" />{o === 'Pulso diario' ? 'análisis diario' : o === 'Anomalias' ? 'anomalías' : 'semanal'}</label>
                   ))}</div>
@@ -361,13 +361,13 @@ export function Sistema() {
         <div className="space-y-4">
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Quién es dueño de qué</h2>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3]">Quién es dueño de qué</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.</p>
             </div>
             <div className="space-y-1">
               {(coherencia.escritores || []).map((e: any) => (
                 <div key={e.entidad} className="grid grid-cols-[160px_110px_1fr] gap-3 items-start px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <span className="text-[#FFFFFF] font-medium">{e.entidad.replace(/_/g, ' ')}</span>
+                  <span className="text-[#EDEFF3] font-medium">{e.entidad.replace(/_/g, ' ')}</span>
                   <span className="text-[#F5F7FA] opacity-80">{e.dueno}{e.proponen?.length ? <span className="opacity-50"> · proponen: {e.proponen.join(', ')}</span> : ''}</span>
                   <span className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{e.regla}</span>
                 </div>
@@ -376,7 +376,7 @@ export function Sistema() {
           </div>
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que el reconciliador corrigió</h2>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que el reconciliador corrigió</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.</p>
             </div>
             {(coherencia.reconciliaciones || []).length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Nada que corregir todavía. Corre por primera vez mañana.</p> : (
@@ -385,8 +385,8 @@ export function Sistema() {
                   <div key={r.id} className="flex items-start gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                     <span className="text-[10px] uppercase tracking-wider shrink-0 w-24 text-[#F5F7FA] opacity-70">{r.accion.replace('_', ' ')}</span>
-                    <span className="text-[#F5F7FA] opacity-80 flex-1">{r.account ? <span className="text-[#FFFFFF]">{r.account} · </span> : ''}{r.detalle}</span>
-                    <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#0062CC]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
+                    <span className="text-[#F5F7FA] opacity-80 flex-1">{r.account ? <span className="text-[#EDEFF3]">{r.account} · </span> : ''}{r.detalle}</span>
+                    <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#4D9DFF]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
                   </div>
                 ))}
               </div>
@@ -399,7 +399,7 @@ export function Sistema() {
       {enGrupo('tickets') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Tickets para Claude</h2>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Tickets para Claude</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.</p>
           </div>
           {tickets.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ningún ticket todavía.</p> : (
@@ -408,9 +408,9 @@ export function Sistema() {
                 <div key={t.id} className={`p-3 rounded-lg ${t.estado === 'resuelto' ? 'opacity-60' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50">
                     <span className="tabular">#{t.id}</span><span>{fmtFechaCorta(t.creado)} {String(t.creado).slice(11, 16)}</span><span>{t.pagina}{t.cuenta ? ` · ${t.cuenta}` : ''}</span>
-                    <span className={`ml-auto uppercase tracking-wider ${t.estado === 'abierto' ? 'text-[#0062CC]' : ''}`}>{t.estado.replace('_', ' ')}</span>
+                    <span className={`ml-auto uppercase tracking-wider ${t.estado === 'abierto' ? 'text-[#4D9DFF]' : ''}`}>{t.estado.replace('_', ' ')}</span>
                   </div>
-                  <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{t.titulo}</div>
+                  <div className="text-xs text-[#EDEFF3] font-medium mt-0.5">{t.titulo}</div>
                   {t.descripcion && <div className="text-[11px] text-[#F5F7FA] opacity-70 whitespace-pre-wrap">{t.descripcion}</div>}
                   {t.respuesta && <div className="text-[11px] text-[#F5F7FA] mt-1.5 pl-2" style={{ borderLeft: '2px solid var(--primary)' }}><span className="opacity-60">Claude:</span> {t.respuesta}{t.resuelto_en_version ? <span className="opacity-50"> · {t.resuelto_en_version}</span> : ''}</div>}
                 </div>
@@ -428,7 +428,7 @@ export function Sistema() {
           {saludSistema && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                <h2 className="text-[15px] font-medium text-[#FFFFFF]">Estado del sistema</h2>
+                <h2 className="text-[15px] font-medium text-[#EDEFF3]">Estado del sistema</h2>
                 <span className="text-[11px] px-2 py-0.5 rounded-full" style={{
                   backgroundColor: saludSistema.veredicto === 'todo bien' ? '#16653433' : saludSistema.veredicto === 'hay algo roto' ? '#b4231833' : '#b4530933',
                   color: saludSistema.veredicto === 'todo bien' ? '#4ade80' : saludSistema.veredicto === 'hay algo roto' ? '#fca5a5' : '#fcd34d' }}>
@@ -465,7 +465,7 @@ export function Sistema() {
 
           {/* Respaldo del esquema. Sin esto habia que escribir la URL a mano. */}
           <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Respaldo del esquema
             </h2>
             <p className="text-[11px] text-[#F5F7FA] opacity-60">
@@ -482,7 +482,7 @@ export function Sistema() {
             <div className="flex flex-wrap gap-2 pt-1">
               {(respaldo?.archivos || []).map((a: any) => (
                 <button key={a.nombre} type="button" onClick={() => bajarRespaldo(a.url, a.nombre)}
-                  className="px-3 py-1.5 rounded-lg text-[11px] text-[#FFFFFF] hover:opacity-80"
+                  className="px-3 py-1.5 rounded-lg text-[11px] text-[#EDEFF3] hover:opacity-80"
                   style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
                   {a.nombre} <span className="opacity-50">{a.kb} KB</span>
                 </button>
@@ -490,7 +490,7 @@ export function Sistema() {
             </div>
           </div>
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Datos por cuenta
             </h2>
 
@@ -498,11 +498,11 @@ export function Sistema() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Cuenta</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Estado</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Último día con datos</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Última extracción</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Detalle</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Cuenta</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Estado</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Último día con datos</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Última extracción</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -510,14 +510,14 @@ export function Sistema() {
                     const isOk = row.estado === 'OK';
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                        <td className="py-2.5 px-3 font-bold text-[#FFFFFF]">
+                        <td className="py-2.5 px-3 font-bold text-[#EDEFF3]">
                           {row.account}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            isOk ? 'bg-white/10 text-[#FFFFFF]' : 'border-l-2 border-[#0062CC] bg-[#0062CC]/15 text-[#FFFFFF]'
+                            isOk ? 'bg-white/10 text-[#EDEFF3]' : 'border-l-2 border-[#0062CC] bg-[#0062CC]/15 text-[#EDEFF3]'
                           }`}>
-                            {isOk ? <Check size={12} /> : <AlertCircle size={12} className="text-[#0062CC]" />}
+                            {isOk ? <Check size={12} /> : <AlertCircle size={12} className="text-[#4D9DFF]" />}
                             <span>{row.estado || 'OK'}</span>
                           </span>
                         </td>
@@ -540,17 +540,17 @@ export function Sistema() {
 
           {/* Webhook health */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Webhooks & Eventos de Ingesta
             </h2>
             <div className="space-y-2 text-xs">
               {(healthData?.webhookHealth || []).map((w: any, idx: number) => (
                 <div key={idx} className="p-3 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div className="font-semibold text-[#FFFFFF]">{w.servicio || w.endpoint || 'Webhook Ingest'}</div>
+                    <div className="font-semibold text-[#EDEFF3]">{w.servicio || w.endpoint || 'Webhook Ingest'}</div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-60">Último disparo: {w.ultimo_disparo || 'reciente'}</div>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#FFFFFF]">
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#EDEFF3]">
                     {w.estado || 'Activo'}
                   </span>
                 </div>
@@ -563,29 +563,29 @@ export function Sistema() {
       {/* TAB 2: INTEGRIDAD DE DATOS */}
       {enGrupo('integridad') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Integridad de datos
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-                  <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Cuenta</th>
-                  <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Filas Campañas</th>
-                  <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Filas Keywords</th>
-                  <th className="py-2.5 px-3 font-semibold text-[#FFFFFF] text-right">Filas Search Terms</th>
-                  <th className="py-2.5 px-3 font-semibold text-[#FFFFFF]">Integridad</th>
+                  <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Cuenta</th>
+                  <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Campañas</th>
+                  <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Keywords</th>
+                  <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Search Terms</th>
+                  <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Integridad</th>
                 </tr>
               </thead>
               <tbody>
                 {(healthData?.integridadDatos || []).map((r: any, idx: number) => (
                   <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                    <td className="py-2.5 px-3 font-bold text-[#FFFFFF]">{r.account}</td>
+                    <td className="py-2.5 px-3 font-bold text-[#EDEFF3]">{r.account}</td>
                     <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.campanas_count || r.filas_campanas || 0}</td>
                     <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.keywords_count || r.filas_keywords || 0}</td>
                     <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.search_terms_count || r.filas_search_terms || 0}</td>
                     <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#FFFFFF]">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#EDEFF3]">
                         {r.estado || 'Consistente'}
                       </span>
                     </td>
@@ -604,7 +604,7 @@ export function Sistema() {
                 {reconciliaciones.slice(0, 8).map((r: any) => (
                   <div key={r.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
-                    <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#FFFFFF]' : 'text-[#0062CC]'}`}>{r.veredicto}</span>
+                    <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'}`}>{r.veredicto}</span>
                     <span className="text-[#F5F7FA] flex-1">{r.account} · {r.capa} · {r.filas_comparadas} comparadas{r.filas_corregidas ? `, ${r.filas_corregidas} corregidas` : ''}{r.filas_insertadas ? `, ${r.filas_insertadas} insertadas` : ''}</span>
                     {r.detalle && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[280px] truncate" title={r.detalle}>{r.detalle}</span>}
                   </div>
@@ -619,7 +619,7 @@ export function Sistema() {
       {enGrupo('scorecard') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">
               Calidad de cada análisis semanal
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">
@@ -639,10 +639,10 @@ export function Sistema() {
                 >
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-[#FFFFFF] tabular">
+                      <span className="font-bold text-[#EDEFF3] tabular">
                         {run.run_date}
                       </span>
-                      <span className="px-2 py-0.5 rounded font-bold text-xs bg-[#0062CC] text-[#FFFFFF] tabular">
+                      <span className="px-2 py-0.5 rounded font-bold text-xs bg-[#0062CC] text-[#EDEFF3] tabular">
                         {run.score || run.puntuacion || 15} / 15 pts
                       </span>
                     </div>
@@ -652,7 +652,7 @@ export function Sistema() {
                   </div>
 
                   {run.que_fallo && (
-                    <div className="text-xs text-[#FFFFFF] p-2 rounded" style={{ backgroundColor: 'var(--surface-1)', borderLeft: '2px solid var(--primary)' }}>
+                    <div className="text-xs text-[#EDEFF3] p-2 rounded" style={{ backgroundColor: 'var(--surface-1)', borderLeft: '2px solid var(--primary)' }}>
                       <span className="font-semibold">Qué falló: </span> {run.que_fallo}
                     </div>
                   )}
@@ -664,13 +664,13 @@ export function Sistema() {
                       placeholder="Nota de revisión humana de Andrés..."
                       value={revisions[revisionId] !== undefined ? revisions[revisionId] : (run.revision_humana || '')}
                       onChange={e => setRevisions({ ...revisions, [revisionId]: e.target.value })}
-                      className="flex-1 bg-transparent rounded px-3 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/30 outline-none"
+                      className="flex-1 bg-transparent rounded px-3 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
                       style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-1)' }}
                     />
                     <button
                       onClick={() => handleSaveRevision(revisionId)}
                       disabled={savingRevisionId === revisionId}
-                      className="px-3 py-1.5 bg-[#0062CC] text-[#FFFFFF] rounded text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
+                      className="px-3 py-1.5 bg-[#0062CC] text-[#EDEFF3] rounded text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
                     >
                       <Save size={12} />
                       <span>{savingRevisionId === revisionId ? 'Guardando...' : 'Guardar'}</span>
@@ -686,7 +686,7 @@ export function Sistema() {
       {/* TAB 4: CAMBIOS DETECTADOS */}
       {enGrupo('cambios') && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Cambios de configuración detectados
           </h2>
 
@@ -700,7 +700,7 @@ export function Sistema() {
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="tabular text-[#F5F7FA] opacity-60 text-[11px]">{ch.fecha_actual || 'Reciente'}</span>
-                    <span className="font-semibold text-[#FFFFFF]">{ch.cuenta || ch.account}</span>
+                    <span className="font-semibold text-[#EDEFF3]">{ch.cuenta || ch.account}</span>
                     <span className="text-[#F5F7FA] opacity-80 truncate">{ch.entidad || ch.campaign}</span>
                   </div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-70">
@@ -717,7 +717,7 @@ export function Sistema() {
       {enGrupo('bitacora') && (
         <div className="p-5 rounded-2xl space-y-5" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">
               Registro Manual en Bitácora (operator_log)
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">
@@ -727,7 +727,7 @@ export function Sistema() {
 
           <form onSubmit={handleSubmitOperatorLog} className="space-y-3 max-w-xl text-xs">
             {logSuccess && (
-              <div className="p-3 rounded bg-white/10 text-[#FFFFFF] flex items-center gap-2 font-medium">
+              <div className="p-3 rounded bg-white/10 text-[#EDEFF3] flex items-center gap-2 font-medium">
                 <Check size={14} /> Cambio registrado con éxito en operator_log
               </div>
             )}
@@ -740,7 +740,7 @@ export function Sistema() {
                 <select aria-label="Log Account"
                   value={logAccount}
                   onChange={e => setLogAccount(e.target.value)}
-                  className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none"
+                  className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 >
                   <option value="360" className="bg-[#1A1F36]">360</option>
@@ -758,7 +758,7 @@ export function Sistema() {
                   placeholder="Ej: Campaña Search Alemania"
                   value={logDonde}
                   onChange={e => setLogDonde(e.target.value)}
-                  className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none"
+                  className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 />
               </div>
@@ -774,7 +774,7 @@ export function Sistema() {
                 placeholder="Ej: Incremento de presupuesto diario de 30 a 50 EUR"
                 value={logQueCambio}
                 onChange={e => setLogQueCambio(e.target.value)}
-                className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none"
+                className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none"
                 style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
               />
             </div>
@@ -789,7 +789,7 @@ export function Sistema() {
                   placeholder="Ej: 30 EUR"
                   value={logValorAnt}
                   onChange={e => setLogValorAnt(e.target.value)}
-                  className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none tabular"
+                  className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none tabular"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 />
               </div>
@@ -802,7 +802,7 @@ export function Sistema() {
                   placeholder="Ej: 50 EUR"
                   value={logValorNuevo}
                   onChange={e => setLogValorNuevo(e.target.value)}
-                  className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none tabular"
+                  className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none tabular"
                   style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                 />
               </div>
@@ -817,7 +817,7 @@ export function Sistema() {
                 placeholder="Explicación del motivo detrás del cambio..."
                 value={logPorQue}
                 onChange={e => setLogPorQue(e.target.value)}
-                className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] outline-none"
+                className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none"
                 style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
               />
             </div>
@@ -826,7 +826,7 @@ export function Sistema() {
               <button
                 type="submit"
                 disabled={savingLog || !logQueCambio.trim()}
-                className="px-4 py-2 bg-[#0062CC] text-[#FFFFFF] font-semibold rounded text-xs disabled:opacity-50"
+                className="px-4 py-2 bg-[#0062CC] text-[#EDEFF3] font-semibold rounded text-xs disabled:opacity-50"
               >
                 {savingLog ? 'Guardando...' : 'Guardar en operator_log'}
               </button>
@@ -841,7 +841,7 @@ export function Sistema() {
         <div className="space-y-4">
           {/* Tasa de acierto: la métrica del sistema entero */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Tasa de acierto
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.</p>
@@ -851,8 +851,8 @@ export function Sistema() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {aprendizaje.tasa_acierto.map((t: any) => (
                   <div key={t.account} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <div className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider mb-1">{t.account}</div>
-                    <div className="text-2xl font-semibold text-[#FFFFFF] tabular">{t.tasa_acierto_pct != null ? `${t.tasa_acierto_pct}%` : '—'}</div>
+                    <div className="text-xs font-bold text-[#EDEFF3] uppercase tracking-wider mb-1">{t.account}</div>
+                    <div className="text-2xl font-semibold text-[#EDEFF3] tabular">{t.tasa_acierto_pct != null ? `${t.tasa_acierto_pct}%` : '—'}</div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-70 tabular mt-1">
                       {t.funcionaron} funcionaron · {t.neutros} neutros · {t.empeoraron} empeoraron · {t.pendientes} pendientes
                     </div>
@@ -869,7 +869,7 @@ export function Sistema() {
 
           {/* Impacto por accionable */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Qué pasó después de cada accionable
             </h2>
             {aprendizaje.impacto.length === 0 ? (
@@ -888,13 +888,13 @@ export function Sistema() {
                       const mal = String(i.veredicto).startsWith('EMPEORO');
                       return (
                         <tr key={i.notion_id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                          <td className="py-2 px-2 font-bold text-[#FFFFFF]">{i.account}</td>
+                          <td className="py-2 px-2 font-bold text-[#EDEFF3]">{i.account}</td>
                           <td className="py-2 px-2 text-[#F5F7FA] max-w-[280px] truncate" title={i.titulo}>{i.titulo}</td>
                           <td className="py-2 px-2 tabular text-[#F5F7FA] opacity-70">{fmtFechaCorta(i.ejecutado_el)}</td>
                           <td className="py-2 px-2 text-[#F5F7FA] opacity-70">{m || '—'}</td>
                           <td className="py-2 px-2 tabular text-right text-[#F5F7FA]">{ad}</td>
-                          <td className={`py-2 px-2 tabular text-right ${ok ? 'text-[#FFFFFF] font-semibold' : mal ? 'text-[#0062CC] font-semibold' : 'text-[#F5F7FA] opacity-70'}`}>{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${i.variacion_pct}%` : '—'}</td>
-                          <td className={`py-2 px-2 ${ok ? 'text-[#FFFFFF]' : mal ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-70'}`}>{String(i.veredicto).split(':')[0]}</td>
+                          <td className={`py-2 px-2 tabular text-right ${ok ? 'text-[#EDEFF3] font-semibold' : mal ? 'text-[#F97066] font-semibold' : 'text-[#F5F7FA] opacity-70'}`}>{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${i.variacion_pct}%` : '—'}</td>
+                          <td className={`py-2 px-2 ${ok ? 'text-[#EDEFF3]' : mal ? 'text-[#F97066]' : 'text-[#F5F7FA] opacity-70'}`}>{String(i.veredicto).split(':')[0]}</td>
                         </tr>
                       );
                     })}
@@ -907,14 +907,14 @@ export function Sistema() {
           {/* Lo que el sistema propone cambiar en sus instrucciones */}
           {aprendizaje.propuestas.length > 0 && (
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--primary)' }}>
-              <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 Lo que el sistema propone cambiar en sus instrucciones
               </h2>
               <p className="text-xs text-[#F5F7FA] opacity-60">Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.</p>
               {aprendizaje.propuestas.map((p: any, i: number) => (
                 <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-[#FFFFFF] uppercase">{p.account} · {p.tipo}</span>
+                    <span className="text-xs font-bold text-[#EDEFF3] uppercase">{p.account} · {p.tipo}</span>
                     <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{p.veces} veces · {fmtFechaCorta(p.primera_vez)} → {fmtFechaCorta(p.ultima_vez)}</span>
                   </div>
                   <p className="text-sm text-[#F5F7FA]">{p.leccion_mas_reciente}</p>
@@ -926,7 +926,7 @@ export function Sistema() {
 
           {/* Reflexiones recientes */}
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Reflexiones de las corridas (memoria episódica)
             </h2>
             {aprendizaje.reflexiones.length === 0 ? (
@@ -936,13 +936,13 @@ export function Sistema() {
                 {aprendizaje.reflexiones.map((r: any) => (
                   <div key={r.id} className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-[#FFFFFF] uppercase">{r.account}</span>
+                      <span className="font-bold text-[#EDEFF3] uppercase">{r.account}</span>
                       <span className="text-[#F5F7FA] opacity-60 tabular">{fmtFechaCorta(r.run_date)}</span>
                       <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide" style={{ backgroundColor: r.tipo === 'acierto' ? 'var(--surface-1)' : 'var(--primary-faint)', color: '#F5F7FA' }}>{r.tipo.replace(/_/g, ' ')}</span>
                       {r.aplicada && <span className="text-[10px] text-[#F5F7FA] opacity-50">· aplicada</span>}
                     </div>
                     <p className="text-[#F5F7FA] opacity-80">{r.que_paso}</p>
-                    <p className="text-[#FFFFFF] mt-1">→ {r.que_haria_distinto}</p>
+                    <p className="text-[#EDEFF3] mt-1">→ {r.que_haria_distinto}</p>
                   </div>
                 ))}
               </div>
@@ -953,7 +953,7 @@ export function Sistema() {
 
       {enGrupo('tamano') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Tamaño y crecimiento
           </h2>
           <p className="text-xs text-[#F5F7FA] opacity-60">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
@@ -968,12 +968,12 @@ export function Sistema() {
                 <tbody>
                   {tamano.map((t: any) => (
                     <tr key={t.tabla} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                      <td className="py-1.5 px-2 text-[#FFFFFF]">{t.tabla}</td>
+                      <td className="py-1.5 px-2 text-[#EDEFF3]">{t.tabla}</td>
                       <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA]">{Number(t.filas).toLocaleString('es-CL')}</td>
                       <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.tamano}</td>
                       <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_por_dia ?? '—'}</td>
                       <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_en_un_ano ? Number(t.filas_en_un_ano).toLocaleString('es-CL') : '—'}</td>
-                      <td className={`py-1.5 px-2 ${t.estado === 'OK' ? 'text-[#F5F7FA] opacity-50' : 'text-[#0062CC] font-semibold'}`}>{t.estado}</td>
+                      <td className={`py-1.5 px-2 ${t.estado === 'OK' ? 'text-[#F5F7FA] opacity-50' : 'text-[#E2B453] font-semibold'}`}>{t.estado}</td>
                     </tr>
                   ))}
                 </tbody>

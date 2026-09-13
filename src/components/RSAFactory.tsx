@@ -93,7 +93,7 @@ export function RSAFactory() {
 
       <div className="flex flex-col bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl p-5 shadow-sm overflow-hidden">
         <div className="mb-3">
-          <h3 className="text-sm font-semibold text-[#FFFFFF]">Dónde conviene escribir</h3>
+          <h3 className="text-sm font-semibold text-[#EDEFF3]">Dónde conviene escribir</h3>
           <p className="text-[11px] text-[#F5F7FA]/50 mt-1">
             Grupos ordenados por la plata de esta semana que va a keywords que el anuncio no menciona.
           </p>
@@ -108,7 +108,7 @@ export function RSAFactory() {
 
           {!cargando && !oportunidades.length && (
             <div className="flex flex-col items-center justify-center h-full text-[#F5F7FA]/40 space-y-2 py-10">
-              <Layers size={28} className="text-[#0062CC]/40" />
+              <Layers size={28} className="text-[#4D9DFF]/40" />
               <p className="text-sm text-center">Sin grupos con gasto esta semana en esta cuenta.</p>
             </div>
           )}
@@ -128,7 +128,7 @@ export function RSAFactory() {
                 }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[13px] text-[#FFFFFF] truncate">{o.ad_group}</div>
+                    <div className="text-[13px] text-[#EDEFF3] truncate">{o.ad_group}</div>
                     <div className="text-[11px] text-[#F5F7FA]/50 truncate flex items-center gap-1">
                       {o.location && <><MapPin size={10} /> {o.location} ·</>} {o.campaign}
                     </div>
@@ -158,7 +158,7 @@ export function RSAFactory() {
         <button
           onClick={() => generar(false)}
           disabled={!elegida || generating}
-          className="mt-4 w-full py-2.5 rounded-lg text-[13px] text-[#FFFFFF] flex items-center justify-center gap-2 disabled:opacity-40"
+          className="mt-4 w-full py-2.5 rounded-lg text-[13px] text-[#EDEFF3] flex items-center justify-center gap-2 disabled:opacity-40"
           style={{ backgroundColor: '#0062CC' }}>
           {generating ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
           {generating ? 'Escribiendo el anuncio…'
@@ -168,7 +168,7 @@ export function RSAFactory() {
       </div>
 
       <div className="flex flex-col bg-[#1A1F36] border border-[#0062CC]/20 rounded-xl p-5 shadow-sm overflow-hidden">
-        <h3 className="text-sm font-semibold text-[#FFFFFF] mb-4">Anuncio propuesto</h3>
+        <h3 className="text-sm font-semibold text-[#EDEFF3] mb-4">Anuncio propuesto</h3>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
           {error && (
@@ -186,7 +186,7 @@ export function RSAFactory() {
               <AlertCircle size={30} style={{ color: '#F79009' }} />
               <p className="text-sm text-center" style={{ color: '#F79009' }}>{bloqueo}</p>
               <button onClick={() => generar(true)}
-                className="text-xs px-3 py-1.5 rounded-lg text-[#FFFFFF]"
+                className="text-xs px-3 py-1.5 rounded-lg text-[#EDEFF3]"
                 style={{ backgroundColor: 'var(--surface-2, #131728)', border: '1px solid rgba(0,98,204,0.3)' }}>
                 Escribirlo igual
               </button>
@@ -195,7 +195,7 @@ export function RSAFactory() {
 
           {!error && !bloqueo && !generado && (
             <div className="flex flex-col items-center justify-center h-full text-[#F5F7FA]/40 space-y-3">
-              <FileText size={30} className="text-[#0062CC]/40" />
+              <FileText size={30} className="text-[#4D9DFF]/40" />
               <p className="text-sm text-center px-6">
                 Elegí un grupo de la izquierda. El contexto lo arma el servidor: keywords del grupo,
                 términos que ya convirtieron ahí, el anuncio que ya existe y el idioma de la cuenta.
@@ -245,7 +245,7 @@ export function RSAFactory() {
                       <div key={i}
                         className="p-2.5 rounded-lg flex justify-between items-center gap-3 group"
                         style={{ backgroundColor: 'var(--surface-2, #131728)', border: '1px solid rgba(0,98,204,0.15)' }}>
-                        <span className="text-[13px] text-[#FFFFFF] min-w-0 truncate">{txt}</span>
+                        <span className="text-[13px] text-[#EDEFF3] min-w-0 truncate">{txt}</span>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-[10px] tabular"
                                 style={{ color: txt.length > sec.max * 0.93 ? '#F79009' : '#F5F7FA66' }}>
@@ -264,7 +264,7 @@ export function RSAFactory() {
 
               <button
                 onClick={() => copiar([...(generado.headlines || []), '', ...(generado.descriptions || [])].join('\n'), 'todo')}
-                className="w-full py-2 rounded-lg text-[12px] text-[#FFFFFF]"
+                className="w-full py-2 rounded-lg text-[12px] text-[#EDEFF3]"
                 style={{ backgroundColor: 'var(--surface-2, #131728)', border: '1px solid rgba(0,98,204,0.3)' }}>
                 {copiado === 'todo' ? 'Copiado' : 'Copiar todo para pegar en Google Ads'}
               </button>

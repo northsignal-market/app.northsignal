@@ -208,7 +208,7 @@ function App() {
               Cuenta:
             </span>
             <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-              {salud && <span className="text-[10px] mr-3 tabular" style={{ color: salud.ok ? 'rgba(245,247,250,0.5)' : '#0062CC' }} title="Estado de los datos y lo que espera tu criterio">{salud.texto}</span>}
+              {salud && <span className="text-[10px] mr-3 tabular" style={{ color: salud.ok ? 'rgba(245,247,250,0.5)' : 'var(--warn)' }} title="Estado de los datos y lo que espera tu criterio">{salud.texto}</span>}
               <div className="mr-3"><Campana onAbrir={(n: Novedad) => {
                 if (n.ref_tipo === 'accionable') { const f = actionables.find(x => x.id === n.ref_id); if (f) { setSelectedClient(f.client); setSelectedAction(f); } else irA('cuenta', n.account || undefined, 'accionables'); }
                 else if (n.ref_tipo === 'propuesta') irA('cuenta', n.account || undefined, 'diagnostico');
@@ -228,7 +228,7 @@ function App() {
                     onClick={() => setSelectedClient(client)}
                     className={`px-3 py-1 rounded-md text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${
                       isSelected 
-                        ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm' 
+                        ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' 
                         : 'text-[#F5F7FA] opacity-70 hover:opacity-100 hover:bg-white/5'
                     }`}
                   >
@@ -263,7 +263,7 @@ function App() {
             {/* Operator Profile */}
             <div className="flex items-center gap-2.5 pl-3" style={{ borderLeft: '1px solid var(--border)' }}>
               <div className="text-right hidden sm:block">
-                <span className="text-xs font-bold text-[#FFFFFF] block leading-tight">
+                <span className="text-xs font-bold text-[#EDEFF3] block leading-tight">
                   Andrés
                 </span>
                 <span className="text-[10px] text-[#F5F7FA] opacity-60 block">
@@ -271,7 +271,7 @@ function App() {
                 </span>
               </div>
               <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-[#FFFFFF] shadow-sm"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-[#EDEFF3] shadow-sm"
                 style={{ backgroundColor: '#0062CC' }}
               >
                 AB

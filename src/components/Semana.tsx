@@ -171,7 +171,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           <Tarjeta>
             <div className="flex items-center justify-between pb-2 mb-3" style={{ borderBottom: '1px solid var(--border)' }}>
               <div>
-                <h2 className="text-[13px] font-medium text-[#FFFFFF]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>
+                <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>
                 <p className="text-[11px] text-[#F5F7FA] opacity-60">{p.contexto}</p>
               </div>
               <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular shrink-0">desde {fmtFechaCorta(p.semana)} · {dias} día{dias !== 1 ? 's' : ''} de evidencia</span>
@@ -182,7 +182,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 const cumpliendo = ultimo?.dias || 0;
                 return (
                   <div key={idx} className="grid grid-cols-[minmax(140px,1fr)_auto_auto_minmax(200px,2fr)] items-center gap-3 py-1.5 px-2 rounded-lg" style={{ backgroundColor: cumpliendo >= 2 ? 'var(--primary-faint)' : 'var(--surface-2)' }}>
-                    <div className="text-xs text-[#FFFFFF]">
+                    <div className="text-xs text-[#EDEFF3]">
                       <Termino t={nombres[i.nombre] || i.nombre}>{nombres[i.nombre] || i.nombre}</Termino>
                       {i.grupo && <span className="text-[#F5F7FA] opacity-60"> · {i.grupo}</span>}
                     </div>
@@ -194,7 +194,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       {Array.from({ length: Math.max(0, 7 - i.serie.length) }, (_, k) => <span key={'e' + k} className="w-3 h-3 rounded-sm" style={{ border: '1px dashed var(--border)' }} />)}
                     </div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-70 truncate" title={i.habilita}>
-                      {cumpliendo >= 2 ? <span className="text-[#FFFFFF] font-medium">{cumpliendo} días · </span> : ''}{i.habilita}
+                      {cumpliendo >= 2 ? <span className="text-[#EDEFF3] font-medium">{cumpliendo} días · </span> : ''}{i.habilita}
                     </div>
                   </div>
                 );
@@ -207,7 +207,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   const confirma = movs.filter((m: any) => m.movimiento === 'confirma').length, descarta = movs.filter((m: any) => m.movimiento === 'descarta').length;
                   return (
                     <div key={h.id} className="text-[11px] text-[#F5F7FA] opacity-80 flex gap-2">
-                      <span className="font-bold text-[#FFFFFF] shrink-0">{h.id}</span>
+                      <span className="font-bold text-[#EDEFF3] shrink-0">{h.id}</span>
                       <span className="flex-1">{h.texto}</span>
                       <span className="tabular shrink-0 opacity-60">{confirma > 0 ? `+${confirma}` : ''}{descarta > 0 ? ` −${descarta}` : ''}{!confirma && !descarta ? 'sin mov.' : ''}</span>
                     </div>
@@ -223,7 +223,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       <Tarjeta>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="space-y-0.5 min-w-0">
-            <h2 className="text-[13px] font-medium text-[#FFFFFF]">{anomalias.titulo || 'Tendencia diaria'}</h2>
+            <h2 className="text-[13px] font-medium text-[#EDEFF3]">{anomalias.titulo || 'Tendencia diaria'}</h2>
             <p className="text-[11px] text-[#F5F7FA] opacity-50">
               Clic en un día para inspeccionarlo · punteada = media móvil 7d · fondo azul = anomalía · zona clara = madurando
             </p>
@@ -324,10 +324,10 @@ export function Semana({ onOpenActionable }: SemanaProps) {
             {hallazgosSemana.filter((p: any) => !p.fecha || p.fecha >= rango.desde).map((p: any) => (
               <div key={p.fecha} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-[#FFFFFF] tabular">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-                  <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#0062CC] font-bold' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel === 'critico' ? 'Requiere acción' : p.nivel === 'atencion' ? 'Para mirar el lunes' : 'Día normal'}</span>
+                  <span className="text-xs font-semibold text-[#EDEFF3] tabular">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                  <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#4D9DFF] font-bold' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel === 'critico' ? 'Requiere acción' : p.nivel === 'atencion' ? 'Para mirar el lunes' : 'Día normal'}</span>
                 </div>
-                {p.hallazgo_principal && <p className="text-xs text-[#FFFFFF] font-medium mb-1">{p.hallazgo_principal}</p>}
+                {p.hallazgo_principal && <p className="text-xs text-[#EDEFF3] font-medium mb-1">{p.hallazgo_principal}</p>}
                 <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed">{p.resumen}</p>
               </div>
             ))}
@@ -351,7 +351,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       <td className="py-1 px-2 tabular text-[#F5F7FA]">{new Date(f.date + 'T12:00').toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit' })}{f.madurez === 'provisional' ? ' ·' : ''}</td>
                       {convGrupo.grupos.map((g: string) => {
                         const v = f[g] || 0;
-                        return <td key={g} className={`py-1 px-2 tabular text-right ${v === 0 ? 'text-[#F5F7FA] opacity-30' : 'text-[#FFFFFF] font-medium'}`}>{v === 0 ? '·' : v}</td>;
+                        return <td key={g} className={`py-1 px-2 tabular text-right ${v === 0 ? 'text-[#F5F7FA] opacity-30' : 'text-[#EDEFF3] font-medium'}`}>{v === 0 ? '·' : v}</td>;
                       })}
                     </tr>
                   ))}
@@ -393,7 +393,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                           <div key={h} title={c ? `${d} ${h}:00 · ${fmtMoneda(g, M)} · ${c.clics} clics · ${conv} conv` : ''}
                             className="h-5 rounded-sm relative"
                             style={{ backgroundColor: op ? `color-mix(in oklab, #0062CC ${Math.round(op * 100)}%, var(--surface-2))` : 'var(--surface-2)' }}>
-                            {conv > 0 && <span className="absolute inset-0 flex items-center justify-center text-[8px] text-[#FFFFFF] font-bold">●</span>}
+                            {conv > 0 && <span className="absolute inset-0 flex items-center justify-center text-[8px] text-[#EDEFF3] font-bold">●</span>}
                           </div>
                         );
                       })}
@@ -420,17 +420,17 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs font-semibold text-[#FFFFFF]">Gastan y no convierten</span>
+                      <span className="text-xs font-semibold text-[#EDEFF3]">Gastan y no convierten</span>
                       <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{sinConv.length} · {fmtMoneda(gastoSinConv, M)}</span>
                     </div>
                     {sinConv.length === 0 ? <p className="text-[11px] text-[#F5F7FA] opacity-50 italic">Ninguna.</p> : sinConv.slice(0, 8).map((t: any, i: number) => (
                       <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-[#FFFFFF] truncate">{t.search_term || t.termino}</div>
+                          <div className="text-xs text-[#EDEFF3] truncate">{t.search_term || t.termino}</div>
                           <div className="text-[10px] text-[#F5F7FA] opacity-50 truncate">la disparó <span className="opacity-100">{t.keyword_disparadora || '—'}</span>{t.ad_group ? ` en ${t.ad_group}` : ''}</div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-xs tabular text-[#FFFFFF]">{fmtMoneda(Number(t.gasto_acumulado || 0), M)}</div>
+                          <div className="text-xs tabular text-[#EDEFF3]">{fmtMoneda(Number(t.gasto_acumulado || 0), M)}</div>
                           <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{t.clics_acumulados ?? 0} clics</div>
                         </div>
                       </div>
@@ -439,17 +439,17 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs font-semibold text-[#FFFFFF]">Convierten</span>
+                      <span className="text-xs font-semibold text-[#EDEFF3]">Convierten</span>
                       <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{conConv.length}</span>
                     </div>
                     {conConv.length === 0 ? <p className="text-[11px] text-[#F5F7FA] opacity-50 italic">Ninguna todavía.</p> : conConv.slice(0, 8).map((t: any, i: number) => (
                       <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: '2px solid var(--primary)' }}>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-[#FFFFFF] truncate">{t.search_term || t.termino}</div>
+                          <div className="text-xs text-[#EDEFF3] truncate">{t.search_term || t.termino}</div>
                           <div className="text-[10px] text-[#F5F7FA] opacity-50 truncate">la disparó <span className="opacity-100">{t.keyword_disparadora || '—'}</span>{t.match_type ? ` (${String(t.match_type).toLowerCase()})` : ''}</div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-xs tabular text-[#FFFFFF]">{Number(t.conversiones_acumuladas)} conv</div>
+                          <div className="text-xs tabular text-[#EDEFF3]">{Number(t.conversiones_acumuladas)} conv</div>
                           <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{t.cpa ? fmtMoneda(Number(t.cpa), M) : fmtMoneda(Number(t.gasto_acumulado || 0), M)}</div>
                         </div>
                       </div>
@@ -488,9 +488,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="tabular text-[#F5F7FA] opacity-60 text-[11px]">{ch.fecha || ch.date || 'Reciente'}</span>
                         {isAutoGoogle && (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-white/10 text-[#FFFFFF]" style={{ border: '1px solid var(--border-strong)' }}>Automático Google</span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-white/10 text-[#EDEFF3]" style={{ border: '1px solid var(--border-strong)' }}>Automático Google</span>
                         )}
-                        <span className="font-semibold text-[#FFFFFF]">{ch.que_cambio || ch.descripcion || ch.change_resource_type}</span>
+                        <span className="font-semibold text-[#EDEFF3]">{ch.que_cambio || ch.descripcion || ch.change_resource_type}</span>
                       </div>
                       {ch.donde && <div className="text-[11px] text-[#F5F7FA] opacity-65">Ámbito: {ch.donde}</div>}
                     </div>
@@ -522,19 +522,19 @@ export function Semana({ onOpenActionable }: SemanaProps) {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Gasto</div>
-                  <div className="text-base font-bold text-[#FFFFFF] tabular">{fmtMoneda(selectedDay.gasto ?? selectedDay.cost ?? 0, M)}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{fmtMoneda(selectedDay.gasto ?? selectedDay.cost ?? 0, M)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Conversiones</div>
-                  <div className="text-base font-bold text-[#FFFFFF] tabular">{selectedDay.conversiones ?? selectedDay.conversions ?? 0}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{selectedDay.conversiones ?? selectedDay.conversions ?? 0}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">CPA</div>
-                  <div className="text-sm font-semibold text-[#FFFFFF] tabular">{(selectedDay.cpa ?? selectedDay.cpa_provisional) ? fmtMoneda(selectedDay.cpa ?? selectedDay.cpa_provisional, M) : '—'}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{(selectedDay.cpa ?? selectedDay.cpa_provisional) ? fmtMoneda(selectedDay.cpa ?? selectedDay.cpa_provisional, M) : '—'}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Clics</div>
-                  <div className="text-sm font-semibold text-[#FFFFFF] tabular">{selectedDay.clics ?? selectedDay.clicks ?? 0}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{selectedDay.clics ?? selectedDay.clicks ?? 0}</div>
                 </div>
               </div>
               {selectedDay.explicacion && <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1" style={{ borderTop: '1px solid var(--border)' }}>{selectedDay.explicacion}</p>}
@@ -542,8 +542,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
             <div className="p-3.5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#FFFFFF] text-xs uppercase tracking-wider">Anotaciones del día</span>
-                <button onClick={() => setShowAnnotationForm(!showAnnotationForm)} className="text-xs text-[#0062CC] hover:underline font-semibold">
+                <span className="font-semibold text-[#EDEFF3] text-xs uppercase tracking-wider">Anotaciones del día</span>
+                <button onClick={() => setShowAnnotationForm(!showAnnotationForm)} className="text-xs text-[#4D9DFF] hover:underline font-semibold">
                   {showAnnotationForm ? 'Cancelar' : '+ Anotar en este día'}
                 </button>
               </div>
@@ -555,15 +555,15 @@ export function Semana({ onOpenActionable }: SemanaProps) {
               {showAnnotationForm && (
                 <form onSubmit={handleSaveAnnotation} className="space-y-2 pt-1">
                   {annotationSuccess && (
-                    <div className="text-[11px] text-[#FFFFFF] flex items-center gap-1"><Check size={12} /> Anotación guardada</div>
+                    <div className="text-[11px] text-[#EDEFF3] flex items-center gap-1"><Check size={12} /> Anotación guardada</div>
                   )}
                   <textarea required rows={3} placeholder={`Qué pasó el ${fmtFechaCorta(selectedDay.date)}…`} value={annotationText}
                     onChange={e => setAnnotationText(e.target.value)}
-                    className="w-full bg-transparent rounded p-2 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/40 outline-none"
+                    className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/40 outline-none"
                     style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-1)' }} />
                   <div className="flex justify-end">
                     <button type="submit" disabled={savingAnnotation || !annotationText.trim()}
-                      className="px-3 py-1.5 bg-[#0062CC] text-[#FFFFFF] rounded text-xs font-semibold disabled:opacity-50">
+                      className="px-3 py-1.5 bg-[#0062CC] text-[#EDEFF3] rounded text-xs font-semibold disabled:opacity-50">
                       {savingAnnotation ? 'Guardando…' : 'Guardar anotación'}
                     </button>
                   </div>

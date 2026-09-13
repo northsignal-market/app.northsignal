@@ -41,10 +41,10 @@ const ToastItem: React.FC<{ notification: any; onRemove: () => void }> = ({ noti
       style={{ backgroundColor: 'var(--surface-1)', border: `1px solid ${borde}66` }}>
       <Icono className="shrink-0 mt-0.5" size={18} style={{ color }} />
       <div className="flex-1 min-w-0">
-        {notification.title && <h4 className="text-sm font-semibold text-[#FFFFFF]">{notification.title}</h4>}
+        {notification.title && <h4 className="text-sm font-semibold text-[#EDEFF3]">{notification.title}</h4>}
         <p className="text-xs text-[#F5F7FA]/80 mt-1 leading-relaxed break-words">{notification.message}</p>
       </div>
-      <button onClick={onRemove} aria-label="Cerrar aviso" className="text-[#F5F7FA]/60 hover:text-[#FFFFFF] transition-colors shrink-0">
+      <button onClick={onRemove} aria-label="Cerrar aviso" className="text-[#F5F7FA]/60 hover:text-[#EDEFF3] transition-colors shrink-0">
         <X size={16} />
       </button>
     </div>

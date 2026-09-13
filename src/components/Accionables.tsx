@@ -120,7 +120,7 @@ export function Accionables({
       {/* Header & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#FFFFFF]">
+          <h1 className="text-xl font-bold text-[#EDEFF3]">
             Accionables
           </h1>
           <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
@@ -136,7 +136,7 @@ export function Accionables({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar accionables..."
-            className="w-full bg-transparent rounded-md pl-9 pr-3 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/40 outline-none"
+            className="w-full bg-transparent rounded-md pl-9 pr-3 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/40 outline-none"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-1)' }}
           />
         </div>
@@ -156,7 +156,7 @@ export function Accionables({
         <select aria-label="Filter Client"
           value={filterClient}
           onChange={(e) => setFilterClient(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todos los Clientes</option>
@@ -167,7 +167,7 @@ export function Accionables({
         <select aria-label="Filter Status"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todos los Estados</option>
@@ -182,7 +182,7 @@ export function Accionables({
         <select aria-label="Filter Priority"
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todas las Prioridades</option>
@@ -196,7 +196,7 @@ export function Accionables({
         <select aria-label="Filter Naturaleza"
           value={filterNaturaleza}
           onChange={(e) => setFilterNaturaleza(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Toda Naturaleza</option>
@@ -209,7 +209,7 @@ export function Accionables({
         <select aria-label="Filter Revision"
           value={filterRevision}
           onChange={(e) => setFilterRevision(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#FFFFFF] outline-none"
+          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todas las Revisiones IA</option>
@@ -225,7 +225,7 @@ export function Accionables({
           {activeFilterChips.map(chip => (
             <span
               key={chip.key}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[#FFFFFF]"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[#EDEFF3]"
               style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
             >
               <span>{chip.label}</span>
@@ -243,7 +243,7 @@ export function Accionables({
               setFilterRevision('all');
               setSearch('');
             }}
-            className="text-xs text-[#0062CC] hover:underline font-semibold ml-1"
+            className="text-xs text-[#4D9DFF] hover:underline font-semibold ml-1"
           >
             Limpiar filtros
           </button>
@@ -259,9 +259,9 @@ export function Accionables({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr style={{ backgroundColor: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
-                <th className="py-3 px-4 font-semibold text-[#FFFFFF]">Acción</th>
+                <th className="py-3 px-4 font-semibold text-[#EDEFF3]">Acción</th>
                 <th 
-                  className="py-3 px-3 font-semibold text-[#FFFFFF] cursor-pointer"
+                  className="py-3 px-3 font-semibold text-[#EDEFF3] cursor-pointer"
                   onClick={() => { setSortField('client'); setSortAsc(!sortAsc); }}
                 >
                   <div className="flex items-center gap-1">
@@ -270,7 +270,7 @@ export function Accionables({
                   </div>
                 </th>
                 <th 
-                  className="py-3 px-3 font-semibold text-[#FFFFFF] cursor-pointer"
+                  className="py-3 px-3 font-semibold text-[#EDEFF3] cursor-pointer"
                   onClick={() => { setSortField('priority'); setSortAsc(!sortAsc); }}
                 >
                   <div className="flex items-center gap-1">
@@ -278,10 +278,10 @@ export function Accionables({
                     <ArrowUpDown size={11} className="opacity-60" />
                   </div>
                 </th>
-                <th className="py-3 px-3 font-semibold text-[#FFFFFF]">Estado</th>
-                <th className="py-3 px-3 font-semibold text-[#FFFFFF]">Naturaleza</th>
+                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Estado</th>
+                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Naturaleza</th>
                 <th 
-                  className="py-3 px-3 font-semibold text-[#FFFFFF] text-right cursor-pointer"
+                  className="py-3 px-3 font-semibold text-[#EDEFF3] text-right cursor-pointer"
                   onClick={() => { setSortField('weeks'); setSortAsc(!sortAsc); }}
                 >
                   <div className="flex items-center justify-end gap-1">
@@ -289,8 +289,8 @@ export function Accionables({
                     <ArrowUpDown size={11} className="opacity-60" />
                   </div>
                 </th>
-                <th className="py-3 px-3 font-semibold text-[#FFFFFF]">Revisión IA</th>
-                <th className="py-3 px-4 font-semibold text-[#FFFFFF] text-right">Acciones</th>
+                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Revisión IA</th>
+                <th className="py-3 px-4 font-semibold text-[#EDEFF3] text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -321,7 +321,7 @@ export function Accionables({
                     >
                       {/* Title & context */}
                       <td className="py-3 px-4 max-w-sm">
-                        <div className="font-semibold text-[#FFFFFF] truncate flex items-center gap-1.5">
+                        <div className="font-semibold text-[#EDEFF3] truncate flex items-center gap-1.5">
                           {novedadesIds.has(action.id) && <span className="w-1.5 h-1.5 rounded-full bg-[#0062CC] shrink-0" title="Un agente comentó o editó esto y no lo viste" />}
                           {action.title}
                         </div>
@@ -334,14 +334,14 @@ export function Accionables({
 
                       {/* Client */}
                       <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30">
                           {action.client}
                         </span>
                       </td>
 
                       {/* Priority */}
                       <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`font-semibold ${action.priority === 'Urgente' || action.priority === 'Alta' ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-75'}`}>
+                        <span className={`font-semibold ${action.priority === 'Urgente' || action.priority === 'Alta' ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-75'}`}>
                           {action.priority}
                         </span>
                       </td>
@@ -362,7 +362,7 @@ export function Accionables({
 
                       {/* Semanas Pendiente */}
                       <td className="py-3 px-3 text-right whitespace-nowrap tabular font-medium">
-                        <span className={isStale ? 'font-bold text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-75'}>
+                        <span className={isStale ? 'font-bold text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-75'}>
                           {weeks > 0 ? `${weeks} sem` : '< 1 sem'}
                         </span>
                       </td>
@@ -370,7 +370,7 @@ export function Accionables({
                       {/* Revisión IA */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <span className={`px-2 py-0.5 rounded text-[10px] ${
-                          isDispute ? 'font-semibold text-[#FFFFFF] border-l-2 border-[#0062CC]' : 'text-[#F5F7FA] opacity-70'
+                          isDispute ? 'font-semibold text-[#EDEFF3] border-l-2 border-[#0062CC]' : 'text-[#F5F7FA] opacity-70'
                         }`} style={{ backgroundColor: 'var(--surface-2)' }}>
                           {action.revision_ia || 'Sin revisar'}
                         </span>
@@ -387,7 +387,7 @@ export function Accionables({
                             }}
                             title={isDone ? 'Marcar Propuesto' : 'Marcar Hecho'}
                             className={`p-1.5 rounded hover:bg-white/10 transition-colors ${
-                              isDone ? 'text-[#FFFFFF]' : 'text-[#0062CC]'
+                              isDone ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'
                             }`}
                           >
                             <Check size={14} />
@@ -400,7 +400,7 @@ export function Accionables({
                             title="Pedir 2da opinión a Gemini"
                             className="p-1.5 rounded hover:bg-white/10 text-[#F5F7FA] opacity-70 hover:opacity-100 transition-opacity"
                           >
-                            <Cpu size={14} className={analyzingIds[action.id] ? 'animate-spin text-[#0062CC]' : ''} />
+                            <Cpu size={14} className={analyzingIds[action.id] ? 'animate-spin text-[#4D9DFF]' : ''} />
                           </button>
                         </div>
                       </td>
@@ -417,7 +417,7 @@ export function Accionables({
           className="p-3 text-xs text-[#F5F7FA] opacity-60 flex items-center justify-between"
           style={{ backgroundColor: 'var(--surface-1)', borderTop: '1px solid var(--border)' }}
         >
-          <span>Mostrando <strong className="text-[#FFFFFF] tabular">{filtered.length}</strong> accionables</span>
+          <span>Mostrando <strong className="text-[#EDEFF3] tabular">{filtered.length}</strong> accionables</span>
           <span>Haga clic en una fila para abrir el detalle completo</span>
         </div>
       </div>

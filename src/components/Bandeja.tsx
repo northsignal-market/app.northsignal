@@ -95,9 +95,9 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       {/* Estado en una línea */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#FFFFFF]">{total === 0 ? 'Nada te espera' : `${total} cosa${total !== 1 ? 's' : ''} espera${total !== 1 ? 'n' : ''} tu criterio`}</h1>
+          <h1 className="text-xl font-bold text-[#EDEFF3]">{total === 0 ? 'Nada te espera' : `${total} cosa${total !== 1 ? 's' : ''} espera${total !== 1 ? 'n' : ''} tu criterio`}</h1>
           <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">
-            {briefing?.datos_al_dia === false ? <span className="text-[#0062CC]">Los datos tienen un problema: mirá Sistema › Salud antes de decidir nada.</span> : 'Datos al día.'}
+            {briefing?.datos_al_dia === false ? <span className="text-[#4D9DFF]">Los datos tienen un problema: mirá Sistema › Salud antes de decidir nada.</span> : 'Datos al día.'}
             {' '}{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}.
           </p>
           {orden && orden.total > 0 && (
@@ -121,8 +121,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           )}
         </div>
         <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] ${!filtroCuenta ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>Todas</button>
-          {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] ${filtroCuenta === c ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-60'}`}>{c}</button>)}
+          <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] ${!filtroCuenta ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>Todas</button>
+          {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] ${filtroCuenta === c ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>{c}</button>)}
         </div>
       </div>
 
@@ -130,7 +130,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       {novs.length > 0 && (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--primary-faint)' }}>
-            <span className="text-[11px] font-semibold text-[#FFFFFF]">Novedades</span>
+            <span className="text-[11px] font-semibold text-[#EDEFF3]">Novedades</span>
             <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{novs.length}</span>
             <span className="text-[10px] text-[#F5F7FA] opacity-50">lo que los agentes hicieron desde la última vez</span>
             <button onClick={leerTodas} className="ml-auto text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100">marcar todo visto</button>
@@ -139,7 +139,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <div key={n.id} onClick={() => abrirNovedad(n)} className="flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-white/5" style={{ borderTop: '1px solid var(--border)' }}>
               <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider pt-0.5">{n.account || 'Sist.'}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#FFFFFF] truncate">{n.titulo}</div>
+                <div className="text-xs text-[#EDEFF3] truncate">{n.titulo}</div>
                 {n.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{n.texto}</div>}
               </div>
               <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(() => { const v = n.ultima || n.creada; return v ? `${fmtFechaCorta(v)} ${String(v).slice(11, 16)}` : ''; })()}</span>
@@ -154,7 +154,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       {notas?.respuestas?.length > 0 && (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--primary-faint)' }}>
-            <span className="text-[11px] font-semibold text-[#FFFFFF]">Te respondieron</span>
+            <span className="text-[11px] font-semibold text-[#EDEFF3]">Te respondieron</span>
             <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{notas.respuestas.length}</span>
             <span className="text-[10px] text-[#F5F7FA] opacity-50">lo que preguntaste y ya te contestaron</span>
           </div>
@@ -164,7 +164,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 <span className="text-[10px] px-1.5 py-0.5 rounded tabular shrink-0" style={{ backgroundColor: 'var(--surface-2)', color: '#F5F7FA' }}>{r.cuenta}</span>
                 <span className="text-[11px] text-[#F5F7FA] opacity-60 truncate">{r.pregunta}</span>
               </div>
-              <p className="text-xs text-[#FFFFFF] mt-1 leading-relaxed">{r.respuesta}</p>
+              <p className="text-xs text-[#EDEFF3] mt-1 leading-relaxed">{r.respuesta}</p>
               <span className="text-[10px] text-[#F5F7FA] opacity-40">{r.respondio} · {new Date(r.cuando).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</span>
             </div>
           ))}
@@ -179,8 +179,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       {/* La cola */}
       {total === 0 ? (
         <div className="p-8 rounded-2xl text-center" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <Check size={22} className="mx-auto text-[#0062CC] mb-2" />
-          <p className="text-sm text-[#FFFFFF]">Cola vacía.</p>
+          <Check size={22} className="mx-auto text-[#4D9DFF] mb-2" />
+          <p className="text-sm text-[#EDEFF3]">Cola vacía.</p>
           <p className="text-xs text-[#F5F7FA] opacity-60 mt-1">Lo próximo llega mañana a las 6:45 con el análisis diario, o el lunes con el semanal. Si querés mirar una cuenta, está en Cuenta.</p>
         </div>
       ) : (
@@ -189,7 +189,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="Pide acción hoy" n={hoy.length} icono={<AlertTriangle size={13} />} destacado>
               {hoy.map(a => (
                 <Fila key={'al' + a.id} cuenta={a.account || 'Sistema'} titulo={a.titulo} sub={a.accion} onClick={() => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] }))}
-                  accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF]">Resuelta</button>} />
+                  accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3]">Resuelta</button>} />
               ))}
             </Grupo>
           )}
@@ -197,7 +197,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="Un clic" n={listos.length} icono={<Zap size={13} />} destacado>
               {listos.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.priority === 'Urgente' || a.priority === 'Alta' ? `Prioridad ${a.priority.toLowerCase()}` : undefined} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#0062CC]">el ejecutor lo aplica</span>} />
+                  accion={<span className="text-[11px] text-[#4D9DFF]">el ejecutor lo aplica</span>} />
               ))}
             </Grupo>
           )}
@@ -213,7 +213,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             <Grupo titulo="A mano" n={aMano.length}>
               {aMano.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
                 <Fila key={a.id} cuenta={a.client} titulo={a.title} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#0062CC]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#4D9DFF]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
               ))}
             </Grupo>
           )}
@@ -248,7 +248,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           {cuentas.map(c => { const p = ultimoPulso[c]; return (
             <button key={c} onClick={() => onGoTo('cuenta', c, 'semana')} className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#FFFFFF]">{c}</span>
+                <span className="text-xs font-semibold text-[#EDEFF3]">{c}</span>
                 <span className="text-[10px] text-[#F5F7FA] opacity-50">{p ? `${p.fecha} · ${nivelPulso(p.nivel).etiqueta}` : 'sin análisis todavía'}</span>
               </div>
               {p && <p className="text-[11px] text-[#F5F7FA] opacity-75 mt-0.5 leading-relaxed">{p.hallazgo_principal || p.resumen?.slice(0, 160)}</p>}
@@ -265,14 +265,14 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               <div key={k} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                 <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{fmtFechaCorta(i.ejecutado_el)}</span>
                 <span className="text-[#F5F7FA] flex-1 truncate">{i.account} · {i.titulo}</span>
-                <span className="tabular text-[#FFFFFF] shrink-0">{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${Number(i.variacion_pct).toFixed(0)}%` : (i.veredicto || '').split(':')[0]}</span>
+                <span className="tabular text-[#EDEFF3] shrink-0">{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${Number(i.variacion_pct).toFixed(0)}%` : (i.veredicto || '').split(':')[0]}</span>
               </div>
             ))}
             {(ciclo.predicciones || []).filter((p: any) => p.acerto !== null).slice(0, 4).map((p: any) => (
               <div key={p.id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                 <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">sem {fmtFechaCorta(p.semana)}</span>
                 <span className="text-[#F5F7FA] flex-1">{p.account} · {p.metrica} entre {p.valor_min} y {p.valor_max}</span>
-                <span className={`shrink-0 ${p.acerto ? 'text-[#FFFFFF]' : 'text-[#0062CC]'}`}>{p.acerto ? 'acertó' : 'falló'}: {p.valor_real}</span>
+                <span className={`shrink-0 ${p.acerto ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'}`}>{p.acerto ? 'acertó' : 'falló'}: {p.valor_real}</span>
               </div>
             ))}
           </div>
@@ -288,8 +288,8 @@ function Grupo({ titulo, n, icono, destacado, children }: { titulo: string; n: n
   return (
     <div style={{ borderBottom: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: destacado ? 'var(--primary-faint)' : 'transparent' }}>
-        {icono && <span className={destacado ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-50'}>{icono}</span>}
-        <span className="text-[11px] font-semibold text-[#FFFFFF]">{titulo}</span>
+        {icono && <span className={destacado ? 'text-[#4D9DFF]' : 'text-[#F5F7FA] opacity-50'}>{icono}</span>}
+        <span className="text-[11px] font-semibold text-[#EDEFF3]">{titulo}</span>
         <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular">{n}</span>
       </div>
       <div>{children}</div>
@@ -302,7 +302,7 @@ function Fila({ cuenta, titulo, sub, onClick, accion }: { cuenta: string; titulo
     <div onClick={onClick} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-white/5 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
       <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider">{cuenta}</span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-[#FFFFFF] truncate">{titulo}</div>
+        <div className="text-xs text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] text-[#F5F7FA] opacity-55 truncate">{sub}</div>}
       </div>
       {accion || <ChevronRight size={14} className="text-[#F5F7FA] opacity-30 shrink-0" />}
@@ -315,7 +315,7 @@ function Colapsable({ titulo, resumen, abierto, onToggle, children }: { titulo: 
     <div className="rounded-2xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left">
         {abierto ? <ChevronDown size={14} className="text-[#F5F7FA] opacity-50" /> : <ChevronRight size={14} className="text-[#F5F7FA] opacity-50" />}
-        <span className="text-xs font-medium text-[#FFFFFF]">{titulo}</span>
+        <span className="text-xs font-medium text-[#EDEFF3]">{titulo}</span>
         {!abierto && resumen && <span className="text-[11px] text-[#F5F7FA] opacity-50 truncate">{resumen}</span>}
       </button>
       {abierto && <div className="px-4 pb-4">{children}</div>}

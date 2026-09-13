@@ -14,6 +14,28 @@
   --white: #FFFFFF;
   --gray: #F5F7FA;
 
+  /* El azul de marca NO pasa contraste AA como texto sobre el navy (2,8:1).
+     Sirve para fondos de botón; para texto e íconos existe esta variante del
+     mismo matiz con más luz (5,8:1 sobre navy, 5,0:1 sobre surface-2).
+     En el markup: text-[#4D9DFF]. Investigación: docs/investigacion_frontend/02. */
+  --primary-text: #4D9DFF;
+
+  /* Texto: el blanco puro cansa como color corriente en dark; queda reservado
+     a cifras protagonistas (--num). En el markup: text-[#EDEFF3]. */
+  --text-1: #EDEFF3;
+  --num: #FFFFFF;
+
+  /* Estado. El sistema de 4 colores usaba azul también para "falló" y "empeoró":
+     color que no distingue error de acento no informa. Desaturados para dark;
+     se dosifican como texto/borde/fondo sutil, nunca bloques. */
+  --warn: #E2B453;
+  --bad: #F97066;
+  --warn-faint: color-mix(in oklab, var(--warn) 12%, transparent);
+  --bad-faint: color-mix(in oklab, var(--bad) 12%, transparent);
+
+  /* Fondo de campos de entrada: hoy los inputs usan el navy pelado. */
+  --field: #12172D;
+
   --primary-hover: color-mix(in oklab, var(--primary) 85%, var(--white));
   --primary-soft: color-mix(in oklab, var(--primary) 18%, transparent);
   --primary-faint: color-mix(in oklab, var(--primary) 8%, transparent);
@@ -26,7 +48,7 @@
   --border: color-mix(in oklab, var(--gray) 12%, transparent);
   --border-strong: color-mix(in oklab, var(--gray) 24%, transparent);
 
-  --text: var(--white);
+  --text: var(--text-1);
   --text-secondary: color-mix(in oklab, var(--gray) 70%, transparent);
   --text-muted: color-mix(in oklab, var(--gray) 45%, transparent);
 
@@ -56,7 +78,19 @@ html, body {
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* App de datos: TODO dígito alinea en columna y el cero se distingue de la O.
+     Inter trae ambas features; activarlas globales evita perseguir .tabular. */
+  font-variant-numeric: tabular-nums slashed-zero;
 }
+
+/* Anillo de foco único del sistema: visible con teclado, invisible con mouse.
+   2px del azul de texto (el de marca no contrasta), separado del control. */
+:focus-visible {
+  outline: 2px solid var(--primary-text);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--primary-soft); color: var(--white); }
 
 body {
   background:

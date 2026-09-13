@@ -714,9 +714,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
       <div className="flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] h-full">
         <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center gap-3">
-            <Database size={20} className="text-[#0062CC]" />
+            <Database size={20} className="text-[#4D9DFF]" />
             <div>
-              <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Datos</h1>
+              <h1 className="text-lg font-medium text-[#EDEFF3] tracking-wide">Datos</h1>
               <p className="text-[10px] text-[#F5F7FA] opacity-50">{selectedClient} · cuenta multi-local</p>
             </div>
           </div>
@@ -732,8 +732,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     <div className={`flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] ${isFullscreen ? 'fixed inset-0 z-[200]' : 'h-full'}`}>
       <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 bg-[#1A1F36] shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
-          <Database size={20} className="text-[#0062CC]" />
-          <h1 className="text-lg font-medium text-[#FFFFFF] tracking-wide">Datos</h1>
+          <Database size={20} className="text-[#4D9DFF]" />
+          <h1 className="text-lg font-medium text-[#EDEFF3] tracking-wide">Datos</h1>
         </div>
         
         <div className="flex items-center gap-4">
@@ -743,7 +743,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               <select aria-label="Density" 
                 value={density}
                 onChange={(e) => setDensity(e.target.value as any)}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg pl-3 pr-8 py-1.5 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
+                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg pl-3 pr-8 py-1.5 text-sm text-[#EDEFF3] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
               >
                 <option value="compact" className="bg-[#1A1F36]">Compacta</option>
                 <option value="normal" className="bg-[#1A1F36]">Normal</option>
@@ -756,7 +756,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           <div className="flex items-center gap-3">
             <button aria-label="Exportar a PDF" title="Exportar a PDF" 
               onClick={exportToPDF}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#FFFFFF] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
             >
               <FileText size={14} />
               PDF Report
@@ -764,7 +764,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             
             <button aria-label="Exportar a CSV" title="Exportar a CSV" 
               onClick={exportToCSV}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#FFFFFF] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
             >
               <Download size={14} />
               CSV
@@ -772,7 +772,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors font-medium shadow-sm ${isFullscreen ? 'bg-[#0062CC] text-[#FFFFFF] border-[#0062CC]' : 'bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#FFFFFF] border-[#0062CC]/30'}`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors font-medium shadow-sm ${isFullscreen ? 'bg-[#0062CC] text-[#EDEFF3] border-[#0062CC]' : 'bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border-[#0062CC]/30'}`}
             >
               {isFullscreen ? <X size={14} /> : <Layers size={14} />}
               {isFullscreen ? 'Contraer' : 'Pantalla Completa'}
@@ -795,7 +795,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                   <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-40 px-1.5 whitespace-nowrap">{grupo}</span>
                   {items.map(([val, config]: any) => (
                     <button key={val} onClick={() => setActiveView(val)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#FFFFFF] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#FFFFFF] hover:bg-[#0062CC]/15'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#EDEFF3] hover:bg-[#0062CC]/15'}`}>
                       {config.label}
                     </button>
                   ))}
@@ -809,9 +809,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           <div className="relative z-[60]">
             <button 
               onClick={() => setShowColSelector(!showColSelector)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1A1F36] hover:bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1A1F36] hover:bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
             >
-              <Settings2 size={16} className="text-[#0062CC]" />
+              <Settings2 size={16} className="text-[#4D9DFF]" />
               Personalizar Columnas
             </button>
             {showColSelector && (
@@ -822,7 +822,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                       const defaults = DEFAULT_COLS[activeView] || allCols;
                       setVisibleCols(defaults);
                       localStorage.setItem(`northsignal.cols.${activeView}`, JSON.stringify(defaults));
-                   }} className="text-xs text-[#0062CC] hover:text-[#0062CC]/80 font-semibold">Reset</button>
+                   }} className="text-xs text-[#4D9DFF] hover:text-[#4D9DFF]/80 font-semibold">Reset</button>
                  </div>
                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
                    {allCols.map(c => (
@@ -831,9 +831,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                          type="checkbox"
                          checked={visibleCols.includes(c)}
                          onChange={() => toggleCol(c)}
-                         className="rounded border-[#0062CC]/30 bg-[#1A1F36] text-[#0062CC] focus:ring-0 focus:ring-offset-0"
+                         className="rounded border-[#0062CC]/30 bg-[#1A1F36] text-[#4D9DFF] focus:ring-0 focus:ring-offset-0"
                        />
-                       <span className="text-sm text-[#FFFFFF]">{COL_LABELS[c] || c}</span>
+                       <span className="text-sm text-[#EDEFF3]">{COL_LABELS[c] || c}</span>
                      </label>
                    ))}
                  </div>
@@ -854,7 +854,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                 placeholder={`Buscar en ${VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.label}...`}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
+                className="w-full rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
                 style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
               />
             </div>
@@ -862,7 +862,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             <select aria-label="Rango de fechas"
               value={dateRangeMode}
               onChange={e => setDateRangeMode(e.target.value)}
-              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#FFFFFF] focus:outline-none cursor-pointer"
+              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#EDEFF3] focus:outline-none cursor-pointer"
               style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
             >
               {isDailyView ? (<>
@@ -882,12 +882,12 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               <div className="flex items-center gap-1.5">
                 <input aria-label="Desde" type="date" value={customRange.from} max={customRange.to || undefined}
                   onChange={e => setCustomRange(p => ({ ...p, from: e.target.value }))}
-                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#FFFFFF] focus:outline-none tabular [color-scheme:dark]"
+                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#EDEFF3] focus:outline-none tabular [color-scheme:dark]"
                   style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }} />
                 <span className="text-[#F5F7FA]/50 text-xs">→</span>
                 <input aria-label="Hasta" type="date" value={customRange.to} min={customRange.from || undefined}
                   onChange={e => setCustomRange(p => ({ ...p, to: e.target.value }))}
-                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#FFFFFF] focus:outline-none tabular [color-scheme:dark]"
+                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#EDEFF3] focus:outline-none tabular [color-scheme:dark]"
                   style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }} />
                 {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
               </div>
@@ -896,7 +896,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             <select aria-label="Filas"
               value={limit}
               onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
-              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#FFFFFF] focus:outline-none cursor-pointer"
+              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#EDEFF3] focus:outline-none cursor-pointer"
               style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
             >
               <option value={100}>100 filas</option>
@@ -930,7 +930,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           ].map((k: any) => (
             <div key={k.label} className="surface p-2.5" style={{ borderRadius: 'var(--r-panel)' }} title={k.title}>
               <p className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 mb-0.5">{k.label}</p>
-              <h3 className={`text-sm font-semibold tabular ${k.azul ? 'text-[#0062CC]' : 'text-[#FFFFFF]'}`}>{k.valor}</h3>
+              <h3 className={`text-sm font-semibold tabular ${k.azul ? 'text-[#4D9DFF]' : 'text-[#EDEFF3]'}`}>{k.valor}</h3>
             </div>
           ))}
         </div>
@@ -938,9 +938,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         {filters.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4 shrink-0">
             {filters.map((f, i) => (
-              <span key={i} className="flex items-center gap-1.5 bg-[#0062CC]/20 text-[#0062CC] text-xs px-2.5 py-1 rounded-lg border border-[#0062CC]/30 font-medium">
+              <span key={i} className="flex items-center gap-1.5 bg-[#0062CC]/20 text-[#4D9DFF] text-xs px-2.5 py-1 rounded-lg border border-[#0062CC]/30 font-medium">
                 {COL_LABELS[f.col]||f.col} {f.op} "{f.val}"
-                <button onClick={() => removeFilter(i)} className="hover:text-[#FFFFFF]"><X size={12}/></button>
+                <button onClick={() => removeFilter(i)} className="hover:text-[#EDEFF3]"><X size={12}/></button>
               </span>
             ))}
           </div>
@@ -950,8 +950,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           <div className="glass mb-4 p-4 md:p-5 shrink-0" style={{ borderRadius: 'var(--r-tarjeta)' }}>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-[13px] font-medium text-[#FFFFFF] flex items-center gap-2">
-                  <TrendingUp size={14} className="text-[#0062CC]" /> Tendencia semanal · gasto y CPA
+                <h3 className="text-[13px] font-medium text-[#EDEFF3] flex items-center gap-2">
+                  <TrendingUp size={14} className="text-[#4D9DFF]" /> Tendencia semanal · gasto y CPA
                 </h3>
                 <p className="text-[11px] text-[#F5F7FA] opacity-50">Cada barra es una semana cerrada de lunes a domingo; la línea es el CPA ponderado de esa semana.</p>
               </div>
@@ -998,8 +998,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               </div>
             ) : data.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-[#F5F7FA]/50 z-20">
-                 <Search size={48} className="mb-4 opacity-30 text-[#0062CC]" />
-                 <p className="text-lg font-medium text-[#FFFFFF]">No hay filas para este rango. Probá otro rango o quitá el filtro de texto.</p>
+                 <Search size={48} className="mb-4 opacity-30 text-[#4D9DFF]" />
+                 <p className="text-lg font-medium text-[#EDEFF3]">No hay filas para este rango. Probá otro rango o quitá el filtro de texto.</p>
                  <p className="text-sm mt-1 text-[#F5F7FA]/70">Ajusta los filtros o cambia de vista.</p>
               </div>
             ) : null}
@@ -1026,7 +1026,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                             ? <Termino t={COL_TERMINO[col]}>{COL_LABELS[col] || col.replace(/_/g, ' ')}</Termino>
                             : (COL_LABELS[col] || col.replace(/_/g, ' '))}
                           {isSorted ? (
-                            <span className="text-[#0062CC]">
+                            <span className="text-[#4D9DFF]">
                               {orderDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </span>
                           ) : (
@@ -1078,9 +1078,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                         let title = '';
 
                         if (col === 'quality_score' && val !== null) {
-                          if (val <= 4) { cellBg = 'bg-[#0062CC]/10 text-[#0062CC]'; }
+                          if (val <= 4) { cellBg = 'bg-[#0062CC]/10 text-[#4D9DFF]'; }
                           else if (val <= 6) { cellBg = 'bg-[var(--primary-faint)]/10 text-[#F5F7FA]'; }
-                          else { cellBg = 'bg-[var(--surface-2)]/10 text-[#FFFFFF]'; }
+                          else { cellBg = 'bg-[var(--surface-2)]/10 text-[#EDEFF3]'; }
                         }
                         
                         if (col === 'impr_share' && val !== null && val < 30) {
@@ -1093,7 +1093,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                         }
                         
                         if (col === 'lost_is_rank' && val > 40) {
-                          cellBg = 'bg-[#0062CC]/10 text-[#0062CC]';
+                          cellBg = 'bg-[#0062CC]/10 text-[#4D9DFF]';
                           title = 'subir presupuesto NO resuelve esto';
                         }
                         
@@ -1148,7 +1148,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           <div className="text-xs text-[#F5F7FA]/70 tabular">
             {totalCount} filas
             {totals && (totals as any)._dias_en_rango && (
-              <span className={(totals as any)._rango_completo ? ' opacity-60' : ' text-[#0062CC]'}>
+              <span className={(totals as any)._rango_completo ? ' opacity-60' : ' text-[#4D9DFF]'}>
                 {' · '}{(totals as any)._dias_con_datos} de {(totals as any)._dias_en_rango} días con datos
                 {!(totals as any)._rango_completo && ' (rango parcial)'}
               </span>
@@ -1159,17 +1159,17 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
             <button 
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#0062CC] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#4D9DFF] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
             >
               Anterior
             </button>
-            <span className="text-xs text-[#FFFFFF] font-medium px-2">
+            <span className="text-xs text-[#EDEFF3] font-medium px-2">
               Página {page}
             </span>
             <button 
               onClick={() => setPage(p => p + 1)}
               disabled={page * limit >= totalCount}
-              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#0062CC] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#4D9DFF] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
             >
               Siguiente
             </button>
@@ -1193,8 +1193,8 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         {(totals as any).dataIntegrity && ((totals as any).dataIntegrity.diff_adgroup > 0 || (totals as any).dataIntegrity.diff_keyword > 0) && (
            <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
              <div className="flex items-start gap-3">
-                <AlertCircle className="text-[#0062CC] shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium text-[#0062CC]">
+                <AlertCircle className="text-[#4D9DFF] shrink-0 mt-0.5" size={18} />
+                <p className="text-sm font-medium text-[#4D9DFF]">
                   Pérdida de Integridad: El gasto de campaña no coincide con los niveles inferiores. 
                   (Dif. Grupos: {(totals as any).dataIntegrity.diff_adgroup}, Dif. Keywords: {(totals as any).dataIntegrity.diff_keyword}). Posible truncado de datos.
                 </p>
@@ -1208,25 +1208,25 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         {burnRate && (
           <div className="mb-6 p-5 rounded-xl bg-[#1A1F36] border border-[#0062CC]/20 flex items-center justify-between gap-4 shrink-0 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[#0062CC]/10 border-[#0062CC]/30 text-[#0062CC]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#FFFFFF]'}`}>
+              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[#0062CC]/10 border-[#0062CC]/30 text-[#4D9DFF]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#EDEFF3]'}`}>
                  <TrendingUp size={20} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-[#FFFFFF]">Pacing Predictivo (Burn Rate)</h3>
+                <h3 className="text-sm font-semibold text-[#EDEFF3]">Pacing Predictivo (Burn Rate)</h3>
                 <p className="text-xs text-[#F5F7FA]/70">Proyección fin de mes basada en gasto diario promedio ({formatValue('gasto', burnRate.dailyAvg, monedaDe(selectedClient))}/día)</p>
               </div>
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Proyección Mensual</p>
-                <p className={`text-lg font-bold tabular ${burnRate.status === 'over' ? 'text-[#0062CC]' : burnRate.status === 'under' ? 'text-[#F5F7FA]' : 'text-[#FFFFFF]'}`}>
+                <p className={`text-lg font-bold tabular ${burnRate.status === 'over' ? 'text-[#4D9DFF]' : burnRate.status === 'under' ? 'text-[#F5F7FA]' : 'text-[#EDEFF3]'}`}>
                   {formatValue('gasto', burnRate.projectedTotal, monedaDe(selectedClient))}
                 </p>
               </div>
               <div className="w-px h-10 bg-[#0062CC]/20"></div>
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
-                <p className="text-lg font-bold tabular text-[#FFFFFF]">
+                <p className="text-lg font-bold tabular text-[#EDEFF3]">
                   {formatValue('gasto', burnRate.monthlyBudget, monedaDe(selectedClient))}
                 </p>
               </div>
@@ -1257,19 +1257,19 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Gasto total</div>
-                  <div className="text-base font-bold text-[#FFFFFF] tabular">{formatValue('gasto_total', keywordTrend.gasto_total, currency)}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{formatValue('gasto_total', keywordTrend.gasto_total, currency)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Conversiones</div>
-                  <div className="text-base font-bold text-[#FFFFFF] tabular">{keywordTrend.conversiones_total ?? 0}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{keywordTrend.conversiones_total ?? 0}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">CPA del período</div>
-                  <div className="text-sm font-semibold text-[#FFFFFF] tabular">{formatValue('cpa', keywordTrend.cpa_periodo, currency)}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{formatValue('cpa', keywordTrend.cpa_periodo, currency)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Días con actividad</div>
-                  <div className="text-sm font-semibold text-[#FFFFFF] tabular">{keywordTrend.dias_con_actividad ?? 0}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{keywordTrend.dias_con_actividad ?? 0}</div>
                 </div>
               </div>
               <p className="text-[11px] text-[#F5F7FA] opacity-60 pt-1">

@@ -64,7 +64,7 @@ export function Campana({ onAbrir }: Props) {
     <div className="relative" ref={panel}>
       <button onClick={() => setAbierta(v => !v)} className="relative w-8 h-8 rounded-lg flex items-center justify-center text-[#F5F7FA] opacity-80 hover:opacity-100 hover:bg-white/5" title="Novedades: lo que tus compañeros de trabajo hicieron">
         <Bell size={16} />
-        {sinVer.length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#0062CC] text-[#FFFFFF] text-[10px] font-bold flex items-center justify-center tabular">{sinVer.length > 99 ? '99+' : sinVer.length}</span>}
+        {sinVer.length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#0062CC] text-[#EDEFF3] text-[10px] font-bold flex items-center justify-center tabular">{sinVer.length > 99 ? '99+' : sinVer.length}</span>}
       </button>
 
       {toast && !abierta && createPortal(
@@ -72,7 +72,7 @@ export function Campana({ onAbrir }: Props) {
           <div className="flex items-start gap-2.5">
             <Avatar actor={toast.actor} />
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-[#FFFFFF]"><span className="font-semibold">{actorDe(toast.actor).nombre}</span> {VERBOS_HUMANOS[toast.verbo || ''] || ''} <span className="opacity-80">{(toast.objeto || toast.titulo).slice(0, 60)}</span></div>
+              <div className="text-xs text-[#EDEFF3]"><span className="font-semibold">{actorDe(toast.actor).nombre}</span> {VERBOS_HUMANOS[toast.verbo || ''] || ''} <span className="opacity-80">{(toast.objeto || toast.titulo).slice(0, 60)}</span></div>
               {toast.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2 mt-0.5">{toast.texto}</div>}
             </div>
             <button onClick={(e) => { e.stopPropagation(); setToast(null); }} className="text-[#F5F7FA] opacity-40 hover:opacity-100"><X size={12} /></button>
@@ -83,8 +83,8 @@ export function Campana({ onAbrir }: Props) {
         <div ref={panelFlotante} className="fixed right-4 top-12 z-[300] w-[420px] max-w-[calc(100vw-24px)] rounded-2xl shadow-2xl flex flex-col" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)', maxHeight: '72vh' }}>
           <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-1">
-              <button onClick={() => setPestana('sinver')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'sinver' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Sin ver{sinVer.length ? ` · ${sinVer.length}` : ''}</button>
-              <button onClick={() => setPestana('todas')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'todas' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70'}`}>Últimos 7 días</button>
+              <button onClick={() => setPestana('sinver')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'sinver' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Sin ver{sinVer.length ? ` · ${sinVer.length}` : ''}</button>
+              <button onClick={() => setPestana('todas')} className={`px-2.5 py-1 rounded-md text-xs ${pestana === 'todas' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Últimos 7 días</button>
             </div>
             {sinVer.length > 0 && <button aria-label="Marcar como leída" title="Marcar como leída" onClick={leerTodas} className="text-[11px] text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1"><Check size={12} /> Marcar todo visto</button>}
           </div>
@@ -92,7 +92,7 @@ export function Campana({ onAbrir }: Props) {
             {grupos.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <Bell size={18} className="mx-auto text-[#F5F7FA] opacity-30 mb-2" />
-                <p className="text-xs text-[#FFFFFF]">{pestana === 'sinver' ? 'Nada nuevo.' : 'Sin actividad en 7 días.'}</p>
+                <p className="text-xs text-[#EDEFF3]">{pestana === 'sinver' ? 'Nada nuevo.' : 'Sin actividad en 7 días.'}</p>
                 <p className="text-[11px] text-[#F5F7FA] opacity-50 mt-1">Tus compañeros te avisan acá cuando comentan, editan, proponen o ejecutan algo.</p>
               </div>
             ) : (() => {
@@ -108,7 +108,7 @@ export function Campana({ onAbrir }: Props) {
                       <div className="flex items-start gap-2.5 cursor-pointer" onClick={() => varios ? setExpandido(x => ({ ...x, [g.k]: !exp })) : abrir(g.ultimo)}>
                         <div className="flex -space-x-1.5 shrink-0 pt-0.5">{actores.slice(0, 3).map(a => <Avatar key={a} actor={a} chico />)}</div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs text-[#FFFFFF] leading-snug">
+                          <div className="text-xs text-[#EDEFF3] leading-snug">
                             {varios ? <><span className="font-semibold">{g.items.length} novedades</span> en </> : <><span className="font-semibold">{actorDe(g.ultimo.actor).nombre}</span> {VERBOS_HUMANOS[g.ultimo.verbo || ''] || ''} </>}
                             <span className="opacity-90">{(g.ultimo.objeto || g.ultimo.titulo).slice(0, 80)}</span>
                           </div>
@@ -127,13 +127,13 @@ export function Campana({ onAbrir }: Props) {
                             <div key={i.id} onClick={() => abrir(i)} className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)' }}>
                               <Avatar actor={i.actor} chico />
                               <div className="min-w-0 flex-1">
-                                <div className="text-[11px] text-[#FFFFFF]"><span className="font-semibold">{actorDe(i.actor).nombre}</span> {VERBOS_HUMANOS[i.verbo || ''] || ''}</div>
+                                <div className="text-[11px] text-[#EDEFF3]"><span className="font-semibold">{actorDe(i.actor).nombre}</span> {VERBOS_HUMANOS[i.verbo || ''] || ''}</div>
                                 {i.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{i.texto}</div>}
                                 <div className="text-[10px] text-[#F5F7FA] opacity-40 mt-0.5">{haceCuanto(i.creada)}</div>
                               </div>
                             </div>
                           ))}
-                          <button onClick={() => abrir(g.ultimo)} className="text-[11px] text-[#0062CC] px-2.5 py-1">Abrir {g.ultimo.ref_tipo === 'accionable' ? 'el accionable' : g.ultimo.ref_tipo === 'propuesta' ? 'la propuesta' : 'esto'}</button>
+                          <button onClick={() => abrir(g.ultimo)} className="text-[11px] text-[#4D9DFF] px-2.5 py-1">Abrir {g.ultimo.ref_tipo === 'accionable' ? 'el accionable' : g.ultimo.ref_tipo === 'propuesta' ? 'la propuesta' : 'esto'}</button>
                         </div>
                       )}
                     </div>

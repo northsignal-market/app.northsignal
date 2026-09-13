@@ -85,7 +85,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
       {/* Header with Client Selection & Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
-          <h1 className="text-xl font-bold text-[#FFFFFF]">
+          <h1 className="text-xl font-bold text-[#EDEFF3]">
             Briefs Ejecutivos
           </h1>
           <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
@@ -98,7 +98,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
           <button
             onClick={() => hasOlder && setSelectedBrief(clientBriefs[currentIndex + 1])}
             disabled={!hasOlder}
-            className="px-3 py-1.5 rounded text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 disabled:opacity-30 flex items-center gap-1 transition-opacity"
+            className="px-3 py-1.5 rounded text-xs font-semibold text-[#EDEFF3] hover:bg-white/10 disabled:opacity-30 flex items-center gap-1 transition-opacity"
             style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-1)' }}
           >
             <ChevronLeft size={14} />
@@ -108,7 +108,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
           <button
             onClick={() => hasNewer && setSelectedBrief(clientBriefs[currentIndex - 1])}
             disabled={!hasNewer}
-            className="px-3 py-1.5 rounded text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 disabled:opacity-30 flex items-center gap-1 transition-opacity"
+            className="px-3 py-1.5 rounded text-xs font-semibold text-[#EDEFF3] hover:bg-white/10 disabled:opacity-30 flex items-center gap-1 transition-opacity"
             style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-1)' }}
           >
             <span>Semana Siguiente</span>
@@ -149,12 +149,12 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                       {(() => { const f = brief.date || (brief as any).semana || (brief as any).week || (brief as any).created_at; return f ? new Date(f).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sin fecha'; })()}
                     </span>
                     {i === 0 && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#0062CC] text-[#FFFFFF]">
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#0062CC] text-[#EDEFF3]">
                         MÁS RECIENTE
                       </span>
                     )}
                   </div>
-                  <div className="text-xs font-semibold text-[#FFFFFF] leading-snug line-clamp-2">
+                  <div className="text-xs font-semibold text-[#EDEFF3] leading-snug line-clamp-2">
                     {brief.title}
                   </div>
                 </div>
@@ -177,7 +177,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
               {/* Brief Title & Meta */}
               <div className="space-y-2 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#0062CC]/15 text-[#FFFFFF] border border-[#0062CC]/30">
+                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30">
                     {selectedBrief.client}
                   </span>
                   <span className="text-xs text-[#F5F7FA] opacity-70 tabular flex items-center gap-1">
@@ -192,7 +192,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                   )}
                 </div>
 
-                <h2 className="text-lg font-bold text-[#FFFFFF]">
+                <h2 className="text-lg font-bold text-[#EDEFF3]">
                   {selectedBrief.title}
                 </h2>
               </div>
@@ -207,7 +207,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                     border: '1px solid var(--border)'
                   }}
                 >
-                  <div className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-[#EDEFF3] uppercase tracking-wider flex items-center gap-1.5">
                     <span>Handoff Semanal a Andrés</span>
                   </div>
                   <p className="text-xs text-[#F5F7FA] leading-relaxed whitespace-pre-wrap">
@@ -230,15 +230,15 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                   briefBlocks.map((block, idx) => {
                     const text = block.text || '';
                     if (block.type === 'heading_1') {
-                      return <h2 key={idx} className="text-base font-bold text-[#FFFFFF] pt-3">{text}</h2>;
+                      return <h2 key={idx} className="text-base font-bold text-[#EDEFF3] pt-3">{text}</h2>;
                     }
                     if (block.type === 'heading_2') {
-                      return <h3 key={idx} className="text-sm font-semibold text-[#FFFFFF] pt-2">{text}</h3>;
+                      return <h3 key={idx} className="text-sm font-semibold text-[#EDEFF3] pt-2">{text}</h3>;
                     }
                     if (block.type === 'bulleted_list_item') {
                       return (
                         <div key={idx} className="flex items-start gap-2 pl-2">
-                          <span className="text-[#0062CC]">•</span>
+                          <span className="text-[#4D9DFF]">•</span>
                           <span>{text}</span>
                         </div>
                       );
@@ -251,7 +251,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
               {/* Mentioned Actionables */}
               {mentionedActions.length > 0 && onOpenActionable && (
                 <div className="pt-4 border-t space-y-2" style={{ borderColor: 'var(--border)' }}>
-                  <span className="text-xs font-semibold text-[#FFFFFF] uppercase tracking-wider block">
+                  <span className="text-xs font-semibold text-[#EDEFF3] uppercase tracking-wider block">
                     {sonDelBrief ? 'Accionables vinculados a este brief' : `Accionables de ${activeClient} (el brief no tiene vinculados propios)`}
                   </span>
                   <div className="space-y-1.5">
@@ -262,10 +262,10 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                         className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
                         style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
                       >
-                        <span className="text-xs text-[#FFFFFF] font-medium truncate pr-2">
+                        <span className="text-xs text-[#EDEFF3] font-medium truncate pr-2">
                           {act.title}
                         </span>
-                        <span className="text-xs text-[#0062CC] font-semibold shrink-0 flex items-center gap-1">
+                        <span className="text-xs text-[#4D9DFF] font-semibold shrink-0 flex items-center gap-1">
                           Ver <ArrowRight size={11} />
                         </span>
                       </div>

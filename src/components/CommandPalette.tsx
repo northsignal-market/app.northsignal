@@ -136,12 +136,12 @@ export function CommandPalette({
           className="flex items-center px-4 py-3"
           style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
-          <Search size={18} className="text-[#0062CC] shrink-0" />
+          <Search size={18} className="text-[#4D9DFF] shrink-0" />
           <input 
             ref={inputRef}
             type="text" 
             placeholder="Buscar página, cliente, o accionable..."
-            className="w-full bg-transparent border-none text-[#FFFFFF] px-3 focus:outline-none text-sm placeholder-[#F5F7FA]/40"
+            className="w-full bg-transparent border-none text-[#EDEFF3] px-3 focus:outline-none text-sm placeholder-[#F5F7FA]/40"
             value={query}
             onChange={e => { setQuery(e.target.value); setSel(0); }}
             onKeyDown={e => {
@@ -173,14 +173,14 @@ export function CommandPalette({
                 className={`w-full text-left px-3.5 py-2.5 rounded-xl transition-colors flex items-center justify-between group ${i === selIdx ? 'bg-white/10' : 'hover:bg-white/5'}`}
               >
                 <div className="min-w-0 pr-2">
-                  <span className="text-[10px] font-bold text-[#0062CC] uppercase tracking-wider block mb-0.5">
+                  <span className="text-[10px] font-bold text-[#4D9DFF] uppercase tracking-wider block mb-0.5">
                     {r.type}
                   </span>
-                  <span className="text-xs text-[#FFFFFF] font-medium block truncate">
+                  <span className="text-xs text-[#EDEFF3] font-medium block truncate">
                     {r.title}
                   </span>
                 </div>
-                <ChevronRight size={14} className={`shrink-0 ${i === selIdx ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-40 group-hover:text-[#FFFFFF]'}`} />
+                <ChevronRight size={14} className={`shrink-0 ${i === selIdx ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-40 group-hover:text-[#EDEFF3]'}`} />
               </button>
             ))
           )}

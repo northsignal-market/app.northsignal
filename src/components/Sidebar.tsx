@@ -34,7 +34,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
               referrerPolicy="no-referrer"
             />
           </div>
-          <span className="font-bold text-[#FFFFFF] tracking-tight text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <span className="font-bold text-[#EDEFF3] tracking-tight text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             North Signal
           </span>
         </div>
@@ -115,7 +115,7 @@ function NavItem({
       className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all duration-150
         sm:w-full sm:flex-row sm:gap-3 sm:px-2.5 sm:py-2 sm:text-left ${
         active 
-          ? 'bg-[#0062CC] text-[#FFFFFF] font-semibold shadow-sm' 
+          ? 'bg-[#0062CC] text-[#EDEFF3] font-semibold shadow-sm' 
           : 'text-[#F5F7FA] opacity-75 hover:opacity-100 hover:bg-white/5 font-normal'
       }`}
     >

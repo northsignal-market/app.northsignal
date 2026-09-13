@@ -12,7 +12,7 @@ export function Herramientas() {
       {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
-          <h1 className="text-xl font-bold text-[#FFFFFF]">
+          <h1 className="text-xl font-bold text-[#EDEFF3]">
             Herramientas & Automatizaciones
           </h1>
           <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
@@ -24,7 +24,7 @@ export function Herramientas() {
           <button
             onClick={() => setActiveTool('rsa')}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-              activeTool === 'rsa' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
+              activeTool === 'rsa' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
             }`}
           >
             <Sparkles size={13} />
@@ -33,7 +33,7 @@ export function Herramientas() {
           <button
             onClick={() => setActiveTool('playbook')}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-              activeTool === 'playbook' ? 'bg-[#0062CC] text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
+              activeTool === 'playbook' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
             }`}
           >
             <Sliders size={13} />

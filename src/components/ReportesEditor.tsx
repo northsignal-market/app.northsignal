@@ -61,25 +61,25 @@ export function ReportesEditor({ activeClient }: Props) {
   const copiarLink = async () => { if (!link) return; try { await navigator.clipboard.writeText(link); avisar('Link copiado.'); } catch { avisar(link); } };
 
   const m = sel?.metricas || {};
-  const kpi = (k: string, f: (v: any) => string) => m[k] ? <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}><div className="text-[10px] text-[#F5F7FA] opacity-50 uppercase tracking-wider">{k === 'gasto' ? 'Inversión' : k === 'conversiones' ? 'Conversiones' : k.toUpperCase()}</div><div className="text-sm tabular text-[#FFFFFF]">{f(m[k].actual)}</div>{m[k].anterior != null && m[k].anterior ? <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{((m[k].actual - m[k].anterior) / m[k].anterior * 100 > 0 ? '+' : '')}{((m[k].actual - m[k].anterior) / m[k].anterior * 100).toFixed(0)}% vs anterior</div> : null}</div> : null;
+  const kpi = (k: string, f: (v: any) => string) => m[k] ? <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}><div className="text-[10px] text-[#F5F7FA] opacity-50 uppercase tracking-wider">{k === 'gasto' ? 'Inversión' : k === 'conversiones' ? 'Conversiones' : k.toUpperCase()}</div><div className="text-sm tabular text-[#EDEFF3]">{f(m[k].actual)}</div>{m[k].anterior != null && m[k].anterior ? <div className="text-[10px] tabular text-[#F5F7FA] opacity-50">{((m[k].actual - m[k].anterior) / m[k].anterior * 100 > 0 ? '+' : '')}{((m[k].actual - m[k].anterior) / m[k].anterior * 100).toFixed(0)}% vs anterior</div> : null}</div> : null;
 
   return (
     <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
       <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF]">Reportes al cliente</h2>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3]">Reportes al cliente</h2>
           <p className="text-xs text-[#F5F7FA] opacity-60">El sistema redacta, vos revisás. Los números no se editan: salen de Supabase. Cada sección se regenera sola. Al aprobar, el reporte te llega a vos por correo con el texto listo para reenviar al cliente en su idioma; no sale solo.</p>
         </div>
-        {aviso && <span className="text-[11px] text-[#FFFFFF] px-3 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: 'var(--primary-faint)', border: '1px solid rgba(0,98,204,0.4)' }}>{aviso}</span>}
+        {aviso && <span className="text-[11px] text-[#EDEFF3] px-3 py-1.5 rounded-lg shrink-0" style={{ backgroundColor: 'var(--primary-faint)', border: '1px solid rgba(0,98,204,0.4)' }}>{aviso}</span>}
       </div>
 
       {/* Crear */}
       <div className="p-3 rounded-xl flex flex-wrap items-end gap-2" style={{ backgroundColor: 'var(--surface-2)' }}>
-        <div className="flex gap-1.5">{[['semana', 'Última semana'], ['dos', 'Dos semanas'], ['mes', 'Mes pasado']].map(([k, l]) => <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#FFFFFF]" style={{ border: '1px solid var(--border)' }}>{l}</button>)}</div>
-        <input aria-label="Form" type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
+        <div className="flex gap-1.5">{[['semana', 'Última semana'], ['dos', 'Dos semanas'], ['mes', 'Mes pasado']].map(([k, l]) => <button key={k} onClick={() => preset(k)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:text-[#EDEFF3]" style={{ border: '1px solid var(--border)' }}>{l}</button>)}</div>
+        <input aria-label="Form" type="date" value={form.desde} onChange={e => setForm(f => ({ ...f, desde: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
         <span className="text-[11px] text-[#F5F7FA] opacity-50">a</span>
-        <input aria-label="Form" type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#FFFFFF]" style={{ colorScheme: 'dark' }} />
-        <button onClick={crear} disabled={!form.desde || !form.hasta || trabajando === 'crear'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#FFFFFF] disabled:opacity-40">{trabajando === 'crear' ? 'Armando…' : 'Crear borrador'}</button>
+        <input aria-label="Form" type="date" value={form.hasta} onChange={e => setForm(f => ({ ...f, hasta: e.target.value }))} className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-2 py-1 text-xs text-[#EDEFF3]" style={{ colorScheme: 'dark' }} />
+        <button onClick={crear} disabled={!form.desde || !form.hasta || trabajando === 'crear'} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">{trabajando === 'crear' ? 'Armando…' : 'Crear borrador'}</button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
@@ -88,7 +88,7 @@ export function ReportesEditor({ activeClient }: Props) {
           {reportes.length === 0 && <p className="text-xs text-[#F5F7FA] opacity-50 italic">Ningún reporte todavía para {activeClient}.</p>}
           {reportes.map(r => (
             <button key={r.id} onClick={() => abrir(r)} className="w-full text-left px-3 py-2 rounded-lg" style={{ backgroundColor: sel?.id === r.id ? 'var(--primary-faint)' : 'var(--surface-2)', border: sel?.id === r.id ? '1px solid rgba(0,98,204,0.4)' : '1px solid transparent' }}>
-              <div className="flex items-center justify-between"><span className="text-xs text-[#FFFFFF] tabular">{fmtFechaCorta(r.periodo_desde)} → {fmtFechaCorta(r.periodo_hasta)}</span><span className={`text-[10px] uppercase tracking-wider ${r.estado === 'borrador' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-50'}`}>{ESTADOS[r.estado]?.label || r.estado}</span></div>
+              <div className="flex items-center justify-between"><span className="text-xs text-[#EDEFF3] tabular">{fmtFechaCorta(r.periodo_desde)} → {fmtFechaCorta(r.periodo_hasta)}</span><span className={`text-[10px] uppercase tracking-wider ${r.estado === 'borrador' ? 'text-[#4D9DFF]' : 'text-[#F5F7FA] opacity-50'}`}>{ESTADOS[r.estado]?.label || r.estado}</span></div>
               <div className="text-[10px] text-[#F5F7FA] opacity-50">{r.tipo} · {r.idioma} · v{r.version || 1}{r.visto_el ? ' · visto por el cliente' : ''}{r.enviado_el ? ` · enviado ${fmtFechaCorta(r.enviado_el)}` : ''}</div>
             </button>
           ))}
@@ -99,15 +99,15 @@ export function ReportesEditor({ activeClient }: Props) {
           <div className="space-y-3 min-w-0">
             {/* Estado y acciones */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded text-[11px] text-[#FFFFFF]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>{ESTADOS[sel.estado]?.label} · v{sel.version || 1}</span>
+              <span className="px-2 py-0.5 rounded text-[11px] text-[#EDEFF3]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>{ESTADOS[sel.estado]?.label} · v{sel.version || 1}</span>
               <span className="text-[11px] text-[#F5F7FA] opacity-50">{ESTADOS[sel.estado]?.ayuda}</span>
               <div className="ml-auto flex items-center gap-1.5 flex-wrap">
                 <button onClick={() => setPreview(v => !v)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] flex items-center gap-1" style={{ border: '1px solid var(--border)' }}><Eye size={12} /> {preview ? 'Editar' : 'Ver como PDF'}</button>
                 <button onClick={() => setVerVersiones(v => !v)} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] flex items-center gap-1" style={{ border: '1px solid var(--border)' }}><History size={12} /> Versiones{versiones.length ? ` (${versiones.length})` : ''}</button>
-                {editable && sucio && <button onClick={() => guardar()} disabled={trabajando === 'guardar'} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF]">{trabajando === 'guardar' ? 'Guardando…' : 'Guardar'}</button>}
+                {editable && sucio && <button onClick={() => guardar()} disabled={trabajando === 'guardar'} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3]">{trabajando === 'guardar' ? 'Guardando…' : 'Guardar'}</button>}
                 {sel.estado === 'borrador' && <button onClick={() => accion('revisado', 'Marcado como revisado.')} className="px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Lo leí</button>}
-                {['borrador', 'revisado'].includes(sel.estado) && <button onClick={() => accion('aprobar', 'Aprobado. El link ya funciona.')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] flex items-center gap-1"><Check size={12} /> Aprobar</button>}
-                {sel.estado === 'aprobado' && <button onClick={() => accion('enviar', 'Enviado.')} disabled={trabajando === 'enviar'} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#FFFFFF] flex items-center gap-1"><Send size={12} /> {trabajando === 'enviar' ? 'Enviando…' : 'Enviar'}</button>}
+                {['borrador', 'revisado'].includes(sel.estado) && <button onClick={() => accion('aprobar', 'Aprobado. El link ya funciona.')} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3] flex items-center gap-1"><Check size={12} /> Aprobar</button>}
+                {sel.estado === 'aprobado' && <button onClick={() => accion('enviar', 'Enviado.')} disabled={trabajando === 'enviar'} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3] flex items-center gap-1"><Send size={12} /> {trabajando === 'enviar' ? 'Enviando…' : 'Enviar'}</button>}
                 {['borrador', 'revisado'].includes(sel.estado) && <button onClick={() => { if (confirm('¿Descartar este borrador?')) accion('descartar', 'Descartado.'); }} className="px-2 py-1 rounded-md text-[11px] text-[#F5F7FA] opacity-50 hover:opacity-100" title="Descartar"><Trash2 size={12} /></button>}
               </div>
             </div>
@@ -115,8 +115,8 @@ export function ReportesEditor({ activeClient }: Props) {
             {/* Link */}
             {link && ['aprobado', 'enviado'].includes(sel.estado) && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px]" style={{ backgroundColor: 'var(--surface-2)' }}>
-                <ExternalLink size={12} className="text-[#0062CC] shrink-0" />
-                <a href={link} target="_blank" rel="noreferrer" className="text-[#FFFFFF] truncate hover:underline">{link}</a>
+                <ExternalLink size={12} className="text-[#4D9DFF] shrink-0" />
+                <a href={link} target="_blank" rel="noreferrer" className="text-[#EDEFF3] truncate hover:underline">{link}</a>
                 <button aria-label="Copiar el link del reporte" title="Copiar el link del reporte" onClick={copiarLink} className="ml-auto text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1 shrink-0"><Copy size={11} /> copiar</button>
                 <span className="text-[#F5F7FA] opacity-40 shrink-0">{sel.vistas ? `${sel.vistas} vista${sel.vistas !== 1 ? 's' : ''}` : 'sin abrir todavía'}</span>
               </div>
@@ -127,11 +127,11 @@ export function ReportesEditor({ activeClient }: Props) {
               <div className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
                 {versiones.length === 0 ? <span className="text-[11px] text-[#F5F7FA] opacity-50">Sin versiones todavía.</span> : versiones.map(v => (
                   <div key={v.id} className="flex items-center gap-3 text-[11px]">
-                    <span className="tabular text-[#FFFFFF] w-8">v{v.version}</span>
+                    <span className="tabular text-[#EDEFF3] w-8">v{v.version}</span>
                     <span className="text-[#F5F7FA] opacity-50 tabular w-28">{fmtFechaCorta(v.fecha)} {String(v.fecha).slice(11, 16)}</span>
                     <span className="text-[#F5F7FA] opacity-70">{v.autor === 'andres' ? 'vos' : v.autor}</span>
                     <span className="text-[#F5F7FA] opacity-50 flex-1 truncate">{v.motivo}</span>
-                    {editable && v.version !== (sel.version || 1) && <button onClick={() => restaurar(v.version)} className="text-[#0062CC]">restaurar</button>}
+                    {editable && v.version !== (sel.version || 1) && <button onClick={() => restaurar(v.version)} className="text-[#4D9DFF]">restaurar</button>}
                   </div>
                 ))}
               </div>
@@ -152,8 +152,8 @@ export function ReportesEditor({ activeClient }: Props) {
                 {bloques.map((b, i) => (
                   <div key={i} className="p-3 rounded-xl space-y-1.5" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-[#FFFFFF]">{b.etiqueta}</span>
-                      {editable && <button onClick={() => regenerar(b.etiqueta)} disabled={!!trabajando} className="text-[11px] text-[#0062CC] flex items-center gap-1 disabled:opacity-40"><RefreshCw size={11} className={trabajando === 'regen:' + b.etiqueta ? 'animate-spin' : ''} /> {trabajando === 'regen:' + b.etiqueta ? 'redactando…' : 'regenerar'}</button>}
+                      <span className="text-xs font-semibold text-[#EDEFF3]">{b.etiqueta}</span>
+                      {editable && <button onClick={() => regenerar(b.etiqueta)} disabled={!!trabajando} className="text-[11px] text-[#4D9DFF] flex items-center gap-1 disabled:opacity-40"><RefreshCw size={11} className={trabajando === 'regen:' + b.etiqueta ? 'animate-spin' : ''} /> {trabajando === 'regen:' + b.etiqueta ? 'redactando…' : 'regenerar'}</button>}
                     </div>
                     {(b.texto !== undefined || !b.vinetas?.length) && (
                       <textarea aria-label="B" value={b.texto || ''} disabled={!editable} onChange={e => setBloque(i, { texto: e.target.value })} rows={Math.max(2, Math.ceil((b.texto || '').length / 110))} placeholder="Párrafo (opcional)" className="w-full bg-transparent px-2 py-1.5 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[#0062CC] disabled:opacity-70" style={{ border: '1px solid var(--border)' }} />
