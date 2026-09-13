@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/novedades",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/demanda-mercado",
+      "schedule": "20 11 3 * *"
     }
   ],
   "regions": [

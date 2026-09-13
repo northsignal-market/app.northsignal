@@ -11,7 +11,7 @@ import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/vi
 import { notion, notion as notionEnCola } from './src/server/lib/notion';
 import { ai } from './src/server/lib/gemini';
 import { correrPulso, pulsoDisponible } from './src/server/lib/pulso';
-import { gadsDisponible, gadsSearch, consultasGaql } from './src/server/lib/gads';
+import { gadsDisponible, gadsSearch, consultasGaql, keywordPlannerHistorico } from './src/server/lib/gads';
 import { responderAsistente } from './src/server/lib/asistente';
 import { embeberPendientes, parecidoA } from './src/server/lib/memoria';
 import type { ReporteInput } from './src/server/lib/reporte-pdf';
@@ -3872,6 +3872,105 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // capa para que un bug propio no arrase; el resultado queda en
   // `reconciliaciones_api` (no confundir con `reconciliaciones`, que reconcilia
   // ACCIONABLES), y lo vigila la relación api_reconcilia_a_diario.
+  /**
+   * DEMANDA DEL MERCADO · mensual, desde Keyword Planner.
+   *
+   * Responde la pregunta que el sistema hoy no puede contestar: si las
+   * conversiones cayeron porque lo hicimos mal o porque el mercado bajó.
+   * Corre una vez por mes porque Google refresca estos datos una vez por mes:
+   * pedirlos a diario sería gastar por nada y fingir una frescura que no existe.
+   *
+   * Las keywords que se consultan son LAS NUESTRAS (las que ya corren en la
+   * cuenta, por gasto): no se inventan términos, se mide la demanda de lo que
+   * efectivamente compramos.
+   */
+  app.all("/api/cron/demanda-mercado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
+    const t0 = Date.now();
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    // Idioma por locale de la cuenta: pedir el volumen del término alemán en
+    // español devuelve otro mercado.
+    const IDIOMA: Record<string, string> = {
+      'es-CL': 'languageConstants/1003', 'es-AR': 'languageConstants/1003',
+      'de-DE': 'languageConstants/1001', 'en-US': 'languageConstants/1000',
+    };
+    const cuentas = (await cuentasActivas()).filter((c: any) => c.cid && (!soloCuenta || c.account === soloCuenta));
+    const resumen: any[] = [];
+
+    for (const c of cuentas) {
+      try {
+        // Las keywords que más gastan de la última semana cerrada: son las que
+        // mueven la aguja, y el tope evita pedir miles de términos muertos.
+        const { data: kws } = await supabase.from('v_keywords_analisis')
+          .select('keyword, cost').eq('account', c.account)
+          .order('cost', { ascending: false }).limit(300);
+        const lista = Array.from(new Set((kws || []).map((k: any) => String(k.keyword || '').trim()).filter(Boolean)));
+        if (!lista.length) { resumen.push({ cuenta: c.account, estado: 'sin keywords con gasto' }); continue; }
+
+        const filas = await keywordPlannerHistorico(c.cid, {
+          keywords: lista,
+          idioma: IDIOMA[c.locale] || undefined,
+        });
+
+        // Solo los últimos 14 meses: con eso alcanza para ver estacionalidad
+        // contra el mismo mes del año anterior, y la tabla no crece sin control.
+        const corte = new Date(); corte.setMonth(corte.getMonth() - 14);
+        const aGuardar = filas
+          .filter(f => f.busquedas > 0 && new Date(f.mes) >= corte)
+          .map(f => ({
+            account: c.account, keyword: f.keyword, geo: 'cuenta', mes: f.mes,
+            busquedas: f.busquedas, competencia: f.competencia,
+            competencia_indice: f.competenciaIndice, puja_baja: f.pujaBaja,
+            puja_alta: f.pujaAlta, moneda: c.moneda, capturado_el: new Date().toISOString(),
+          }));
+
+        if (aGuardar.length) {
+          // De a 500: un upsert gigante que falla no dice dónde.
+          for (let i = 0; i < aGuardar.length; i += 500) {
+            const { error } = await supabase.from('demanda_mercado')
+              .upsert(aGuardar.slice(i, i + 500), { onConflict: 'account,keyword,geo,mes' });
+            if (error) throw new Error(error.message);
+          }
+        }
+        resumen.push({ cuenta: c.account, keywords: lista.length, filas: aGuardar.length, estado: 'ok' });
+      } catch (e: any) {
+        // Una cuenta que falla no debe tumbar a las otras tres.
+        resumen.push({ cuenta: c.account, estado: 'falló', error: String(e?.message || e).slice(0, 200) });
+      }
+    }
+
+    const ok = resumen.filter(r => r.estado === 'ok').length;
+    try { await supabase.rpc('registrar_latido', { p_tarea: 'demanda_mercado', p_ok: ok > 0, p_error: ok ? null : 'ninguna cuenta trajo demanda' }); } catch { /* el latido es opcional */ }
+    res.json({ ok: ok > 0, cuentas: resumen, ms: Date.now() - t0 });
+  });
+
+  /** Lo que la app lee: el mercado contra nosotros, por cuenta. */
+  app.get("/api/mercado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'Client required' });
+    const { data, error } = await supabase.from('v_mercado_vs_nosotros').select('*').eq('account', client).maybeSingle();
+    if (error) {
+      if (/does not exist|schema cache|could not find the table/i.test(error.message || '')) {
+        return res.json({ disponible: false, aviso: 'La capa de mercado todavía no está creada.' });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+    const { data: serie } = await supabase.from('v_demanda_mensual').select('*').eq('account', client).order('mes');
+    res.json({ disponible: true, resumen: data || null, serie: serie || [] });
+  });
+
+  /** La presión competitiva detectada con datos propios (sin Keyword Planner). */
+  app.get("/api/presion-competitiva", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    let q = supabase.from('v_presion_competitiva').select('*');
+    if (req.query.client) q = q.eq('account', req.query.client as string);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ campanas: data || [] });
+  });
+
   app.all("/api/cron/reconciliar-api", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
