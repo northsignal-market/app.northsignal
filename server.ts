@@ -3978,12 +3978,30 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!plan) return res.json({ plan: null, pulsos: [] });
     const { data: pulsos } = await supabase.from('pulso_diario').select('fecha, nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos, costo_usd')
       .eq('account', client).gte('fecha', plan.semana).order('fecha');
-    // Por indicador: serie de la semana (valor y cumple por día)
-    const ind = (plan.indicadores as any[]).map((i: any, idx: number) => ({
+    // Por indicador: serie de la semana. El cruce es por NOMBRE con alias de claves:
+    // cada agente escribe su dialecto (indicador|nombre, valor_hoy|valor,
+    // cumple_umbral|cumple). El cruce posicional con e.valor/e.cumple leía claves
+    // que no existen: la grilla del plan estuvo SIEMPRE vacía por eso.
+    const ind = (plan.indicadores as any[]).map((i: any) => ({
       ...i,
-      serie: (pulsos || []).map((p: any) => { const e = (p.evidencia || [])[idx]; return { fecha: p.fecha, valor: e?.valor ?? null, cumple: e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 }; })
+      serie: (pulsos || []).map((p: any) => {
+        const e = (Array.isArray(p.evidencia) ? p.evidencia : []).find((x: any) => (x?.indicador ?? x?.nombre) === i.nombre);
+        return { fecha: p.fecha, valor: e?.valor_hoy ?? e?.valor ?? null, cumple: e?.cumple_umbral ?? e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 };
+      })
     }));
     res.json({ plan: { ...plan, indicadores: ind }, pulsos: pulsos || [] });
+  });
+
+  // La capa de lectura del plan: TODOS los agregados se computan en la base
+  // (una sola verdad); el front solo pone las frases. Ver
+  // docs/investigacion_frontend/00_PLAN_CAPA_LECTURA.md.
+  app.get("/api/plan-lectura", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'client requerido' });
+    const { data, error } = await supabase.rpc('plan_lectura', { cuenta: client });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
   // Lectura para la app

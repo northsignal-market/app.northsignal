@@ -5369,14 +5369,22 @@ Reporte completo: ${url}`;
     const { data: plan } = await supabase.from("plan_semanal").select("*").eq("account", client).order("semana", { ascending: false }).limit(1).maybeSingle();
     if (!plan) return res.json({ plan: null, pulsos: [] });
     const { data: pulsos } = await supabase.from("pulso_diario").select("fecha, nivel, resumen, hallazgo_principal, conecta_con, evidencia, hipotesis_movidas, hallazgos, costo_usd").eq("account", client).gte("fecha", plan.semana).order("fecha");
-    const ind = plan.indicadores.map((i, idx) => ({
+    const ind = plan.indicadores.map((i) => ({
       ...i,
       serie: (pulsos || []).map((p) => {
-        const e = (p.evidencia || [])[idx];
-        return { fecha: p.fecha, valor: e?.valor ?? null, cumple: e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 };
+        const e = (Array.isArray(p.evidencia) ? p.evidencia : []).find((x) => (x?.indicador ?? x?.nombre) === i.nombre);
+        return { fecha: p.fecha, valor: e?.valor_hoy ?? e?.valor ?? null, cumple: e?.cumple_umbral ?? e?.cumple ?? null, dias: e?.dias_seguidos_cumpliendo ?? 0 };
       })
     }));
     res.json({ plan: { ...plan, indicadores: ind }, pulsos: pulsos || [] });
+  });
+  app2.get("/api/plan-lectura", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "client requerido" });
+    const { data, error } = await supabase.rpc("plan_lectura", { cuenta: client });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
   app2.get("/api/pulso", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
