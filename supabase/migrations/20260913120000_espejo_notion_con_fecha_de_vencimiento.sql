@@ -52,9 +52,13 @@ values (
   true,
   current_date,
   'global',
+  -- El paso de correr_relaciones() es imprescindible: v_relaciones_violadas lee
+  -- de corridas_verdad, asi que sin una corrida nueva la vista muestra el estado
+  -- viejo y el mutante parece sobrevivir cuando en realidad nadie lo evaluo.
   $m$begin;
   update notion_espejo_cuentas set sincronizado = now() - interval '30 days' where account = '360';
-  -- izquierda pasa a 3, derecha sigue en 4: la relacion TIENE que romperse aca.
+  select * from correr_relaciones();
+  -- izquierda pasa a 3, derecha sigue en 4: la relacion TIENE que aparecer aca.
   select * from v_relaciones_violadas where nombre = 'espejo_notion_al_dia';
 rollback;$m$,
   -- 'sin_probar' y no NULL: el mutante esta escrito pero nadie lo corrio todavia,
