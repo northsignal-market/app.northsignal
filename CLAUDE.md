@@ -118,6 +118,11 @@ El "por qué" es lo importante. El qué se deduce mirando el código; la razón 
 - **Notion** — fichas de cliente, accionables y briefs
 - **Google Ads MCC** 641-902-5021 — los scripts, para las 4 cuentas. (Fresh Monkee
   está vinculada al MCC desde el 12/9/2026; antes corría su propia copia del semanal.)
+- **Google Ads API (GAQL)** — el árbitro. Los scripts extraen y ejecutan; la API
+  reconcilia, backfillea maduración y diagnostica, y **nunca escribe**: la única mano
+  que escribe en Google Ads es el ejecutor con acciones aprobadas. Cuando el dato del
+  script y la sospecha difieren, la API decide. Cliente en `src/server/lib/gads.ts`,
+  credenciales solo por variables de entorno. (Lección #109.)
 - **La app** `app-northsignal.vercel.app`
 
 ## Lo urgente
