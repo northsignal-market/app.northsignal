@@ -14,13 +14,20 @@ import { Accionables } from './Accionables';
 import type { Actionable } from '../types';
 
 export type SegmentoCuenta = 'semana' | 'diagnostico' | 'brief' | 'accionables' | 'memoria' | 'reportes';
+// Cuatro pestañas: brief y diagnóstico son LENTES de la misma semana (tres
+// miradas del mismo objeto no son tres lugares). Viven como sub-vistas de
+// Semana; las rutas viejas y ⌘K siguen llegando directo a cada una.
 const SEGMENTOS: { id: SegmentoCuenta; label: string; ayuda: string }[] = [
-  { id: 'semana', label: 'Semana', ayuda: 'Gráfico, plan de la semana, día por día, búsquedas nuevas' },
-  { id: 'diagnostico', label: 'Diagnóstico', ayuda: 'Objetivos, por qué está donde está, decisiones estructurales, pendientes' },
-  { id: 'brief', label: 'Brief', ayuda: 'El análisis completo del lunes' },
+  { id: 'semana', label: 'Semana', ayuda: 'El plan, la tendencia, el brief del lunes y el diagnóstico' },
   { id: 'accionables', label: 'Accionables', ayuda: 'Todos, incluidos hechos y descartados' },
   { id: 'memoria', label: 'Memoria', ayuda: 'Hipótesis, aprendizajes, doc maestro' },
   { id: 'reportes', label: 'Reportes', ayuda: 'Borradores para aprobar y enviados' },
+];
+const FAMILIA_SEMANA: SegmentoCuenta[] = ['semana', 'brief', 'diagnostico'];
+const SUBVISTAS: { id: SegmentoCuenta; label: string }[] = [
+  { id: 'semana', label: 'Esta semana' },
+  { id: 'brief', label: 'Brief del lunes' },
+  { id: 'diagnostico', label: 'Diagnóstico' },
 ];
 
 interface Props {
@@ -48,15 +55,29 @@ export function Cuenta({ segmento, onSegmento, onOpenActionable, briefId, onNavi
           <span className="text-[11px] text-[#F5F7FA] opacity-50">{abiertos > 0 ? `${abiertos} accionable${abiertos !== 1 ? 's' : ''} abierto${abiertos !== 1 ? 's' : ''}` : 'sin accionables abiertos'}</span>
         </div>
         <div className="flex gap-0.5 -mb-px overflow-x-auto">
-          {SEGMENTOS.map(s => (
-            <button key={s.id} onClick={() => onSegmento(s.id)} title={s.ayuda}
-              className={`px-3.5 py-2 text-xs whitespace-nowrap transition-colors ${segmento === s.id ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}
-              style={{ borderBottom: segmento === s.id ? '2px solid var(--primary)' : '2px solid transparent' }}>
-              {s.label}{s.id === 'accionables' && abiertos > 0 ? <span className="ml-1 text-[10px] opacity-60">{abiertos}</span> : null}
+          {SEGMENTOS.map(s => {
+            const activo = s.id === segmento || (s.id === 'semana' && FAMILIA_SEMANA.includes(segmento));
+            return (
+              <button key={s.id} onClick={() => onSegmento(s.id)} title={s.ayuda}
+                className={`px-3.5 py-2 text-xs whitespace-nowrap transition-colors ${activo ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}
+                style={{ borderBottom: activo ? '2px solid var(--primary)' : '2px solid transparent' }}>
+                {s.label}{s.id === 'accionables' && abiertos > 0 ? <span className="ml-1 text-[10px] opacity-60">{abiertos}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {/* Sub-vistas de la semana: las tres lentes del mismo período, a un clic. */}
+      {FAMILIA_SEMANA.includes(segmento) && (
+        <div className="px-6 md:px-8 py-1.5 flex items-center gap-1 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+          {SUBVISTAS.map(v => (
+            <button key={v.id} onClick={() => onSegmento(v.id)}
+              className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${segmento === v.id ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>
+              {v.label}
             </button>
           ))}
         </div>
-      </div>
+      )}
       {/* Contenido */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
         {segmento === 'semana' && <Semana onOpenActionable={(id: string) => { const f = actionables.find(a => a.id === id); if (f) onOpenActionable(f); }} />}

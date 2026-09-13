@@ -50,7 +50,9 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
           <NavItem icon={<Inbox size={18} />} label="Bandeja" active={activeTab === 'bandeja'} onClick={() => onTabChange('bandeja')} badge={pendientes} />
           <NavItem icon={<Building2 size={18} />} label="Cuenta" active={activeTab === 'cuenta'} onClick={() => onTabChange('cuenta')} />
           <NavItem icon={<Table2 size={18} />} label="Datos" active={activeTab === 'datos'} onClick={() => onTabChange('datos')} />
-          <NavItem icon={<Wrench size={18} />} label="Herramientas" active={activeTab === 'herramientas'} onClick={() => onTabChange('herramientas')} />
+          {/* Herramientas salió del sidebar (frecuencia de uso): vive en ⌘K y
+              su ruta ?page=herramientas sigue intacta. */}
+          {activeTab === 'herramientas' && <NavItem icon={<Wrench size={18} />} label="Herramientas" active onClick={() => onTabChange('herramientas')} />}
           <NavItem icon={<Settings size={18} />} label="Sistema" active={activeTab === 'sistema'} onClick={() => onTabChange('sistema')} punto={!sistemaOk} />
         </nav>
 

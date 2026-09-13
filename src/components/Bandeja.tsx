@@ -186,14 +186,15 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               <div className="text-2xl font-medium tabular mt-1 text-[#FAFAFA]" style={{ letterSpacing: '-0.6px' }}>{listosOrd.length}</div>
               <div className="text-xs mt-1" style={LABEL}>{listosOrd.length > 0 ? 'las más rentables por minuto' : 'ninguna lista para ejecutar'}</div>
             </div>
-            <div className="pl-6">
+            {/* Eco del canónico (Sistema › Salud): un vistazo acá, el detalle allá. */}
+            <button className="pl-6 text-left group" onClick={() => onGoTo('sistema')} title="Ver el detalle en Sistema › Salud">
               <div className="text-xs" style={LABEL}>Datos</div>
-              <div className="text-2xl font-medium mt-1 flex items-center gap-2" style={{ letterSpacing: '-0.6px', color: briefing?.datos_al_dia === false ? 'var(--warn)' : '#FAFAFA' }}>
+              <div className="text-2xl font-medium mt-1 flex items-center gap-2 group-hover:opacity-90" style={{ letterSpacing: '-0.6px', color: briefing?.datos_al_dia === false ? 'var(--warn)' : '#FAFAFA' }}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: briefing?.datos_al_dia === false ? 'var(--warn)' : '#4ADE80' }} />
                 {briefing?.datos_al_dia === false ? 'problema' : 'al día'}
               </div>
-              <div className="text-xs mt-1" style={LABEL}>{briefing?.datos_al_dia === false ? 'mirá Sistema › Salud' : 'verificados esta mañana'}</div>
-            </div>
+              <div className="text-xs mt-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL}>{briefing?.datos_al_dia === false ? 'mirá Sistema › Salud →' : 'detalle en Sistema →'}</div>
+            </button>
           </div>
 
           {/* Lectura del sistema — el bloque grande y legible de la referencia */}

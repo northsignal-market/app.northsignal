@@ -290,8 +290,10 @@ function App() {
             {salud && (
               <span className="flex items-center gap-1.5 text-[11px] tabular" title={salud.texto + ' · Detalle en Sistema › Salud'}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: salud.ok ? '#4ADE80' : 'var(--warn)', boxShadow: salud.ok ? 'none' : '0 0 6px var(--warn)' }} />
-                {(!salud.ok || salud.pend > 0) && (
-                  <span style={{ color: salud.ok ? 'var(--text-secondary)' : 'var(--warn)' }} className="hidden sm:inline whitespace-nowrap">{salud.texto}</span>
+                {/* Canónico + 1 eco: el número de pendientes ya vive en el badge de
+                    la Bandeja; el header solo habla cuando hay un problema. */}
+                {!salud.ok && (
+                  <span style={{ color: 'var(--warn)' }} className="hidden sm:inline whitespace-nowrap">{salud.texto}</span>
                 )}
               </span>
             )}
