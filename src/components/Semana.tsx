@@ -219,8 +219,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
   return (
     <PageShell
-      titulo={<>Semana · {activeClient}</>}
-      subtitulo="¿Qué pasó y por qué? Diagnóstico temporal, cambios y términos nuevos"
+      /* Sin título: la pestaña ya dice "Semana" y el header dice la cuenta.
+         Repetirlo costaba una fila entera de la pantalla. */
       derecha={<RangoFechas valor={rango} onChange={setRango} presets={['7d', '14d']} minDesde={minDesde} />}
     >
 

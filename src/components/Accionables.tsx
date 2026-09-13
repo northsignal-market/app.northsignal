@@ -1,10 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Check, Cpu, ArrowUpDown, Filter, X } from 'lucide-react';
-import { fetchJSON } from './ui';
+import { Search, Check, Cpu, SlidersHorizontal } from 'lucide-react';
+import { fetchJSON, fmtFechaCorta } from './ui';
 import { useCuentas } from '../lib/useCuentas';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
+
+/**
+ * ACCIONABLES · el archivo completo de decisiones de una cuenta.
+ * No es una tabla de ocho columnas: es una LISTA DE TRABAJO agrupada por
+ * estado, con el eje principal (¿qué está pendiente?) como filtro de un toque
+ * y el resto de los filtros plegados hasta que alguien los pida. A la derecha,
+ * el contexto que no cabe en una fila: cuánto hay de cada cosa y qué se está
+ * poniendo viejo. La Bandeja tritura lo de hoy; esto es la memoria de todo.
+ */
+
+const LABEL = { color: '#ADADAD', letterSpacing: '0.3px' } as const;
+const PESO_PRIORIDAD: Record<string, number> = { Urgente: 4, Alta: 3, Media: 2, Baja: 1 };
+const COLOR_PRIORIDAD: Record<string, string> = {
+  Urgente: 'var(--bad)', Alta: 'var(--warn)', Media: 'var(--primary-text)', Baja: 'var(--border-strong)',
+};
 
 interface AccionablesProps {
   onOpenActionable: (action: Actionable) => void;
@@ -12,416 +27,260 @@ interface AccionablesProps {
   initialStatus?: string;
 }
 
-export function Accionables({
-  onOpenActionable,
-  initialClient,
-  initialStatus
-}: AccionablesProps) {
+export function Accionables({ onOpenActionable, initialClient, initialStatus }: AccionablesProps) {
   const { actionables, updateActionableStatus } = useAppStore();
+  const { nombres: cuentasNombres } = useCuentas();
 
   const [search, setSearch] = useState('');
-  // Las cuentas salen del hook central, no de un fetch propio con fallback inventado.
-  const { nombres: cuentasNombres } = useCuentas();
   const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
   useEffect(() => { fetchJSON<any[]>('/api/novedades', []).then((d) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))); }, []);
+
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
-  // El filtro SIGUE al selector del header. Antes initialClient solo se leía al
-  // montar: si cambiabas de cuenta arriba con esta pestaña ya abierta, la lista
-  // se quedaba en la cuenta anterior y parecía que el selector no hacía nada.
-  // Se puede seguir poniendo "todas" a mano; lo que cambia es el punto de partida.
+  // El filtro SIGUE al selector del header: si cambiás de cuenta con esta
+  // pestaña abierta, la lista se mueve con vos.
   useEffect(() => { if (initialClient) setFilterClient(initialClient); }, [initialClient]);
-  const [filterStatus, setFilterStatus] = useState<string>(initialStatus || 'all');
+
+  // El eje principal es el estado del trabajo, no un select entre cinco.
+  type Eje = 'pendientes' | 'curso' | 'cerrados' | 'todos';
+  const [eje, setEje] = useState<Eje>(initialStatus ? 'todos' : 'pendientes');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterNaturaleza, setFilterNaturaleza] = useState<string>('all');
   const [filterRevision, setFilterRevision] = useState<string>('all');
-  const [sortField, setSortField] = useState<'priority' | 'weeks' | 'client'>('priority');
-  const [sortAsc, setSortAsc] = useState(false);
+  const [masFiltros, setMasFiltros] = useState(false);
   const [analyzingIds, setAnalyzingIds] = useState<Record<string, boolean>>({});
 
-  // Compute weeks pending for an actionable
-  const getWeeksPending = (a: Actionable) => {
+  const semanasPendiente = (a: Actionable) => {
     const dt = a.detectado || a.created_at;
     if (!dt) return 0;
-    const diff = (Date.now() - new Date(dt).getTime()) / (1000 * 60 * 60 * 24 * 7);
-    return Math.max(0, Math.floor(diff));
+    return Math.max(0, Math.floor((Date.now() - new Date(dt).getTime()) / 6048e5));
   };
 
-  const priorityWeights: Record<string, number> = {
-    'Urgente': 4,
-    'Alta': 3,
-    'Media': 2,
-    'Baja': 1
+  const enEje = (a: Actionable) => {
+    const s = (a.status || '').toLowerCase();
+    if (eje === 'todos') return true;
+    if (eje === 'pendientes') return s === NOTION_STATES.PROPUESTO.toLowerCase() || s === NOTION_STATES.BLOQUEADO.toLowerCase();
+    if (eje === 'curso') return s === NOTION_STATES.EN_CURSO.toLowerCase();
+    return s === NOTION_STATES.HECHO.toLowerCase() || s === NOTION_STATES.DESCARTADO.toLowerCase();
   };
 
-  // Filtered and sorted actionables
-  const filtered = useMemo(() => {
+  const filtrados = useMemo(() => {
     return actionables.filter(a => {
       if (filterClient !== 'all' && a.client.toLowerCase() !== filterClient.toLowerCase()) return false;
-      if (filterStatus !== 'all' && a.status.toLowerCase() !== filterStatus.toLowerCase()) return false;
+      if (!enEje(a)) return false;
       if (filterPriority !== 'all' && a.priority.toLowerCase() !== filterPriority.toLowerCase()) return false;
       if (filterNaturaleza !== 'all' && (a.naturaleza || '').toLowerCase() !== filterNaturaleza.toLowerCase()) return false;
       if (filterRevision !== 'all' && (a.revision_ia || '').toLowerCase() !== filterRevision.toLowerCase()) return false;
-
       if (search.trim()) {
         const q = search.toLowerCase();
-        const matchTitle = (a.title || '').toLowerCase().includes(q);
-        const matchWhy = (a.why || '').toLowerCase().includes(q);
-        const matchWhere = (a.where || '').toLowerCase().includes(q);
-        if (!matchTitle && !matchWhy && !matchWhere) return false;
+        if (!`${a.title || ''} ${a.why || ''} ${a.where || ''}`.toLowerCase().includes(q)) return false;
       }
-
       return true;
     }).sort((a, b) => {
-      if (sortField === 'priority') {
-        const wa = priorityWeights[a.priority] || 0;
-        const wb = priorityWeights[b.priority] || 0;
-        if (wa !== wb) return sortAsc ? wa - wb : wb - wa;
-        return getWeeksPending(b) - getWeeksPending(a);
-      }
-      if (sortField === 'weeks') {
-        const wa = getWeeksPending(a);
-        const wb = getWeeksPending(b);
-        return sortAsc ? wa - wb : wb - wa;
-      }
-      if (sortField === 'client') {
-        return sortAsc ? a.client.localeCompare(b.client) : b.client.localeCompare(a.client);
-      }
-      return 0;
+      const w = (PESO_PRIORIDAD[b.priority] || 0) - (PESO_PRIORIDAD[a.priority] || 0);
+      return w !== 0 ? w : semanasPendiente(b) - semanasPendiente(a);
     });
-  }, [actionables, filterClient, filterStatus, filterPriority, filterNaturaleza, filterRevision, search, sortField, sortAsc]);
+  }, [actionables, filterClient, eje, filterPriority, filterNaturaleza, filterRevision, search]);
 
-  const handleQuickAnalyze = async (e: React.MouseEvent, actionId: string) => {
-    e.stopPropagation();
-    setAnalyzingIds(prev => ({ ...prev, [actionId]: true }));
-    try {
-      await fetch(`/api/notion/actionables/${actionId}/analyze`, { method: 'POST', credentials: 'include' });
-      // update state if needed
-    } catch(err) {
-      console.error(err);
-    } finally {
-      setAnalyzingIds(prev => ({ ...prev, [actionId]: false }));
-    }
+  // Agrupados por estado: el estado es el título del grupo, no una columna
+  // repetida en cada fila.
+  const grupos = useMemo(() => {
+    const orden = [NOTION_STATES.PROPUESTO, NOTION_STATES.BLOQUEADO, NOTION_STATES.EN_CURSO, NOTION_STATES.HECHO, NOTION_STATES.DESCARTADO];
+    const por: Record<string, Actionable[]> = {};
+    filtrados.forEach(a => { (por[a.status] = por[a.status] || []).push(a); });
+    return Object.entries(por).sort((x, y) => orden.indexOf(x[0] as any) - orden.indexOf(y[0] as any));
+  }, [filtrados]);
+
+  const delCliente = useMemo(
+    () => actionables.filter(a => filterClient === 'all' || a.client.toLowerCase() === filterClient.toLowerCase()),
+    [actionables, filterClient]);
+  const cuenta = (fn: (a: Actionable) => boolean) => delCliente.filter(fn).length;
+  const conteos = {
+    pendientes: cuenta(a => [NOTION_STATES.PROPUESTO, NOTION_STATES.BLOQUEADO].includes(a.status as any)),
+    curso: cuenta(a => a.status === NOTION_STATES.EN_CURSO),
+    cerrados: cuenta(a => [NOTION_STATES.HECHO, NOTION_STATES.DESCARTADO].includes(a.status as any)),
+    todos: delCliente.length,
   };
 
-  const activeFilterChips = useMemo(() => {
-    const chips: Array<{ key: string; label: string; onClear: () => void }> = [];
-    if (filterClient !== 'all') chips.push({ key: 'client', label: `Cliente: ${filterClient}`, onClear: () => setFilterClient('all') });
-    if (filterStatus !== 'all') chips.push({ key: 'status', label: `Estado: ${filterStatus}`, onClear: () => setFilterStatus('all') });
-    if (filterPriority !== 'all') chips.push({ key: 'priority', label: `Prioridad: ${filterPriority}`, onClear: () => setFilterPriority('all') });
-    if (filterNaturaleza !== 'all') chips.push({ key: 'nat', label: `Naturaleza: ${filterNaturaleza}`, onClear: () => setFilterNaturaleza('all') });
-    if (filterRevision !== 'all') chips.push({ key: 'rev', label: `Revisión: ${filterRevision}`, onClear: () => setFilterRevision('all') });
-    if (search) chips.push({ key: 'search', label: `Buscar: "${search}"`, onClear: () => setSearch('') });
-    return chips;
-  }, [filterClient, filterStatus, filterPriority, filterNaturaleza, filterRevision, search]);
+  const masViejos = useMemo(() => delCliente
+    .filter(a => [NOTION_STATES.PROPUESTO, NOTION_STATES.BLOQUEADO].includes(a.status as any))
+    .map(a => ({ a, sem: semanasPendiente(a) }))
+    .filter(x => x.sem >= 1)
+    .sort((x, y) => y.sem - x.sem)
+    .slice(0, 5), [delCliente]);
+
+  const analizar = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setAnalyzingIds(p => ({ ...p, [id]: true }));
+    try { await fetch(`/api/notion/actionables/${id}/analyze`, { method: 'POST', credentials: 'include' }); }
+    catch (err) { console.error(err); }
+    finally { setAnalyzingIds(p => ({ ...p, [id]: false })); }
+  };
+
+  const EJES: { id: Eje; label: string; n: number }[] = [
+    { id: 'pendientes', label: 'Pendientes', n: conteos.pendientes },
+    { id: 'curso', label: 'En curso', n: conteos.curso },
+    { id: 'cerrados', label: 'Cerrados', n: conteos.cerrados },
+    { id: 'todos', label: 'Todos', n: conteos.todos },
+  ];
+  const hayFiltroFino = filterPriority !== 'all' || filterNaturaleza !== 'all' || filterRevision !== 'all';
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-5">
-      
-      {/* Header & Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-[#EDEFF3]">
-            Accionables
-          </h1>
-          <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
-            ¿Qué tengo que ejecutar? Lista unificada de acciones con trazabilidad en Notion
-          </p>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative w-full sm:w-72">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA] opacity-50" />
-          <input aria-label="Search"
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar accionables..."
-            className="w-full bg-transparent rounded-md pl-9 pr-3 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/40 outline-none"
-            style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-1)' }}
-          />
-        </div>
-      </div>
-
-      {/* Filter Selectors Bar */}
-      <div 
-        className="p-3 rounded-xl flex items-center gap-3 flex-wrap text-xs"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
-      >
-        <div className="flex items-center gap-1.5 text-[#F5F7FA] opacity-70">
-          <Filter size={13} />
-          <span className="font-semibold uppercase text-[10px] tracking-wider">Filtros:</span>
-        </div>
-
-        {/* Client */}
-        <select aria-label="Filter Client"
-          value={filterClient}
-          onChange={(e) => setFilterClient(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
-        >
-          <option value="all" className="bg-[#1A1F36]">Todos los Clientes</option>
-          {cuentasNombres.map((a: string) => <option key={a} value={a} className="bg-[#1A1F36]">{a}</option>)}
-        </select>
-
-        {/* Status */}
-        <select aria-label="Filter Status"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
-        >
-          <option value="all" className="bg-[#1A1F36]">Todos los Estados</option>
-          <option value={NOTION_STATES.PROPUESTO} className="bg-[#1A1F36]">Propuesto</option>
-          <option value={NOTION_STATES.EN_CURSO} className="bg-[#1A1F36]">En Curso</option>
-          <option value={NOTION_STATES.HECHO} className="bg-[#1A1F36]">Hecho</option>
-          <option value={NOTION_STATES.BLOQUEADO} className="bg-[#1A1F36]">Bloqueado</option>
-          <option value={NOTION_STATES.DESCARTADO} className="bg-[#1A1F36]">Descartado</option>
-        </select>
-
-        {/* Priority */}
-        <select aria-label="Filter Priority"
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
-        >
-          <option value="all" className="bg-[#1A1F36]">Todas las Prioridades</option>
-          <option value="Urgente" className="bg-[#1A1F36]">Urgente</option>
-          <option value="Alta" className="bg-[#1A1F36]">Alta</option>
-          <option value="Media" className="bg-[#1A1F36]">Media</option>
-          <option value="Baja" className="bg-[#1A1F36]">Baja</option>
-        </select>
-
-        {/* Naturaleza */}
-        <select aria-label="Filter Naturaleza"
-          value={filterNaturaleza}
-          onChange={(e) => setFilterNaturaleza(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
-        >
-          <option value="all" className="bg-[#1A1F36]">Toda Naturaleza</option>
-          <option value={NOTION_NATURALEZA.DATO} className="bg-[#1A1F36]">Dato</option>
-          <option value={NOTION_NATURALEZA.INFERENCIA} className="bg-[#1A1F36]">Inferencia</option>
-          <option value={NOTION_NATURALEZA.HIPOTESIS} className="bg-[#1A1F36]">Hipótesis</option>
-        </select>
-
-        {/* Revision IA */}
-        <select aria-label="Filter Revision"
-          value={filterRevision}
-          onChange={(e) => setFilterRevision(e.target.value)}
-          className="bg-transparent rounded px-2.5 py-1 text-xs text-[#EDEFF3] outline-none"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
-        >
-          <option value="all" className="bg-[#1A1F36]">Todas las Revisiones IA</option>
-          <option value="En disputa" className="bg-[#1A1F36]">En Disputa</option>
-          <option value="Consenso" className="bg-[#1A1F36]">Consenso</option>
-          <option value="Sin revisar" className="bg-[#1A1F36]">Sin segunda opinión</option>
-        </select>
-      </div>
-
-      {/* Removable Chips */}
-      {activeFilterChips.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {activeFilterChips.map(chip => (
-            <span
-              key={chip.key}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[#EDEFF3]"
-              style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)' }}
-            >
-              <span>{chip.label}</span>
-              <button aria-label="Cerrar" title="Cerrar" onClick={chip.onClear} className="hover:opacity-70">
-                <X size={12} />
-              </button>
-            </span>
+    <div className="px-5 md:px-7 py-5 max-w-[1480px] mx-auto">
+      {/* Una sola barra: el eje del trabajo, la búsqueda y el resto plegado. */}
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        <div className="flex p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+          {EJES.map(x => (
+            <button key={x.id} onClick={() => setEje(x.id)}
+              className={`px-3 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${eje === x.id ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>
+              {x.label}<span className="ml-1.5 tabular opacity-60">{x.n}</span>
+            </button>
           ))}
-          <button
-            onClick={() => {
-              setFilterClient('all');
-              setFilterStatus('all');
-              setFilterPriority('all');
-              setFilterNaturaleza('all');
-              setFilterRevision('all');
-              setSearch('');
-            }}
-            className="text-xs text-[#4D9DFF] hover:underline font-semibold ml-1"
-          >
-            Limpiar filtros
-          </button>
+        </div>
+
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-45" style={{ color: '#ADADAD' }} />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar en título, causa o dónde…"
+            className="w-full bg-transparent rounded-lg pl-8 pr-2.5 py-1.5 text-[11px] text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
+            style={{ border: '1px solid var(--border)' }} />
+        </div>
+
+        <button onClick={() => setMasFiltros(v => !v)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${masFiltros || hayFiltroFino ? 'text-[#FAFAFA] bg-white/10' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}
+          style={{ border: '1px solid var(--border)' }}>
+          <SlidersHorizontal size={12} /> Filtros{hayFiltroFino ? ' ·' : ''}
+        </button>
+
+        <span className="ml-auto text-[11px] tabular" style={LABEL}>{filtrados.length} de {conteos.todos}</span>
+      </div>
+
+      {/* Los filtros finos existen, pero no ocupan pantalla hasta que se piden. */}
+      {masFiltros && (
+        <div className="flex items-center gap-2 flex-wrap mb-4 p-2.5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          {[
+            { v: filterClient, set: setFilterClient, todos: 'Todas las cuentas', ops: cuentasNombres },
+            { v: filterPriority, set: setFilterPriority, todos: 'Toda prioridad', ops: ['Urgente', 'Alta', 'Media', 'Baja'] },
+            { v: filterNaturaleza, set: setFilterNaturaleza, todos: 'Toda naturaleza', ops: [NOTION_NATURALEZA.OBSERVACION, NOTION_NATURALEZA.INFERENCIA, NOTION_NATURALEZA.HIPOTESIS] },
+            { v: filterRevision, set: setFilterRevision, todos: 'Toda revisión', ops: ['Validado', 'En disputa', 'Sin revisar'] },
+          ].map((f, i) => (
+            <select key={i} aria-label={f.todos} value={f.v} onChange={e => f.set(e.target.value)}
+              className="bg-transparent rounded-md px-2 py-1 text-[11px] text-[#EDEFF3] outline-none"
+              style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}>
+              <option value="all">{f.todos}</option>
+              {f.ops.filter(Boolean).map((o: any) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ))}
+          {hayFiltroFino && (
+            <button onClick={() => { setFilterPriority('all'); setFilterNaturaleza('all'); setFilterRevision('all'); }}
+              className="text-[11px] text-[#4D9DFF] hover:opacity-80">Limpiar</button>
+          )}
         </div>
       )}
 
-      {/* Actions Table */}
-      <div 
-        className="rounded-xl overflow-hidden shadow-sm"
-        style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-0)' }}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr style={{ backgroundColor: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
-                <th className="py-3 px-4 font-semibold text-[#EDEFF3]">Acción</th>
-                <th 
-                  className="py-3 px-3 font-semibold text-[#EDEFF3] cursor-pointer"
-                  onClick={() => { setSortField('client'); setSortAsc(!sortAsc); }}
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Cliente</span>
-                    <ArrowUpDown size={11} className="opacity-60" />
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_260px] gap-x-8 gap-y-6 items-start">
+        {/* LA LISTA: agrupada por estado, filas densas de dos líneas. */}
+        <div className="min-w-0">
+          {filtrados.length === 0 ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-[#FAFAFA]">
+                {conteos.todos === 0 ? 'Esta cuenta todavía no tiene accionables.' : 'Ninguno con estos filtros.'}
+              </p>
+              <p className="text-xs mt-1" style={LABEL}>
+                {conteos.todos === 0 ? 'Los escribe la tarea del lunes.' : 'Probá otro eje o limpiá los filtros.'}
+              </p>
+            </div>
+          ) : grupos.map(([estado, items]) => (
+            <section key={estado}>
+              <div className="grupo-sticky">
+                <div className="grupo-sticky-inner flex items-baseline gap-2 py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <span className="text-xs text-[#FAFAFA]">{estado}</span>
+                  <span className="text-[10px] tabular px-1.5 py-px rounded-full" style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>{items.length}</span>
+                </div>
+              </div>
+              {items.map(a => {
+                const sem = semanasPendiente(a);
+                const hecho = a.status.toLowerCase() === NOTION_STATES.HECHO.toLowerCase();
+                const disputa = a.revision_ia === 'En disputa';
+                const viejo = sem >= 3 && !hecho;
+                return (
+                  <div key={a.id} onClick={() => onOpenActionable(a)}
+                    className={`group flex items-start gap-3 pl-2 pr-2 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] ${hecho ? 'opacity-55' : ''}`}>
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-[7px]"
+                      title={`Prioridad ${a.priority}`}
+                      style={{ backgroundColor: COLOR_PRIORIDAD[a.priority] || 'var(--border-strong)' }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {novedadesIds.has(a.id) && <span className="w-1.5 h-1.5 rounded-full bg-[#0062CC] shrink-0" title="Un agente lo tocó y no lo viste" />}
+                        <span className="text-[13px] text-[#EDEFF3] truncate">{a.title}</span>
+                      </div>
+                      <div className="text-[11px] truncate" style={LABEL}>
+                        {[filterClient === 'all' ? a.client : null, a.naturaleza || 'Dato', a.why].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0 pt-0.5">
+                      {disputa && <span className="text-[10px] px-1.5 py-px rounded" style={{ color: '#4D9DFF', border: '1px solid rgba(77,157,255,0.3)' }}>en disputa</span>}
+                      <span className={`text-[11px] tabular ${viejo ? 'text-[#EDEFF3]' : ''}`} style={viejo ? undefined : LABEL}>
+                        {sem > 0 ? `${sem} sem` : fmtFechaCorta(a.detectado || a.created_at)}
+                      </span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => updateActionableStatus(a.id, hecho ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO)}
+                          title={hecho ? 'Volver a Propuesto' : 'Marcar Hecho'}
+                          className="p-1 rounded hover:bg-white/10 text-[#4D9DFF]"><Check size={13} /></button>
+                        <button onClick={(e) => analizar(e, a.id)} disabled={analyzingIds[a.id]}
+                          title="Pedir segunda opinión"
+                          className="p-1 rounded hover:bg-white/10 opacity-70 hover:opacity-100" style={{ color: '#ADADAD' }}>
+                          <Cpu size={13} className={analyzingIds[a.id] ? 'animate-spin text-[#4D9DFF]' : ''} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </th>
-                <th 
-                  className="py-3 px-3 font-semibold text-[#EDEFF3] cursor-pointer"
-                  onClick={() => { setSortField('priority'); setSortAsc(!sortAsc); }}
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Prioridad</span>
-                    <ArrowUpDown size={11} className="opacity-60" />
-                  </div>
-                </th>
-                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Estado</th>
-                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Naturaleza</th>
-                <th 
-                  className="py-3 px-3 font-semibold text-[#EDEFF3] text-right cursor-pointer"
-                  onClick={() => { setSortField('weeks'); setSortAsc(!sortAsc); }}
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span>Semanas</span>
-                    <ArrowUpDown size={11} className="opacity-60" />
-                  </div>
-                </th>
-                <th className="py-3 px-3 font-semibold text-[#EDEFF3]">Revisión IA</th>
-                <th className="py-3 px-4 font-semibold text-[#EDEFF3] text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-[#F5F7FA] opacity-50 italic">
-                    No se encontraron accionables con los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((action, idx) => {
-                  const weeks = getWeeksPending(action);
-                  const isDone = action.status.toLowerCase() === NOTION_STATES.HECHO.toLowerCase();
-                  const isDispute = action.revision_ia === 'En disputa';
-                  const isStale = weeks >= 3 && !isDone;
-
-                  return (
-                    <tr
-                      key={action.id}
-                      onClick={() => onOpenActionable(action)}
-                      className="cursor-pointer transition-colors hover:bg-white/5"
-                      style={{
-                        backgroundColor: idx % 2 === 0 ? 'var(--surface-0)' : 'color-mix(in oklab, var(--surface-1) 50%, transparent)',
-                        borderBottom: '1px solid var(--border)',
-                        borderLeft: isDispute ? '2px solid var(--primary)' : undefined,
-                        opacity: isDone ? 0.6 : 1
-                      }}
-                    >
-                      {/* Title & context */}
-                      <td className="py-3 px-4 max-w-sm">
-                        <div className="font-semibold text-[#EDEFF3] truncate flex items-center gap-1.5">
-                          {novedadesIds.has(action.id) && <span className="w-1.5 h-1.5 rounded-full bg-[#0062CC] shrink-0" title="Un agente comentó o editó esto y no lo viste" />}
-                          {action.title}
-                        </div>
-                        {action.why && (
-                          <div className="text-[11px] text-[#F5F7FA] opacity-60 truncate mt-0.5">
-                            {action.why}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Client */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30">
-                          {action.client}
-                        </span>
-                      </td>
-
-                      {/* Priority */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`font-semibold ${action.priority === 'Urgente' || action.priority === 'Alta' ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-75'}`}>
-                          {action.priority}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="text-[#F5F7FA] opacity-80">
-                          {action.status}
-                        </span>
-                      </td>
-
-                      {/* Naturaleza */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="text-[11px] text-[#F5F7FA] opacity-70">
-                          {action.naturaleza || 'Dato'}
-                        </span>
-                      </td>
-
-                      {/* Semanas Pendiente */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap tabular font-medium">
-                        <span className={isStale ? 'font-bold text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-75'}>
-                          {weeks > 0 ? `${weeks} sem` : '< 1 sem'}
-                        </span>
-                      </td>
-
-                      {/* Revisión IA */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded text-[10px] ${
-                          isDispute ? 'font-semibold text-[#EDEFF3] border-l-2 border-[#0062CC]' : 'text-[#F5F7FA] opacity-70'
-                        }`} style={{ backgroundColor: 'var(--surface-2)' }}>
-                          {action.revision_ia || 'Sin revisar'}
-                        </span>
-                      </td>
-
-                      {/* Quick Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-                          {/* Toggle Hecho */}
-                          <button
-                            onClick={() => {
-                              const next = isDone ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO;
-                              updateActionableStatus(action.id, next);
-                            }}
-                            title={isDone ? 'Marcar Propuesto' : 'Marcar Hecho'}
-                            className={`p-1.5 rounded hover:bg-white/10 transition-colors ${
-                              isDone ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'
-                            }`}
-                          >
-                            <Check size={14} />
-                          </button>
-
-                          {/* Quick Gemini analyze */}
-                          <button
-                            onClick={(e) => handleQuickAnalyze(e, action.id)}
-                            disabled={analyzingIds[action.id]}
-                            title="Pedir 2da opinión a Gemini"
-                            className="p-1.5 rounded hover:bg-white/10 text-[#F5F7FA] opacity-70 hover:opacity-100 transition-opacity"
-                          >
-                            <Cpu size={14} className={analyzingIds[action.id] ? 'animate-spin text-[#4D9DFF]' : ''} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                );
+              })}
+            </section>
+          ))}
         </div>
 
-        {/* Footer info */}
-        <div 
-          className="p-3 text-xs text-[#F5F7FA] opacity-60 flex items-center justify-between"
-          style={{ backgroundColor: 'var(--surface-1)', borderTop: '1px solid var(--border)' }}
-        >
-          <span>Mostrando <strong className="text-[#EDEFF3] tabular">{filtered.length}</strong> accionables</span>
-          <span>Haga clic en una fila para abrir el detalle completo</span>
-        </div>
+        {/* EL RAIL: lo que no cabe en una fila y sí cambia una decisión. */}
+        <aside className="space-y-6 xl:border-l xl:pl-7 min-w-0" style={{ borderColor: 'var(--border)' }}>
+          <section>
+            <div className="text-xs mb-2.5" style={LABEL}>Dónde está el trabajo</div>
+            <div className="space-y-1">
+              {EJES.filter(x => x.id !== 'todos').map(x => (
+                <button key={x.id} onClick={() => setEje(x.id)} className="w-full flex items-center justify-between gap-2 py-1 group">
+                  <span className="text-[13px] group-hover:text-[#FAFAFA] transition-colors" style={{ color: eje === x.id ? '#FAFAFA' : '#ADADAD' }}>{x.label}</span>
+                  <span className="text-[13px] tabular text-[#EDEFF3]">{x.n}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {masViejos.length > 0 && (
+            <section className="border-t pt-5" style={{ borderColor: 'var(--border)' }}>
+              <div className="text-xs mb-2.5" style={LABEL}>Lo que se está poniendo viejo</div>
+              <div className="space-y-2.5">
+                {masViejos.map(({ a, sem }) => (
+                  <button key={a.id} onClick={() => onOpenActionable(a)} className="w-full text-left group">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[12px] text-[#EDEFF3] truncate group-hover:text-[#FAFAFA]">{a.title}</span>
+                      <span className="text-[11px] tabular shrink-0" style={{ color: sem >= 3 ? 'var(--warn)' : '#ADADAD' }}>{sem} sem</span>
+                    </div>
+                    <div className="text-[10px] truncate" style={LABEL}>{a.client} · {a.status}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] mt-3 leading-relaxed" style={{ ...LABEL, opacity: 0.75 }}>
+                Un accionable de tres semanas ya no dice lo mismo que el día que se escribió: confirmalo o descartalo.
+              </p>
+            </section>
+          )}
+
+          <section className="border-t pt-5" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] leading-relaxed" style={{ ...LABEL, opacity: 0.75 }}>
+              Todo esto vive en Notion con su historial. Acá se decide; allá queda el rastro.
+            </p>
+          </section>
+        </aside>
       </div>
-
     </div>
   );
 }

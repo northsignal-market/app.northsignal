@@ -10,14 +10,19 @@ interface SidebarProps {
   pendientes?: number;
   /** Estado binario del sistema: punto, no número. */
   sistemaOk?: boolean;
+  /** Cerrada = ANCHO CERO en escritorio, no un rail que sigue ahí. "Contraer"
+      que deja 64px de iconos no devuelve el espacio: solo lo estrecha. */
+  abierta?: boolean;
 }
 
-export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = true }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = true, abierta = true }: SidebarProps) {
   return (
-    <aside 
-      className="glass-dense group fixed z-50 transition-all duration-300 ease-in-out overflow-hidden
+    <aside
+      aria-hidden={!abierta}
+      className={`glass-dense group fixed z-50 transition-all duration-200 ease-out overflow-hidden
         bottom-0 left-0 right-0 h-14 flex-row items-center justify-around flex
-        sm:top-0 sm:bottom-auto sm:right-auto sm:w-16 sm:hover:w-60 sm:h-full sm:flex-col sm:justify-start"
+        sm:top-0 sm:bottom-auto sm:right-auto sm:h-full sm:flex-col sm:justify-start
+        ${abierta ? 'sm:w-16 sm:hover:w-60' : 'sm:w-0 sm:border-0 sm:pointer-events-none'}`}
       style={{ borderRadius: 0, borderTop: 0, borderBottom: 0, borderLeft: 0 }}
     >
       {/* Header: Logo NorthSignal — clic lleva a Inicio */}

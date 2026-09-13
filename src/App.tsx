@@ -60,6 +60,25 @@ function App() {
     setActiveTab(tab);
   };
   const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string; origen?: string }>({});
+  // La nav se esconde ENTERA (⌘B), y la preferencia dura entre sesiones: en una
+  // app de un operador, el espacio horizontal de una tabla vale más que un rail
+  // de iconos que ya se sabe de memoria.
+  const [navAbierta, setNavAbierta] = useState<boolean>(() => {
+    try { return localStorage.getItem('nav_cerrada') !== '1'; } catch { return true; }
+  });
+  const alternarNav = React.useCallback(() => {
+    setNavAbierta(v => {
+      try { localStorage.setItem('nav_cerrada', v ? '1' : '0'); } catch { /* modo privado */ }
+      return !v;
+    });
+  }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); alternarNav(); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [alternarNav]);
   // Estado de servidor por TanStack Query: el briefing revalida al volver a la
   // pestaña y cada 5 min de fondo; la salud del header se DERIVA, no se copia.
   const qc = useQueryClient();
@@ -244,18 +263,35 @@ function App() {
       </div>
     )}
     <div className={`flex h-full overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
-      <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} />
-      
-      <div className="flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 pb-14 sm:pb-0 sm:ml-16">
+      <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} abierta={navAbierta} />
+
+      <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-200 ease-out pb-14 sm:pb-0 ${navAbierta ? 'sm:ml-16' : 'sm:ml-0'}`}>
         
         {/* Header: una fila, cinco cosas con función — cuentas, estado, novedades, ⌘K.
             Sin etiquetas ni perfil: en una app de un solo operador, "Andrés · Operador
             Principal" era decoración ocupando el lugar de la información. */}
         <header
-          className="glass-dense h-14 flex items-center justify-between gap-3 px-4 md:px-6 shrink-0 z-10"
+          className="glass-dense h-14 flex items-center justify-between gap-3 px-3 md:px-5 shrink-0 z-10"
           style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0 }}
         >
-          {/* Switcher de cuenta: ⌥1–4, misma vista con otro alcance */}
+          <div className="flex items-center gap-2.5 min-w-0">
+          {/* Mostrar/ocultar la nav. Vive acá porque cuando la nav está cerrada
+              no queda ningún otro lugar desde donde traerla de vuelta. */}
+          <button
+            onClick={alternarNav}
+            aria-label={navAbierta ? 'Ocultar el menú (⌘B)' : 'Mostrar el menú (⌘B)'}
+            title={navAbierta ? 'Ocultar el menú · ⌘B' : 'Mostrar el menú · ⌘B'}
+            className="hidden sm:flex shrink-0 w-8 h-8 items-center justify-center rounded-lg text-[#F5F7FA] opacity-55 hover:opacity-100 hover:bg-white/5 transition-all"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M9 4v16" />
+              {!navAbierta && <path d="M5.5 9.5h1.5M5.5 12h1.5" />}
+            </svg>
+          </button>
+
+          {/* Switcher de cuenta: ⌥1–4, misma vista con otro alcance. Es el ÚNICO
+              de la app — las vistas no lo repiten. */}
           <div className="flex items-center p-1 rounded-lg min-w-0 overflow-x-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             {clients.length === 0 && (
               <span className="px-3 py-1 text-xs text-[#E2B453]" title="El endpoint /api/cuentas no devolvió nada. Mirá Sistema › Salud.">
@@ -288,6 +324,7 @@ function App() {
                 </button>
               );
             })}
+          </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">

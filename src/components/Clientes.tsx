@@ -1,5 +1,5 @@
 import { useCuentaActiva, useCuentas } from '../lib/useCuentas';
-import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible, useJSON } from './ui';
+import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible, useJSON, Tablero } from './ui';
 import { Barcode, BarraApilada100, ColumnasApiladas100, IS_COLORES } from './graficos-pulse';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
@@ -769,8 +769,62 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <span className="text-[10px] text-[#F5F7FA] opacity-50">lo escribe la tarea del lunes; corregilo si está mal</span>
       </div>}
 
-      {ver('memoria') && (<>
-      {/* Hipótesis Abiertas */}
+      {/* MEMORIA · tablero, no pila: el doc maestro es la referencia larga
+          (columna ancha, medida de línea acotada) y lo vivo —hipótesis y
+          aprendizajes— acompaña al costado. Antes los tres eran cajas de
+          ancho completo con texto corriendo 1.200px: ilegible y sin jerarquía. */}
+      {ver('memoria') && (
+        <Tablero>
+          <div className="lg:col-span-7 min-w-0 space-y-4">
+      {/* Doc maestro ensamblado */}
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Doc maestro</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion">Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setVistaDoc('ensamblado')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'ensamblado' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Ensamblado</button>
+            <button onClick={() => setVistaDoc('editar')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'editar' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Editar capa humana</button>
+            <button onClick={descargarDoc} disabled={!docMaestro} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70 hover:opacity-100 disabled:opacity-30" style={{ border: '1px solid var(--border)' }}>Descargar .md</button>
+          </div>
+        </div>
+
+        {!docMaestro ? (
+          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
+        ) : vistaDoc === 'ensamblado' ? (
+          <div className="max-h-[70vh] overflow-y-auto custom-scrollbar pr-2" dangerouslySetInnerHTML={{ __html: md(docMaestro.markdown) }} />
+        ) : (
+          <div className="space-y-3">
+            {docMaestro.secciones.map(sec => (
+              <div key={sec.seccion} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: editandoSeccion === sec.seccion ? '1px solid var(--primary)' : '1px solid transparent' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-[#EDEFF3] uppercase tracking-wider">{sec.seccion}</span>
+                  <span className="text-[11px] text-[#F5F7FA] opacity-50 tabular">v{sec.version} · {fmtFechaCorta(sec.editado_el)} · {sec.editado_por}</span>
+                </div>
+                {editandoSeccion === sec.seccion ? (
+                  <div className="space-y-2">
+                    <textarea aria-label="Texto Edicion" value={textoEdicion} onChange={e => setTextoEdicion(e.target.value)} rows={14}
+                      className="w-full text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-3 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC] tabular" style={{ fontFamily: 'inherit' }} />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditandoSeccion(null)} className="px-3 py-1 rounded-none text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
+                      <button onClick={() => guardarSeccion(sec.seccion)} disabled={guardandoDoc} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-50">{guardandoDoc ? 'Guardando…' : 'Guardar como nueva versión'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs text-[#F5F7FA] opacity-80 line-clamp-3 flex-1">{sec.contenido.replace(/[#*`|]/g, '').slice(0, 240)}…</div>
+                    <button onClick={() => { setEditandoSeccion(sec.seccion); setTextoEdicion(sec.contenido); }} className="px-3 py-1 rounded-lg text-xs shrink-0" style={{ border: '1px solid var(--border)', color: '#F5F7FA' }}>Editar</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="text-[11px] text-[#F5F7FA] opacity-50">Cada edición crea una versión nueva; nada se borra. Las secciones calculadas y las de Notion no se editan acá: se corrigen en su fuente.</p>
+          </div>
+        )}
+      </div>
+          </div>
+          <div className="lg:col-span-5 min-w-0 space-y-4">
       <div 
         className="p-5 rounded-2xl space-y-3"
         style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
@@ -826,8 +880,6 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         )}
       </div>
 
-      </>)}
-      {ver('memoria') && (<>
       {/* Aprendizajes Consolidados (Fechados) */}
       <div 
         className="p-5 rounded-2xl space-y-3"
@@ -863,56 +915,9 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         </div>
       </div>
 
-      </>)}
-      {ver('memoria') && (<>
-      {/* Doc maestro ensamblado */}
-      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Doc maestro</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion">Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setVistaDoc('ensamblado')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'ensamblado' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Ensamblado</button>
-            <button onClick={() => setVistaDoc('editar')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'editar' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Editar capa humana</button>
-            <button onClick={descargarDoc} disabled={!docMaestro} className="px-3 py-1 rounded-lg text-xs text-[#F5F7FA] opacity-70 hover:opacity-100 disabled:opacity-30" style={{ border: '1px solid var(--border)' }}>Descargar .md</button>
-          </div>
-        </div>
-
-        {!docMaestro ? (
-          <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
-        ) : vistaDoc === 'ensamblado' ? (
-          <div className="max-h-[70vh] overflow-y-auto custom-scrollbar pr-2" dangerouslySetInnerHTML={{ __html: md(docMaestro.markdown) }} />
-        ) : (
-          <div className="space-y-3">
-            {docMaestro.secciones.map(sec => (
-              <div key={sec.seccion} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: editandoSeccion === sec.seccion ? '1px solid var(--primary)' : '1px solid transparent' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-[#EDEFF3] uppercase tracking-wider">{sec.seccion}</span>
-                  <span className="text-[11px] text-[#F5F7FA] opacity-50 tabular">v{sec.version} · {fmtFechaCorta(sec.editado_el)} · {sec.editado_por}</span>
-                </div>
-                {editandoSeccion === sec.seccion ? (
-                  <div className="space-y-2">
-                    <textarea aria-label="Texto Edicion" value={textoEdicion} onChange={e => setTextoEdicion(e.target.value)} rows={14}
-                      className="w-full text-xs bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg p-3 text-[#F5F7FA] focus:outline-none focus:border-[#0062CC] tabular" style={{ fontFamily: 'inherit' }} />
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditandoSeccion(null)} className="px-3 py-1 rounded-none text-xs text-[#F5F7FA] opacity-70">Cancelar</button>
-                      <button onClick={() => guardarSeccion(sec.seccion)} disabled={guardandoDoc} className="px-3 py-1 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-50">{guardandoDoc ? 'Guardando…' : 'Guardar como nueva versión'}</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="text-xs text-[#F5F7FA] opacity-80 line-clamp-3 flex-1">{sec.contenido.replace(/[#*`|]/g, '').slice(0, 240)}…</div>
-                    <button onClick={() => { setEditandoSeccion(sec.seccion); setTextoEdicion(sec.contenido); }} className="px-3 py-1 rounded-lg text-xs shrink-0" style={{ border: '1px solid var(--border)', color: '#F5F7FA' }}>Editar</button>
-                  </div>
-                )}
-              </div>
-            ))}
-            <p className="text-[11px] text-[#F5F7FA] opacity-50">Cada edición crea una versión nueva; nada se borra. Las secciones calculadas y las de Notion no se editan acá: se corrigen en su fuente.</p>
-          </div>
-        )}
-      </div>
-      </>)}
+        </Tablero>
+      )}
     </div>
   );
 }

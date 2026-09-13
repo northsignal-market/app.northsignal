@@ -85,6 +85,56 @@ export function PageShell({ titulo, subtitulo, derecha, children }: {
   );
 }
 
+/**
+ * TABLERO · composición en dos dimensiones.
+ * Una vista de operación no es una pila de filas del mismo alto: es un tablero
+ * donde el bloque que manda ocupa más y los de contexto acompañan. Grid de 12
+ * columnas; cada Panel declara cuánto toma (`col`) y cuántas filas cruza
+ * (`filas`). En móvil todo colapsa a una columna sin excepciones.
+ */
+export function Tablero({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <div className={`grid grid-cols-1 lg:grid-cols-12 gap-4 items-start ${className}`}>{children}</div>;
+}
+
+const COL: Record<number, string> = {
+  3: 'lg:col-span-3', 4: 'lg:col-span-4', 5: 'lg:col-span-5', 6: 'lg:col-span-6',
+  7: 'lg:col-span-7', 8: 'lg:col-span-8', 9: 'lg:col-span-9', 12: 'lg:col-span-12',
+};
+const FILA: Record<number, string> = { 2: 'lg:row-span-2', 3: 'lg:row-span-3' };
+
+/** Celda del tablero. `alto` fija una altura con scroll propio: así una lista
+ *  larga no estira la fila entera y el tablero conserva su forma. */
+export function Panel({ col = 6, filas, alto, titulo, nota, derecha, hero, sinCaja, children }: {
+  col?: number; filas?: number; alto?: number;
+  titulo?: React.ReactNode; nota?: React.ReactNode; derecha?: React.ReactNode;
+  hero?: boolean; sinCaja?: boolean; children: React.ReactNode;
+}) {
+  const cuerpo = (
+    <>
+      {(titulo || derecha) && (
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="min-w-0">
+            {titulo && <h2 className="text-[13px] font-medium text-[#EDEFF3] leading-tight">{titulo}</h2>}
+            {nota && <p className="text-[11px] mt-0.5 leading-snug" style={{ color: '#ADADAD' }}>{nota}</p>}
+          </div>
+          {derecha && <div className="flex items-center gap-2 shrink-0">{derecha}</div>}
+        </div>
+      )}
+      <div className={alto ? 'overflow-y-auto custom-scrollbar -mr-1 pr-1' : ''} style={alto ? { maxHeight: alto } : undefined}>
+        {children}
+      </div>
+    </>
+  );
+  const clases = `${COL[col] || 'lg:col-span-6'} ${filas ? FILA[filas] || '' : ''} min-w-0`;
+  if (sinCaja) return <section className={clases}>{cuerpo}</section>;
+  return (
+    <section className={`${clases} tarjeta-pulse ${hero ? 'tarjeta-hero' : ''} p-4 md:p-5`}
+      style={{ borderRadius: 'var(--r-tarjeta)' }}>
+      {cuerpo}
+    </section>
+  );
+}
+
 /** Sección con título chico a la izquierda y controles a la derecha. */
 export function Seccion({ titulo, descripcion, derecha, children }: {
   titulo: React.ReactNode; descripcion?: React.ReactNode; derecha?: React.ReactNode; children: React.ReactNode;
