@@ -196,7 +196,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           (KAREDO se juzga por CPA; el resto por conversiones). Nada más grande
           que esto arriba: si un número no cambia una decisión, no va acá. */}
       {displayedDaily.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x [&>*]:px-5 [&>*:first-child]:pl-0 pb-2" style={{ borderColor: 'var(--border)' }}>
           {(activeClient === 'KAREDO'
             ? ([
               { label: 'CPA', valor: fmtMoneda(kpis.cpa, M), delta: kpis.dCpa, baja: true, spark: kpis.sparkCpa },

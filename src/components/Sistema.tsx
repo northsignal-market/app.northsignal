@@ -191,7 +191,7 @@ export function Sistema() {
       {/* TAB: LO QUE APRENDIÓ (lecciones + conocimiento externo + acierto por tipo) */}
       {enGrupo('aprendizaje') && aprendido && (
         <div className="space-y-4">
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lecciones</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.">Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.</p>
@@ -208,7 +208,7 @@ export function Sistema() {
               </div>
             )}
           </div>
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprendió afuera</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
@@ -226,7 +226,7 @@ export function Sistema() {
             </div>
           </div>
           {(aprendido.invalidos || []).length > 0 && (
-            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Accionables que no cumplen el estándar</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
@@ -243,7 +243,7 @@ export function Sistema() {
             </div>
           )}
           {aprendido.acierto_por_tipo.length > 0 && (
-            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Qué tipo de cambio funciona en cada cuenta</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que “suele empeorar” sin decir por qué esta vez es distinto.">Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que “suele empeorar” sin decir por qué esta vez es distinto.</p>
@@ -266,7 +266,7 @@ export function Sistema() {
 
       {/* TAB: ALERTAS — lo urgente, arriba de todo en Automatización */}
       {enGrupo('alertas') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Alertas</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
@@ -299,7 +299,7 @@ export function Sistema() {
 
       {/* TAB: EJECUCIONES */}
       {enGrupo('ejecuciones') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprobaste para que el sistema ejecute</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
@@ -350,7 +350,7 @@ export function Sistema() {
               <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-70' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
                 <div className="flex items-center gap-3 flex-wrap">
                   <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#EDEFF3]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios', cambiar_concordancia: 'Cambiar concordancia de keywords' } as any)[p.tipo]}</span></label>
-                  <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+                  <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
                     {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
                   </div>
                 </div>
@@ -375,7 +375,7 @@ export function Sistema() {
       {/* TAB: COHERENCIA */}
       {enGrupo('coherencia') && (
         <div className="space-y-4">
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Quién es dueño de qué</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.">Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.</p>
@@ -390,7 +390,7 @@ export function Sistema() {
               ))}
             </div>
           </div>
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que el reconciliador corrigió</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.">Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.</p>
@@ -413,7 +413,7 @@ export function Sistema() {
 
       {/* TAB: TICKETS */}
       {enGrupo('tickets') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Tickets para Claude</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.">Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.</p>
@@ -465,7 +465,7 @@ export function Sistema() {
           {/* Veredicto del sistema. Reune las 32 verificaciones, las tareas caidas y
               la cuarentena. Antes esto solo se veia consultando SQL a mano. */}
           {saludSistema && (
-            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Estado del sistema</h2>
                 <span className="text-[11px] px-2 py-0.5 rounded-full" style={{
@@ -503,7 +503,7 @@ export function Sistema() {
           )}
 
           {/* Respaldo del esquema. Sin esto habia que escribir la URL a mano. */}
-          <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-2" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Respaldo del esquema
             </h2>
@@ -528,7 +528,7 @@ export function Sistema() {
               ))}
             </div>
           </div>
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Datos por cuenta
             </h2>
@@ -578,7 +578,7 @@ export function Sistema() {
           </div>
 
           {/* Webhook health */}
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Webhooks & Eventos de Ingesta
             </h2>
@@ -601,7 +601,7 @@ export function Sistema() {
 
       {/* TAB 2: INTEGRIDAD DE DATOS */}
       {enGrupo('integridad') && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Integridad de datos
           </h2>
@@ -656,7 +656,7 @@ export function Sistema() {
 
       {/* TAB 3: RUN SCORECARD */}
       {enGrupo('scorecard') && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">
               Calidad de cada análisis semanal
@@ -724,7 +724,7 @@ export function Sistema() {
 
       {/* TAB 4: CAMBIOS DETECTADOS */}
       {enGrupo('cambios') && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Cambios de configuración detectados
           </h2>
@@ -754,7 +754,7 @@ export function Sistema() {
 
       {/* TAB 5: BITÁCORA DEL OPERADOR */}
       {enGrupo('bitacora') && (
-        <div className="p-5 rounded-2xl space-y-5" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-5" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">
               Registro Manual en Bitácora (operator_log)
@@ -879,7 +879,7 @@ export function Sistema() {
       {enGrupo('aprendizaje') && (
         <div className="space-y-4">
           {/* Tasa de acierto: la métrica del sistema entero */}
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Tasa de acierto
             </h2>
@@ -907,7 +907,7 @@ export function Sistema() {
           </div>
 
           {/* Impacto por accionable */}
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Qué pasó después de cada accionable
             </h2>
@@ -964,7 +964,7 @@ export function Sistema() {
           )}
 
           {/* Reflexiones recientes */}
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Reflexiones de las corridas (memoria episódica)
             </h2>
@@ -991,7 +991,7 @@ export function Sistema() {
       )}
 
       {enGrupo('tamano') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Tamaño y crecimiento
           </h2>

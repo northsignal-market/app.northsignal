@@ -232,7 +232,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         </div>
 
         {/* Client switcher pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           {cuentasActivas.map(c => (
             <button
               key={c}
@@ -277,7 +277,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Ficha de Cuenta */}
       <div 
         className="p-5 rounded-2xl space-y-4"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
       >
         <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           Ficha de Cuenta · {activeClient}
@@ -338,7 +338,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Brecha y propuestas estratégicas: la ambición con lógica */}
       {ver('diagnostico') && (<>
       {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
-        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
           <div className="text-[#F5F7FA] opacity-30">→</div>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
@@ -346,7 +346,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         </div>
       ) : null; })()}
       {propuestas.length > 0 && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Propuestas estratégicas</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
@@ -396,7 +396,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       </>)}
 
       {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2">
             <Target size={15} className="text-[#4D9DFF]" /> Objetivos y estado
@@ -459,7 +459,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {ver('diagnostico') && (<>
       {/* Por qué está limitada: los tres componentes del Quality Score, ponderados por gasto */}
       {limitada?.por_que && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Por qué está donde está</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
@@ -494,7 +494,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       </>)}
       {ver('diagnostico') && (<>
       {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2"><Layers size={15} className="text-[#4D9DFF]" /> Escalera de valor</h2>
           <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">Smart Bidding solo ve las primarias. La primaria debe ser la etapa más profunda con 15+ eventos al mes.</p>
@@ -530,7 +530,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Accionables Abiertos de esta cuenta */}
       <div 
         className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3]">
@@ -641,7 +641,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Hipótesis Abiertas */}
       <div 
         className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2">
@@ -699,7 +699,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Aprendizajes Consolidados (Fechados) */}
       <div 
         className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <Lightbulb size={16} />
@@ -734,7 +734,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       </>)}
       {ver('memoria') && (<>
       {/* Doc maestro ensamblado */}
-      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+      <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Doc maestro</h2>

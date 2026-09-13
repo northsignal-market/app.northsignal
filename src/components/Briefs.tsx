@@ -172,7 +172,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
           ) : (
             <div 
               className="p-6 rounded-2xl space-y-5"
-              style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+              style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
             >
               {/* Brief Title & Meta */}
               <div className="space-y-2 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>

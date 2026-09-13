@@ -110,38 +110,39 @@ export function Tarjeta({ children, attention, sinPadding, className = '' }: {
   return (
     <div
       className={`${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
-      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-tarjeta)', backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
+      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-panel)', backgroundColor: 'transparent', border: '1px solid var(--border)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
     >
       {children}
     </div>
   );
 }
 
-/** Grilla de tarjetas de cifras. */
-export function StatGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{children}</div>;
+/** Fila de cifras SIN cajas: celdas separadas por hairlines verticales
+ *  (estructura de la referencia noir — jerarquía por líneas, no por cajas). */
+export function StatGrid({ children, cols = 4 }: { children: React.ReactNode; cols?: number }) {
+  const colCls = cols === 5 ? 'md:grid-cols-3 lg:grid-cols-5' : cols === 3 ? 'md:grid-cols-3' : 'md:grid-cols-4';
+  return (
+    <div className={`grid grid-cols-2 ${colCls} divide-x divide-y md:divide-y-0 [&>*]:px-5 [&>*:first-child]:pl-0 [&>*]:py-1`}
+      style={{ borderColor: 'var(--border)', ['--tw-divide-opacity' as any]: 1 } as any}>
+      {children}
+    </div>
+  );
 }
 
-/** Cifra con etiqueta, delta como badge con flecha, nota y sparkline.
- *  Lenguaje visual de las section cards de shadcn (dashboard-01, MIT), portado
- *  a nuestros tokens: label apagado arriba, badge outline con tendencia a la
- *  derecha, cifra 2xl en blanco puro, degradado sutil hacia arriba. */
+/** Cifra con etiqueta, delta con flecha, nota y sparkline. Celda limpia:
+ *  label 12px gris sentence case, cifra 24px/500, sin fondo ni borde propio.
+ *  Tipos medidos de la referencia (13/9). */
 export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional, spark }: {
   label: string; valor: React.ReactNode; delta?: number | null; deltaBuenoSiBaja?: boolean; nota?: string; provisional?: boolean; spark?: (number | null)[];
 }) {
   const d = delta == null || isNaN(Number(delta)) ? null : Number(delta);
   const bueno = d == null ? null : (deltaBuenoSiBaja ? d < 0 : d > 0);
   return (
-    <div className="p-4" style={{
-      borderRadius: 'var(--r-panel)',
-      border: '1px solid var(--border)',
-      background: 'linear-gradient(to top, var(--primary-faint), var(--surface-1))',
-    }}>
+    <div className="min-w-0">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 pt-0.5">{label}</span>
+        <span className="text-xs truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>{label}</span>
         {d != null && (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] tabular font-medium shrink-0"
-            style={{ border: '1px solid var(--border-strong)', color: bueno ? '#4ADE80' : 'var(--bad)' }}>
+          <span className="inline-flex items-center gap-1 text-[11px] tabular shrink-0" style={{ color: bueno ? '#4ADE80' : 'var(--bad)' }}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {d >= 0 ? <path d="M3 17 9 11 13 15 21 7 M15 7h6v6" /> : <path d="M3 7 9 13 13 9 21 17 M15 17h6v-6" />}
             </svg>
@@ -149,13 +150,13 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional,
           </span>
         )}
       </div>
-      <div className="flex items-end justify-between gap-2 mt-1.5">
-        <div className="text-2xl font-semibold text-[#FFFFFF] tabular leading-none">{valor}</div>
+      <div className="flex items-end justify-between gap-2 mt-1">
+        <div className="text-2xl font-medium text-[#FAFAFA] tabular leading-none" style={{ letterSpacing: '-0.6px' }}>{valor}</div>
         {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
       </div>
-      <div className="flex items-baseline gap-1.5 mt-2 min-h-[14px]">
-        {nota && <span className="text-[10px] text-[#F5F7FA] opacity-45 truncate">{nota}</span>}
-        {provisional && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }} title="Los días recientes maduran: este número todavía se mueve">madurando</span>}
+      <div className="flex items-baseline gap-1.5 mt-1.5 min-h-[14px]">
+        {nota && <span className="text-[11px] truncate" style={{ color: '#ADADAD', opacity: 0.85 }}>{nota}</span>}
+        {provisional && <span className="text-[10px] shrink-0" style={{ color: '#ADADAD', opacity: 0.7 }} title="Los días recientes maduran: este número todavía se mueve">· madurando</span>}
       </div>
     </div>
   );
@@ -219,7 +220,7 @@ export function Collapsible({ titulo, resumen, abiertoInicial = false, children 
 }) {
   const [abierto, setAbierto] = useState(abiertoInicial);
   return (
-    <div style={{ borderRadius: 'var(--r-tarjeta)', backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+    <div style={{ borderRadius: 'var(--r-panel)', backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
       <button onClick={() => setAbierto(a => !a)} className="w-full flex items-center justify-between gap-3 px-4 md:px-5 py-3 text-left">
         <span className="text-[13px] font-medium text-[#EDEFF3]">{titulo}</span>
         <span className="flex items-center gap-2 shrink-0">
