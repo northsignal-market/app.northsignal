@@ -49,9 +49,12 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <div className="max-w-sm w-full relative z-10 flex flex-col items-center">
-        {/* El orbe con sus anillos-pedestal. Respira despacio; con
+        {/* El orbe con sus anillos-pedestal, dentro de su bloom: ilumina el
+            lienzo en vez de flotar pegado. Respira despacio; con
             prefers-reduced-motion queda quieto (regla global). */}
-        <div className="orbe mb-12" aria-hidden="true" />
+        <div className="orbe-escena mb-11" aria-hidden="true">
+          <div className="orbe" />
+        </div>
 
         <div className="text-center mb-7">
           <h1 className="text-[22px] font-semibold text-[#FAFAFA] tracking-tight">

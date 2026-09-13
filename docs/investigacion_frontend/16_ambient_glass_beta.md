@@ -205,6 +205,39 @@ preferible a 40 citas sin verificar.
 - **Queda fuera a propósito**: mesh animado permanente, orbe en vistas operativas,
   telones sobre accionables, violeta.
 
+### B7. La medición que quedó abierta: el intento, y por qué NO se publica
+
+El informe dejó una pregunta empírica ("¿cuántas capas de backdrop-filter sostienen
+60fps?") porque nadie la publica. Se intentó responderla el 13/9 con un banco propio:
+Chrome real en la Mac de Andrés vía Playwright (`channel: 'chrome'`, headed,
+`bringToFront`), contra la **CSS de producción** (`dist/assets/index-*.css`), con
+1.440 filas densas, 12 headers pegajosos y scroll dentro del rAF. Cuatro configuraciones:
+sólido · beta (la desplegada) · estrés (blur en las 12 tarjetas) · brutal (blur 80px en
+las 1.440 filas + capa full-screen).
+
+**Los cuatro modos dieron lo mismo: 120fps, p95 ~9ms, cero frames sobre 20ms.** Los
+controles de validez confirmaron que la página era visible y que el blur estaba
+efectivamente aplicado en cada modo (computed `backdrop-filter` distinto por config).
+Pero el **control negativo** mató el resultado: un layout thrash deliberado —
+`getBoundingClientRect()` de 1.440 filas en cada frame— **tampoco movió la aguja**.
+Si eso no duele, los timestamps de rAF bajo automatización no reflejan el pacing real:
+**el banco no mide, y sus números no se publican.**
+
+Lo que sí queda demostrado: no se puede medir frame pacing desde una pestaña
+automatizada (la del MCP está `visibilityState: "hidden"` y ni siquiera dispara rAF;
+la de Playwright dispara pero a reloj sintético). La medición válida la corre Andrés
+en su ventana, pegando esto en la consola mientras scrollea Sistema a mano:
+
+```js
+(() => { const d=[]; let p=null,n=0; const t=(x)=>{ if(p!==null)d.push(x-p); p=x; if(n++<180)requestAnimationFrame(t);
+  else { const o=[...d].sort((a,b)=>a-b); console.log('fps',Math.round(d.length/(d.reduce((a,b)=>a+b)/1000)),
+  'p95',o[Math.floor(o.length*.95)].toFixed(1)+'ms','lentos',d.filter(x=>x>20).length); } }; requestAnimationFrame(t); })()
+```
+
+**Y la conclusión que no depende de la medición:** la razón para no poner vidrio bajo los
+datos es la **legibilidad** (NN/g sobre iOS 26 + la reconstrucción de Apple en WWDC26 +
+la física del contraste contexto-dependiente), no los fps. Esa regla se sostiene sola.
+
 ### Fuentes (23 fetcheadas; las citadas arriba sobrevivieron verificación)
 
 Primarias/altas: nngroup.com/articles/liquid-glass · techcrunch.com (WWDC 8/6/2026) ·
