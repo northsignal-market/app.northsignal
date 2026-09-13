@@ -17,7 +17,7 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
     <aside 
       className="glass-dense group fixed z-50 transition-all duration-300 ease-in-out overflow-hidden
         bottom-0 left-0 right-0 h-14 flex-row items-center justify-around flex
-        sm:top-0 sm:bottom-auto sm:right-auto sm:w-16 sm:hover:w-60 sm:h-screen sm:flex-col sm:justify-start"
+        sm:top-0 sm:bottom-auto sm:right-auto sm:w-16 sm:hover:w-60 sm:h-full sm:flex-col sm:justify-start"
       style={{ borderRadius: 0, borderTop: 0, borderBottom: 0, borderLeft: 0 }}
     >
       {/* Header: Logo NorthSignal — clic lleva a Inicio */}

@@ -217,8 +217,9 @@ function App() {
   };
 
   if (!authChecked) {
+    // Sobre el lienzo del body, sin fondo propio: el arranque ya es la casa.
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface-0)' }}>
+      <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 rounded-full animate-spin border-2 border-transparent border-t-[#0062CC]" />
       </div>
     );
@@ -230,6 +231,11 @@ function App() {
 
   return (
     <TerminoProvider>
+    {/* BETA AMBIENT (informe 16): la app es una ventana flotando sobre el
+        lienzo del body. El transform del shell contiene a los fixed internos —
+        sidebar, banda, drawer, paleta y toasts viven DENTRO de la ventana y
+        respetan sus esquinas. En móvil el shell ocupa todo: cero cambio. */}
+    <div className="app-shell">
     <GlobalToast />
     {bandaEntorno && (
       <div style={{ backgroundColor: bandaEntorno.color }}
@@ -237,10 +243,10 @@ function App() {
         {bandaEntorno.texto}
       </div>
     )}
-    <div className={`flex min-h-screen overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
+    <div className={`flex h-full overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
       <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} />
       
-      <div className="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 pb-14 sm:pb-0 sm:ml-16">
+      <div className="flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 pb-14 sm:pb-0 sm:ml-16">
         
         {/* Header: una fila, cinco cosas con función — cuentas, estado, novedades, ⌘K.
             Sin etiquetas ni perfil: en una app de un solo operador, "Andrés · Operador
@@ -368,6 +374,8 @@ function App() {
       />
 
       {/* Reusable Actionable Drawer (Replaces modal) */}
+      {/* El cierre del shell viene después del drawer y la paleta: también
+          ellos quedan contenidos en la ventana. */}
       <Drawer
         isOpen={Boolean(selectedAction)}
         onClose={() => setSelectedAction(null)}
@@ -399,6 +407,7 @@ function App() {
           />
         )}
       </Drawer>
+    </div>
     </div>
     </TerminoProvider>
   );

@@ -106,19 +106,134 @@ html, body {
 ::selection { background: var(--primary-soft); color: var(--white); }
 
 body {
-  /* PULSE (13/9): negro profundo con vida — dot-grid sutilísimo (textura tech)
-     y dos auroras de acento arriba, apenas visibles. El consenso 2026 para
-     dashboards: cinematográfico oscuro + acentos luminosos estratégicos. */
+  /* BETA AMBIENT (informe 16): el body ya no es la app — es el LIENZO detrás
+     de la ventana. Azul profundo con tres auroras y grano; los datos jamás
+     viven acá. La app flota encima como shell (.app-shell). */
   background:
-    radial-gradient(ellipse 60% 42% at 12% -8%, rgba(0, 98, 204, 0.16), transparent 60%),
-    radial-gradient(ellipse 50% 36% at 88% -6%, rgba(34, 211, 238, 0.07), transparent 55%),
-    radial-gradient(circle 0.8px at 0.8px 0.8px, rgba(255, 255, 255, 0.028) 0.8px, transparent 0) 0 0 / 26px 26px,
-    color-mix(in oklab, var(--navy) 88%, #000000);
+    radial-gradient(ellipse 68% 50% at 16% -10%, rgba(0, 98, 204, 0.30), transparent 62%),
+    radial-gradient(ellipse 52% 40% at 86% -8%, rgba(34, 211, 238, 0.10), transparent 58%),
+    radial-gradient(ellipse 62% 48% at 84% 108%, rgba(0, 98, 204, 0.16), transparent 60%),
+    color-mix(in oklab, var(--navy) 60%, #000000);
   background-attachment: fixed;
   color: var(--text);
   margin: 0;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Grano del lienzo: ruido SVG estático a 4% — textura, no efecto. Vive solo
+   en el lienzo (se ve en los márgenes del shell y en el login). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── BETA AMBIENT · el shell ────────────────────────────────────────
+   La app como ventana flotando sobre el lienzo. En móvil ocupa todo
+   (cero costo); desde lg flota con margen, hairline, highlight y
+   sombra profunda. El transform crea el containing block de los fixed
+   internos (sidebar, drawer, paleta, banda): todo queda DENTRO de la
+   ventana y respeta sus esquinas. El fondo del shell es EXACTAMENTE el
+   viejo fondo de la app (dot-grid + auroras): ningún color interno
+   cambió de contexto. */
+.app-shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 1;
+  transform: translateZ(0);
+  background:
+    radial-gradient(ellipse 60% 42% at 12% -8%, rgba(0, 98, 204, 0.16), transparent 60%),
+    radial-gradient(ellipse 50% 36% at 88% -6%, rgba(34, 211, 238, 0.07), transparent 55%),
+    radial-gradient(circle 0.8px at 0.8px 0.8px, rgba(255, 255, 255, 0.028) 0.8px, transparent 0) 0 0 / 26px 26px,
+    color-mix(in oklab, var(--navy) 88%, #000000);
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    inset: 14px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 32px 90px -28px rgba(0, 0, 0, 0.75),
+      0 0 0 1px rgba(0, 0, 0, 0.45);
+  }
+  /* La firma de la casa, en la ventana entera: top-highlight de nivel shell. */
+  .app-shell::after {
+    content: '';
+    position: absolute;
+    top: -1px; left: 10%; right: 10%;
+    height: 1px;
+    z-index: 60;
+    background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.5), rgba(34, 211, 238, 0.3), transparent);
+    pointer-events: none;
+  }
+}
+
+/* ── BETA AMBIENT · vidrio en el chrome, sólido-primero ─────────────
+   Regla del informe 16 (Apple WWDC26 + setproduct + Raycast): el vidrio
+   va SOLO en el marco — header, sidebar, paleta, drawer, headers
+   pegajosos — con tinte DENSO ("fully tinted" como base, no como
+   degradación) y blur encima. Los datos siguen sobre sólido. Fallback:
+   sin soporte o con prefers-reduced-transparency, queda el sólido que
+   ya había — la media query desconocida evalúa false y Firefox ni entra. */
+@supports (backdrop-filter: blur(1px)) {
+  @media (prefers-reduced-transparency: no-preference) {
+    .glass-dense {
+      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 97%, #000000) 72%, transparent);
+      backdrop-filter: blur(22px) saturate(1.5);
+    }
+    .glass {
+      background: color-mix(in srgb, var(--surface-1) 76%, transparent);
+      backdrop-filter: blur(22px) saturate(1.5);
+    }
+    .grupo-sticky {
+      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 88%, #000000) 84%, transparent);
+      backdrop-filter: blur(16px) saturate(1.4);
+    }
+  }
+}
+
+/* ── BETA AMBIENT · el orbe ─────────────────────────────────────────
+   Existe SOLO donde no hay datos (login, bienvenidas). UNA instancia,
+   azul de la casa — jamás violeta, jamás en pantallas operativas
+   (informe 16 §B3: el compuesto violeta+orbe es el template AI).
+   Respiración lentísima; la regla global de reduced-motion lo aquieta. */
+.orbe {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 26%),
+    radial-gradient(circle at 68% 74%, rgba(34, 211, 238, 0.5), rgba(34, 211, 238, 0) 46%),
+    radial-gradient(circle at 50% 45%, #4D9DFF 0%, #0062CC 54%, #04182E 100%);
+  box-shadow:
+    inset -14px -18px 34px rgba(2, 10, 24, 0.6),
+    inset 8px 10px 22px rgba(255, 255, 255, 0.12),
+    0 26px 64px -18px rgba(0, 98, 204, 0.55),
+    0 0 90px 8px rgba(34, 211, 238, 0.10);
+  animation: orbe-respira 9s ease-in-out infinite;
+}
+/* Anillos-pedestal concéntricos (la referencia wrapped), quietos. */
+.orbe::before,
+.orbe::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.orbe::before { inset: -30%; border: 1px solid rgba(77, 157, 255, 0.16); }
+.orbe::after { inset: -58%; border: 1px solid rgba(77, 157, 255, 0.08); }
+@keyframes orbe-respira {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
 }
 
 /* Acentos Pulse */
