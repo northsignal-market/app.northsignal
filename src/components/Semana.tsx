@@ -10,6 +10,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import {
   PageShell, Seccion, Tarjeta, Collapsible, Chips, Vacio, Stat,
+  Titular, Nota, Pista, Riel, RielTramo,
   RangoFechas, rangoPreset, type Rango, hoyLocal,
   fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON, useJSON,
 } from './ui';
@@ -230,6 +231,24 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       derecha={<RangoFechas valor={rango} onChange={setRango} presets={['7d', '14d']} minDesde={minDesde} />}
     >
 
+      {/* EL TITULAR · la frase que contesta "cómo viene la semana", sola arriba.
+          Vivía adentro de la tarjeta del plan, al mismo tamaño que la letra
+          chica que la matiza, cuatro bloques más abajo que las cifras. Leerla
+          costaba encontrarla. Acá manda: el resto de la vista la sustenta. */}
+      {lecturaPlan && (
+        <Titular
+          estado={COLOR_ESTADO[lecturaPlan.estadoId]}
+          guia={lecturaPlan.guia}
+          aviso={lecturaPlan.aviso}
+          meta={<>
+            <span>{lecturaPlan.progreso}</span>
+            {lecturaPlan.guiaDelAgente && <span className="opacity-60">· lectura del agente</span>}
+          </>}
+        >
+          {lecturaPlan.veredicto}
+        </Titular>
+      )}
+
       {/* LOS CINCO NÚMEROS DE LA VENTANA: la métrica norte de la cuenta primero
           (KAREDO se juzga por CPA; el resto por conversiones). Nada más grande
           que esto arriba: si un número no cambia una decisión, no va acá. */}
@@ -259,42 +278,177 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </div>
       )}
 
-      {/* CONTRA QUÉ SE MIDE LA SEMANA, en una sola franja: el plan manda (7
-          columnas) y a su lado lo que el sistema predijo y cómo viene el mes.
-          Antes eran dos bloques de ancho completo, uno debajo del otro: dos
-          pantallas para responder la misma pregunta. */}
+      {/* LA FORMA DE LA SEMANA, y al lado si esa forma está dentro de lo
+          esperado. El gráfico ocupaba el ancho entero y solo: catorce días de
+          gasto no significan nada hasta saber contra qué se comparan, y eso
+          estaba dos pantallas más arriba. Ahora se miran juntos, y el riel
+          angosto rompe la fila de bandas horizontales que era toda la vista. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        <Tarjeta hero className="lg:col-span-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-[13px] font-medium text-[#EDEFF3] truncate">{anomalias.titulo || 'Tendencia diaria'}</h2>
+              <Pista>
+                Clic en un día para inspeccionarlo. Línea punteada = media móvil de 7 días.
+                Fondo azul = anomalía detectada, con más intensidad cuanto más severa.
+                Zona clara al final = días que todavía maduran: las conversiones pueden
+                tardar en atribuirse y Google las cuenta el día del clic.
+              </Pista>
+            </div>
+            <Chips
+              opciones={[
+                { id: 'gasto_cpa', label: 'Gasto y CPA' },
+                { id: 'conv_clics', label: 'Conversiones y clics' },
+                { id: 'ctr_cpc', label: 'CTR y CPC' },
+              ]}
+              valor={lens}
+              onChange={setLens}
+            />
+          </div>
+          <div className="h-[19rem] w-full">
+            {displayedDaily.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-[#F5F7FA] opacity-50 italic">
+                {loadingDaily ? 'Cargando datos diarios…' : 'No hay datos diarios disponibles para esta cuenta.'}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                {lens === 'gasto_cpa' ? (
+                  <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
+                    <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda} width={54}
+                      label={{ value: 'Gasto', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda} width={50}
+                      label={{ value: 'CPA', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <RechartsTooltip contentStyle={tooltipStyle} formatter={tooltipMoneda}
+                      labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
+                    {primerProvisional && (
+                      <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
+                        {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
+                    )}
+                    {displayedDaily.filter((d: any) => severidadOpacity[d.severidad]).map((d: any) => (
+                      <ReferenceArea key={d.date} {...({ x1: d.date, x2: d.date, yAxisId: 'left', fill: '#0062CC', fillOpacity: severidadOpacity[d.severidad], stroke: 'none' } as any)} />
+                    ))}
+                    <Line yAxisId="left" type="monotone" dataKey="gasto_baseline" name="Baseline 7d"
+                      stroke="#F5F7FA" strokeOpacity={0.4} strokeWidth={1} strokeDasharray="3 5" dot={false} activeDot={false} />
+                    <Line yAxisId="left" type="monotone" dataKey="gasto" name="Gasto" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={{ r: 3, fill: '#0062CC' }} activeDot={{ r: 5 }} />
+                    <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#FFFFFF" strokeWidth={1.5} connectNulls={false} dot={{ r: 2, fill: '#FFFFFF' }} />
+                    <Line yAxisId="right" type="monotone" dataKey="cpa_provisional" name="CPA (provisional)"
+                      stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="2 4" dot={{ r: 2, fill: '#F5F7FA', fillOpacity: 0.4 }} />
+                    <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconType="plainline" iconSize={10} />
+                  </LineChart>
+                ) : lens === 'conv_clics' ? (
+                  <BarChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
+                    <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false}
+                      label={{ value: 'Conversiones', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false}
+                      label={{ value: 'Clics', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <RechartsTooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [v == null ? '—' : fmtNum(Number(v)), n]}
+                      labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
+                    {primerProvisional && (
+                      <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
+                        {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
+                    )}
+                    <Bar yAxisId="left" dataKey="conversiones" name="Conversiones" fill="#0062CC" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                    <Bar yAxisId="right" dataKey="clics" name="Clics" fill="rgba(245, 247, 250, 0.4)" radius={[4, 4, 0, 0]} maxBarSize={18} />
+                    <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconSize={10} />
+                  </BarChart>
+                ) : (
+                  <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
+                    <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => `${Number(v).toFixed(1)}%`}
+                      label={{ value: 'CTR', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda}
+                      label={{ value: 'CPC', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
+                    <RechartsTooltip contentStyle={tooltipStyle} formatter={tooltipMoneda}
+                      labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
+                    {primerProvisional && (
+                      <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
+                        {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
+                    )}
+                    <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="cpc" name="CPC" stroke="#FFFFFF" strokeWidth={1.5} dot={false} />
+                    <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconType="plainline" iconSize={10} />
+                  </LineChart>
+                )}
+              </ResponsiveContainer>
+            )}
+          </div>
+        </Tarjeta>
+
+        {/* EL RIEL · vertical y angosto, pegado al gráfico. Bullet: barra = real,
+            banda = rango predicho (informe 13 §2c). El gauge radial existe SOLO
+            acá: una meta, 0–100%, un vistazo — el único uso honesto del radial. */}
+        <Riel className="lg:col-span-4">
+          <RielTramo titulo="Contra lo predicho"
+            derecha={prediccionesSemana.length > 0 ? (
+              <Pista titulo="Cómo se lee">
+                La barra es el real acumulado al cierre de ayer ({realSemana?.dias ?? 0} día{(realSemana?.dias ?? 0) !== 1 ? 's' : ''}) y la banda
+                es el rango que el análisis del lunes predijo al {Math.round(Number(prediccionesSemana[0].probabilidad || 0.8) * 100)}%.
+                Las conversiones recientes maduran: la predicción se evalúa recién el lunes.
+              </Pista>
+            ) : undefined}>
+            {prediccionesSemana.length === 0 ? (
+              <p className="text-[11px] leading-relaxed" style={{ color: '#ADADAD' }}>Sin predicciones esta semana. Las escribe el análisis del lunes.</p>
+            ) : (
+              <div className="space-y-3">
+                {prediccionesSemana.map((pr: any) => {
+                  const fmt = fmtMetrica(pr.metrica);
+                  const real = realSemana?.[pr.metrica] ?? null;
+                  return (
+                    <div key={pr.id} className="space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[12px] text-[#EDEFF3] truncate" title={pr.razonamiento || undefined}>{nombres[pr.metrica] || pr.metrica}</span>
+                        <span className="text-[11px] tabular shrink-0" style={{ color: '#ADADAD' }}>
+                          {typeof real === 'number' ? <span className="text-[#EDEFF3]">{fmt(real)}</span> : '—'}
+                          <span className="opacity-70"> · {fmt(Number(pr.valor_min))}–{fmt(Number(pr.valor_max))}</span>
+                        </span>
+                      </div>
+                      <Bullet real={typeof real === 'number' ? real : null} min={Number(pr.valor_min)} max={Number(pr.valor_max)} formato={fmt} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </RielTramo>
+
+          <RielTramo titulo="Pacing del mes">
+            {pacing?.presupuesto != null && pacing?.consumido_pct != null ? (
+              <div className="flex flex-col items-center">
+                <GaugeTicks consumidoPct={pacing.consumido_pct} esperadoPct={pacing.esperado_pct ?? 0} />
+                <p className="text-[10.5px] tabular text-center" style={{ color: '#ADADAD' }}>
+                  {fmtMoneda(pacing.gasto_mes, M)} de {fmtMoneda(pacing.presupuesto, M)} · día {pacing.dia_cerrado} de {pacing.dias_mes}
+                </p>
+                {pacing.aviso && <p className="text-[10.5px] mt-1 text-center" style={{ color: 'var(--warn)' }}>{pacing.aviso}</p>}
+              </div>
+            ) : (
+              <p className="text-[11px] leading-relaxed" style={{ color: '#ADADAD' }}>
+                Sin presupuesto mensual declarado no hay pacing. Se carga en Diagnóstico › Objetivos.
+              </p>
+            )}
+          </RielTramo>
+        </Riel>
+      </div>
+
+      {/* POR QUÉ VIENE ASÍ · las señales que el plan mira (7 columnas) y, al
+          lado, lo que pasa afuera apilado en vertical. La cancha va acá y no
+          después del gráfico: explica la forma que ya se vio. */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       {plan?.plan && (() => {
         const p = plan.plan;
         const dias = plan.pulsos.length;
         return (
-          <Tarjeta hero className="lg:col-span-7">
-            <div className="pb-2.5 mb-3 space-y-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>
-                <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular shrink-0">desde {fmtFechaCorta(p.semana)}</span>
-              </div>
-              {/* Tres renglones fijos: veredicto calculado → guía → progreso.
-                  El texto técnico del agente ya no es el subtítulo: está plegado
-                  abajo, íntegro y rotulado. Los hechos vienen de plan_lectura(). */}
-              {lecturaPlan ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_ESTADO[lecturaPlan.estadoId] }} />
-                    <span className="text-sm font-semibold text-[#FFFFFF]">{lecturaPlan.veredicto}</span>
-                  </div>
-                  {lecturaPlan.guia && (
-                    <p className="text-xs text-[#F5F7FA] opacity-85 leading-relaxed pl-4" style={{ maxWidth: '72ch' }}>
-                      {lecturaPlan.guia}
-                      {lecturaPlan.guiaDelAgente && <span className="ml-1.5 align-middle text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ backgroundColor: 'var(--surface-2)', color: 'var(--text-secondary)' }} title="Texto del plan escrito por el agente, sin resumir">análisis del agente</span>}
-                    </p>
-                  )}
-                  <p className="text-[11px] tabular text-[#F5F7FA] opacity-50 pl-4">{lecturaPlan.progreso}</p>
-                  {lecturaPlan.aviso && <p className="text-[11px] pl-4" style={{ color: 'var(--warn)' }}>{lecturaPlan.aviso}</p>}
-                </>
-              ) : (
-                <p className="text-[11px] text-[#F5F7FA] opacity-50">{dias} día{dias !== 1 ? 's' : ''} de evidencia esta semana.</p>
-              )}
+          <Tarjeta className="lg:col-span-7">
+            {/* El veredicto y su guía ya son el titular de la vista: acá solo
+                queda la evidencia que lo sostiene, señal por señal. */}
+            <div className="flex items-baseline justify-between gap-3 pb-2.5 mb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Las señales del plan</Termino></h2>
+              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular shrink-0">
+                {dias} día{dias !== 1 ? 's' : ''} · desde {fmtFechaCorta(p.semana)}
+              </span>
             </div>
             {/* La "racha GitHub-style" del informe 13 se evaluó y NO va: ese
                 patrón presupone un plan de cumplimiento (hábitos, logro diario).
@@ -355,91 +509,54 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         );
       })()}
 
-      {/* P5 · La semana contra lo predicho, y el mes contra su presupuesto.
-          Bullet: barra = real, banda = rango, tick = centro del rango (informe
-          13 §2c). El gauge radial existe SOLO acá: una meta, 0-100%, un
-          vistazo — el único uso honesto del radial (§2a). */}
-      {(prediccionesSemana.length > 0 || pacing) && (
-        <Tarjeta className="lg:col-span-5">
-          <div className="space-y-4">
-            <div className="min-w-0">
-              <h2 className="text-[13px] font-medium text-[#EDEFF3]">La semana contra lo predicho</h2>
-              {prediccionesSemana.length === 0 ? (
-                <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin predicciones para esta semana. Las escribe el análisis semanal del lunes.</p>
-              ) : (
-                <div className="mt-2.5 space-y-2.5">
-                  {prediccionesSemana.map((pr: any) => {
-                    const fmt = fmtMetrica(pr.metrica);
-                    const real = realSemana?.[pr.metrica] ?? null;
-                    return (
-                      <div key={pr.id} className="grid grid-cols-[92px_minmax(0,1fr)_auto] items-center gap-3">
-                        <span className="text-xs text-[#EDEFF3] truncate" title={pr.razonamiento || undefined}>{nombres[pr.metrica] || pr.metrica}</span>
-                        <Bullet real={typeof real === 'number' ? real : null} min={Number(pr.valor_min)} max={Number(pr.valor_max)} formato={fmt} />
-                        <span className="text-[11px] tabular text-right whitespace-nowrap" style={{ color: '#ADADAD' }}>
-                          {typeof real === 'number' ? <span className="text-[#EDEFF3]">{fmt(real)}</span> : '—'} · {fmt(Number(pr.valor_min))}–{fmt(Number(pr.valor_max))}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  <p className="text-[10px] leading-relaxed" style={{ color: '#ADADAD', opacity: 0.85 }}>
-                    Barra = real al cierre de ayer ({realSemana?.dias ?? 0} día{(realSemana?.dias ?? 0) !== 1 ? 's' : ''}) · banda = rango predicho al {Math.round(Number(prediccionesSemana[0].probabilidad || 0.8) * 100)}% · las conversiones recientes maduran; la predicción se evalúa el lunes.
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-              <h2 className="text-[13px] font-medium text-[#EDEFF3]">Pacing del mes</h2>
-              {pacing?.presupuesto != null && pacing?.consumido_pct != null ? (
-                <div className="mt-1 flex flex-col items-center">
-                  <GaugeTicks consumidoPct={pacing.consumido_pct} esperadoPct={pacing.esperado_pct ?? 0} />
-                  <p className="text-[10px] tabular text-center" style={{ color: '#ADADAD' }}>
-                    {fmtMoneda(pacing.gasto_mes, M)} de {fmtMoneda(pacing.presupuesto, M)} · día {pacing.dia_cerrado} de {pacing.dias_mes}
-                  </p>
-                  {pacing.aviso && <p className="text-[10px] mt-0.5 text-center max-w-[190px]" style={{ color: 'var(--warn)' }}>{pacing.aviso}</p>}
-                </div>
-              ) : (
-                <p className="text-[11px] mt-2 leading-relaxed max-w-[190px]" style={{ color: '#ADADAD' }}>
-                  Sin presupuesto mensual declarado, el pacing no existe. Se carga en Diagnóstico › Objetivos y estado.
-                </p>
-              )}
-            </div>
-          </div>
-        </Tarjeta>
-      )}
-      </div>
-
-      {/* LA CANCHA · lo que pasa afuera. Va antes de la tendencia porque cambia
-          cómo se lee la tendencia: una caída en un mercado que se achicó no es
-          la misma caída. Solo aparece cuando hay algo que decir. */}
-      {(presionReal.length > 0 || mercado?.resumen) && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          {mercado?.resumen && (
-            <Tarjeta className="lg:col-span-7">
+      {/* LA CANCHA · lo que pasa afuera, apilado en vertical al lado del plan.
+          Va junto a las señales y no en su propia franja: son dos respuestas a
+          la misma pregunta — por qué la semana tiene la forma que tiene, por
+          dentro y por fuera. Cada tarjeta solo aparece si tiene algo que decir. */}
+      {(presionReal.length > 0 || mercado?.resumen || mercado?.aviso) && (
+        <div className="lg:col-span-5 space-y-4">
+          {mercado?.resumen ? (
+            <Tarjeta>
               <h2 className="text-[13px] font-medium text-[#EDEFF3] mb-2">El mercado, y vos dentro de él</h2>
-              <p className="text-[15px] leading-relaxed text-[#FAFAFA]" style={{ maxWidth: '58ch' }}>
-                {mercado.resumen.lectura}
-              </p>
-              <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-[11px] tabular" style={{ color: '#ADADAD' }}>
-                <span>demanda <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado > 0 ? '+' : ''}{mercado.resumen.var_mercado}%</span> vs mes previo</span>
+              <p className="text-[14px] leading-relaxed text-[#FAFAFA]">{mercado.resumen.lectura}</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-[11px] tabular" style={{ color: '#ADADAD' }}>
+                <span>demanda <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado > 0 ? '+' : ''}{mercado.resumen.var_mercado}%</span></span>
                 {mercado.resumen.var_mercado_interanual != null && (
-                  <span>vs mismo mes del año pasado <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado_interanual > 0 ? '+' : ''}{mercado.resumen.var_mercado_interanual}%</span></span>
+                  <span>interanual <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado_interanual > 0 ? '+' : ''}{mercado.resumen.var_mercado_interanual}%</span></span>
                 )}
                 {mercado.resumen.var_conv != null && (
-                  <span>tus conversiones <span className="text-[#EDEFF3]">{mercado.resumen.var_conv > 0 ? '+' : ''}{mercado.resumen.var_conv}%</span></span>
+                  <span>tus conv. <span className="text-[#EDEFF3]">{mercado.resumen.var_conv > 0 ? '+' : ''}{mercado.resumen.var_conv}%</span></span>
                 )}
               </div>
-              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: '#ADADAD', opacity: 0.75 }}>
-                {mercado.resumen.como_se_calcula}. Los volúmenes son promedios redondeados por Google: sirven para ver la dirección, no como cifra exacta.
-              </p>
+              <Nota>
+                {mercado.resumen.como_se_calcula}. Los volúmenes que publica Google son promedios
+                redondeados: marcan dirección, no son cifra exacta.
+              </Nota>
             </Tarjeta>
-          )}
+          ) : mercado?.aviso ? (
+            /* "Vacío" y "bloqueado por permisos" son cosas distintas, y
+               confundirlas manda a buscar un bug donde hay un trámite. */
+            <Tarjeta>
+              <h2 className="text-[13px] font-medium text-[#EDEFF3] mb-1.5">El mercado, y vos dentro de él</h2>
+              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--warn)' }}>{mercado.aviso}</p>
+              <Nota>
+                Sin esta capa el sistema no puede separar una caída propia de una caída del
+                mercado: las dos se ven igual en la tendencia de arriba.
+              </Nota>
+            </Tarjeta>
+          ) : null}
 
           {presionReal.length > 0 && (
-            <Tarjeta className={mercado?.resumen ? 'lg:col-span-5' : 'lg:col-span-12'}>
-              <h2 className="text-[13px] font-medium text-[#EDEFF3]">Alguien más está pujando</h2>
-              <p className="text-[11px] mt-0.5 mb-2.5 leading-snug" style={{ color: '#ADADAD' }}>
-                Se perdió ranking sin que tocaras nada en la ventana.
-              </p>
+            <Tarjeta>
+              <div className="flex items-center gap-2 mb-2.5">
+                <h2 className="text-[13px] font-medium text-[#EDEFF3]">Alguien más está pujando</h2>
+                <Pista titulo="Qué significa">
+                  Estas campañas perdieron ranking en la subasta sin que se tocara nada en la
+                  ventana: ni puja, ni presupuesto, ni estado. Google no dice quién entró —la
+                  comparativa de subastas no existe por API— pero sí sabemos que el cambio no
+                  fue nuestro.
+                </Pista>
+              </div>
               <div className="space-y-2">
                 {presionReal.slice(0, 4).map((c: any) => (
                   <div key={c.campaign} className="px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
@@ -454,118 +571,20 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] mt-2.5 leading-relaxed" style={{ color: '#ADADAD', opacity: 0.8 }}>
-                Google no dice quién es: la comparativa de subastas no sale por API. Lo que sí sabemos es que el cambio no fue nuestro.
-              </p>
             </Tarjeta>
           )}
         </div>
       )}
+      </div>
 
-      {/* LA TENDENCIA: el gráfico principal, con anomalías, baseline y maduración.
-          Va a ancho completo a propósito: catorce días con dos ejes necesitan
-          el ancho, y es el hero de la vista. */}
-      <Tarjeta>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div className="space-y-0.5 min-w-0">
-            <h2 className="text-[13px] font-medium text-[#EDEFF3]">{anomalias.titulo || 'Tendencia diaria'}</h2>
-            <p className="text-[11px] text-[#F5F7FA] opacity-50">
-              Clic en un día para inspeccionarlo · punteada = media móvil 7d · fondo azul = anomalía · zona clara = madurando
-            </p>
-          </div>
-          <Chips
-            opciones={[
-              { id: 'gasto_cpa', label: 'Gasto y CPA' },
-              { id: 'conv_clics', label: 'Conversiones y clics' },
-              { id: 'ctr_cpc', label: 'CTR y CPC' },
-            ]}
-            valor={lens}
-            onChange={setLens}
-          />
-        </div>
-
-        <div className="h-72 w-full">
-          {displayedDaily.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-[#F5F7FA] opacity-50 italic">
-              {loadingDaily ? 'Cargando datos diarios…' : 'No hay datos diarios disponibles para esta cuenta.'}
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              {lens === 'gasto_cpa' ? (
-                <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
-                  <CartesianGrid stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
-                  <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda} width={54}
-                    label={{ value: 'Gasto', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda} width={50}
-                    label={{ value: 'CPA', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <RechartsTooltip contentStyle={tooltipStyle} formatter={tooltipMoneda}
-                    labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
-                  {/* Banda de maduración: los días recientes todavía se mueven */}
-                  {primerProvisional && (
-                    <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
-                      {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
-                  )}
-                  {/* Zonas de anomalía: fondo tenue proporcional a severidad */}
-                  {displayedDaily.filter((d: any) => severidadOpacity[d.severidad]).map((d: any) => (
-                    <ReferenceArea key={d.date} {...({ x1: d.date, x2: d.date, yAxisId: 'left', fill: '#0062CC', fillOpacity: severidadOpacity[d.severidad], stroke: 'none' } as any)} />
-                  ))}
-                  <Line yAxisId="left" type="monotone" dataKey="gasto_baseline" name="Baseline 7d"
-                    stroke="#F5F7FA" strokeOpacity={0.4} strokeWidth={1} strokeDasharray="3 5" dot={false} activeDot={false} />
-                  <Line yAxisId="left" type="monotone" dataKey="gasto" name="Gasto" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={{ r: 3, fill: '#0062CC' }} activeDot={{ r: 5 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#FFFFFF" strokeWidth={1.5} connectNulls={false} dot={{ r: 2, fill: '#FFFFFF' }} />
-                  <Line yAxisId="right" type="monotone" dataKey="cpa_provisional" name="CPA (provisional)"
-                    stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="2 4" dot={{ r: 2, fill: '#F5F7FA', fillOpacity: 0.4 }} />
-                  <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconType="plainline" iconSize={10} />
-                </LineChart>
-              ) : lens === 'conv_clics' ? (
-                <BarChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
-                  <CartesianGrid stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
-                  <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false}
-                    label={{ value: 'Conversiones', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false}
-                    label={{ value: 'Clics', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <RechartsTooltip contentStyle={tooltipStyle} formatter={(v: any, n: any) => [v == null ? '—' : fmtNum(Number(v)), n]}
-                    labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
-                  {primerProvisional && (
-                    <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
-                      {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
-                  )}
-                  <Bar yAxisId="left" dataKey="conversiones" name="Conversiones" fill="#0062CC" radius={[4, 4, 0, 0]} maxBarSize={18} />
-                  <Bar yAxisId="right" dataKey="clics" name="Clics" fill="rgba(245, 247, 250, 0.4)" radius={[4, 4, 0, 0]} maxBarSize={18} />
-                  <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconSize={10} />
-                </BarChart>
-              ) : (
-                <LineChart data={displayedDaily} onClick={(e: any) => e?.activePayload?.[0]?.payload && setSelectedDay(e.activePayload[0].payload)}>
-                  <CartesianGrid stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeFecha} minTickGap={20} />
-                  <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: any) => `${Number(v).toFixed(1)}%`}
-                    label={{ value: 'CTR', angle: -90, position: 'insideLeft', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={ejeMoneda}
-                    label={{ value: 'CPC', angle: 90, position: 'insideRight', fill: 'rgba(245,247,250,0.4)', fontSize: 9 }} />
-                  <RechartsTooltip contentStyle={tooltipStyle} formatter={tooltipMoneda}
-                    labelFormatter={(l: any) => fmtFechaCorta(String(l)) + (primerProvisional && String(l) >= primerProvisional ? ' · madurando' : '')} />
-                  {primerProvisional && (
-                    <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
-                      {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
-                  )}
-                  <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={false} />
-                  <Line yAxisId="right" type="monotone" dataKey="cpc" name="CPC" stroke="#FFFFFF" strokeWidth={1.5} dot={false} />
-                  <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconType="plainline" iconSize={10} />
-                </LineChart>
-              )}
-            </ResponsiveContainer>
-          )}
-        </div>
-      </Tarjeta>
-
-      {/* QUÉ ENCONTRÓ EL ANÁLISIS DIARIO */}
-      <Seccion titulo="Qué encontró el análisis diario" descripcion="Cada mañana el sistema lee el día anterior contra el plan. El análisis de fondo llega el lunes en el brief.">
+      {/* QUÉ ENCONTRÓ EL ANÁLISIS DIARIO · dos columnas, no catorce tarjetas en
+          fila india: son notas cortas de un día cada una y a una columna
+          ocupaban media pantalla de scroll para decir "día normal" doce veces. */}
+      <Seccion titulo="Qué encontró el análisis diario" descripcion="Una lectura por día, contra el plan.">
         {hallazgosSemana.length === 0 ? (
           <Tarjeta><Vacio>Todavía no hay análisis diarios para {activeClient}. El primero aparece mañana a la mañana.</Vacio></Tarjeta>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 items-start">
             {hallazgosSemana.filter((p: any) => !p.fecha || p.fecha >= rango.desde).map((p: any) => {
               // El hallazgo es LA línea para leer; el resumen completo va plegado.
               // abrirTextoAgente cubre el caso del pulso que escribió JSON crudo.
@@ -615,7 +634,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   ))}
                 </tbody>
               </table>
-              <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-2">Los días con · al lado siguen madurando. Desagregar por grupo antes de buscar causas externas.</p>
+              <Nota>Los días con · al lado siguen madurando.</Nota>
             </div>
           )}
         </Collapsible>

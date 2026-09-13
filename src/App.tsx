@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MessageCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useJSON } from './components/ui';
 import { LimiteDeError } from './components/LimiteDeError';
@@ -349,6 +350,19 @@ function App() {
               else if (n.ref_tipo === 'alerta') irA('bandeja');
               else irA('sistema');
             }} />
+
+            {/* Preguntarle al agente y reportar un bug: acá, junto a las otras
+                acciones globales. Antes era una pastilla flotando sobre la
+                esquina inferior derecha de todas las pantallas — es decir,
+                encima del final de cada tabla y de la leyenda de cada gráfico. */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('ns:ayuda', { detail: { modo: 'chat' } }))}
+              className="hidden sm:inline-flex w-8 h-8 items-center justify-center rounded-lg text-[#F5F7FA] opacity-60 hover:opacity-100 hover:bg-white/5 transition-all"
+              title="Preguntar o reportar algo · ⌘J"
+              aria-label="Preguntar o reportar algo"
+            >
+              <MessageCircle size={15} />
+            </button>
 
             <button
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}

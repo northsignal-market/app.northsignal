@@ -207,6 +207,113 @@ export function Seccion({ titulo, descripcion, derecha, children }: {
   );
 }
 
+// ================================================================
+// JERARQUÍA · tres pesos de texto, y uno solo grita
+// ================================================================
+/**
+ * TITULAR · la frase que contesta la pregunta de la vista, arriba de todo.
+ *
+ * Una pantalla de operación tiene UNA oración que importa ("el gasto se
+ * encendió, todavía sin persistir") y veinte que la matizan. Cuando todas se
+ * escriben al mismo tamaño, ninguna se lee: el ojo no tiene dónde aterrizar y
+ * termina barriendo el bloque entero. Esta primitiva existe para que esa
+ * oración esté sola en su peso tipográfico, antes de las cifras.
+ *
+ * `guia` es la única línea que puede acompañarla. `meta` va en tabular y
+ * apagado: fechas, conteos, progreso. Lo demás se pliega o se va a `Pista`.
+ */
+export function Titular({ estado, children, guia, meta, aviso, derecha }: {
+  /** Color del punto de estado. Sin color no hay punto: no se inventa semáforo. */
+  estado?: string;
+  children: React.ReactNode;
+  guia?: React.ReactNode;
+  meta?: React.ReactNode;
+  aviso?: React.ReactNode;
+  derecha?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+      <div className="min-w-0 space-y-1">
+        <div className="flex items-baseline gap-2.5">
+          {estado && <span className="w-2 h-2 rounded-full shrink-0 translate-y-[-1px]" style={{ backgroundColor: estado, boxShadow: `0 0 10px -1px ${estado}` }} />}
+          <h1 className="text-[17px] md:text-[19px] font-semibold leading-snug text-[#FFFFFF]" style={{ letterSpacing: '-0.2px', maxWidth: '62ch' }}>{children}</h1>
+        </div>
+        {guia && <p className="text-[12.5px] leading-relaxed pl-[18px]" style={{ color: '#F5F7FA', opacity: 0.8, maxWidth: '68ch' }}>{guia}</p>}
+        {(meta || aviso) && (
+          <p className="text-[11px] tabular pl-[18px] flex flex-wrap items-center gap-x-2" style={{ color: '#ADADAD' }}>
+            {meta}
+            {aviso && <span style={{ color: 'var(--warn)' }}>{aviso}</span>}
+          </p>
+        )}
+      </div>
+      {derecha && <div className="flex items-center gap-2 shrink-0">{derecha}</div>}
+    </div>
+  );
+}
+
+/** NOTA · la letra chica honesta: cómo se calculó, qué no se puede saber.
+ *  Tiene que estar (el sistema no oculta sus límites) y tiene que no competir. */
+export function Nota({ children, tono = 'gris' }: { children: React.ReactNode; tono?: 'gris' | 'aviso' }) {
+  return (
+    <p className="text-[10.5px] leading-relaxed mt-2" style={{ color: tono === 'aviso' ? 'var(--warn)' : '#ADADAD', opacity: tono === 'aviso' ? 0.95 : 0.72, maxWidth: '78ch' }}>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * PISTA · la leyenda que antes vivía como subtítulo permanente.
+ *
+ * "punteada = media móvil 7d · fondo azul = anomalía · zona clara = madurando"
+ * se lee UNA vez en la vida y después es ruido en cada carga. Acá se guarda
+ * detrás de un ⓘ que se abre al pasar por encima o al enfocar con el teclado,
+ * y queda en el DOM: el buscador del navegador lo sigue encontrando.
+ */
+export function Pista({ children, titulo = 'Cómo leer esto' }: { children: React.ReactNode; titulo?: string }) {
+  return (
+    <span className="relative inline-flex group align-middle">
+      <button type="button" aria-label={titulo}
+        className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-45 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
+        style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>i</button>
+      <span role="tooltip"
+        className="pointer-events-none absolute left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
+        style={{ color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
+        {children}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * RIEL · la columna angosta que acompaña a un bloque ancho.
+ *
+ * Todo apilado a lo ancho da una pantalla que se lee como una lista de bandas
+ * y obliga a scrollear para comparar dos cosas que se miran juntas. El riel
+ * pone al lado del gráfico lo que dice si el gráfico está bien o mal, separado
+ * por hairlines en vez de por cajas: una caja dentro de otra caja es ruido.
+ */
+export function Riel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`tarjeta-pulse p-4 md:p-5 divide-y ${className}`}
+      style={{ borderRadius: 'var(--r-panel)', borderColor: 'var(--border)', ['--tw-divide-opacity' as any]: 1 } as any}>
+      {children}
+    </div>
+  );
+}
+
+/** Cada tramo del riel: rótulo chico arriba, contenido abajo. */
+export function RielTramo({ titulo, derecha, children }: { titulo: React.ReactNode; derecha?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="py-3.5 first:pt-0 last:pb-0">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <h3 className="text-[11px] uppercase tracking-[0.08em]" style={{ color: '#ADADAD' }}>{titulo}</h3>
+        {derecha}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /** Tarjeta estándar. attention: borde izquierdo azul para lo que pide acción.
  *  hero: top-highlight luminoso — UNA (máx dos) por vista. */
 export function Tarjeta({ children, attention, sinPadding, hero, className = '' }: {

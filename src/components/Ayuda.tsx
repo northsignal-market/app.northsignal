@@ -1,12 +1,21 @@
 /**
- * Ayuda flotante: preguntar y reportar, en UNA pastilla discreta.
+ * Ayuda: preguntar y reportar.
  *  - Preguntar: el asistente, que sabe la app y consulta los datos.
  *  - Reportar: un ticket para Claude, con la página y la cuenta ya cargadas.
  *
- * Antes eran DOS círculos apilados compitiendo con el contenido: dos botones
- * flotantes para dos cosas que se eligen dentro del mismo panel es ruido en la
- * esquina de todas las pantallas. Ahora es una pastilla que se corre del paso,
- * y el panel usa el vidrio del chrome como el resto del marco.
+ * DÓNDE VIVE EL DISPARADOR. Pasó por dos círculos apilados y después por una
+ * pastilla flotante. Las dos versiones tenían el mismo problema de fondo: un
+ * botón que flota sobre el contenido tapa la esquina inferior derecha de TODAS
+ * las pantallas, y esa esquina es justo donde terminan las tablas largas y las
+ * leyendas de los gráficos. Un elemento permanente no puede vivir encima de
+ * contenido que cambia de alto.
+ *
+ * Ahora el disparador está en el header, al lado de ⌘K, que es donde el
+ * operador ya busca las acciones globales — y no pisa nada nunca. En el
+ * teléfono sigue habiendo un círculo, porque ahí el header no tiene lugar y la
+ * barra de navegación de abajo da una referencia clara de dónde ponerlo.
+ *
+ * El panel se abre desde el evento `ns:ayuda` o con ⌘J.
  */
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
@@ -33,13 +42,26 @@ export function Ayuda({ pagina }: { pagina: string }) {
   const fin = useRef<HTMLDivElement>(null);
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth' }); }, [mensajes, pensando]);
 
-  // Esc cierra: es el gesto que ya usan el drawer y la paleta.
+  // Esc cierra: es el gesto que ya usan el drawer y la paleta. ⌘J abre y
+  // cierra, que es lo que espera quien ya usa ⌘K acá al lado.
   useEffect(() => {
-    if (!abierto) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(null); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && abierto) { setAbierto(null); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setAbierto(a => (a ? null : 'chat'));
+      }
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [abierto]);
+
+  // El header dispara este evento: un botón allá, el panel acá, sin store.
+  useEffect(() => {
+    const h = (e: Event) => setAbierto(((e as CustomEvent).detail?.modo as any) || 'chat');
+    window.addEventListener('ns:ayuda', h);
+    return () => window.removeEventListener('ns:ayuda', h);
+  }, []);
 
   const preguntar = async () => {
     const q = texto.trim(); if (!q || pensando) return;
@@ -66,19 +88,8 @@ export function Ayuda({ pagina }: { pagina: string }) {
 
   return (
     <>
-      {/* Una pastilla, no dos círculos. Baja opacidad hasta que la mirás. */}
-      {!abierto && (
-        <button
-          onClick={() => setAbierto('chat')}
-          title="Preguntar o reportar algo"
-          className="fixed bottom-4 right-4 z-[90] hidden sm:flex items-center gap-2 pl-3 pr-3.5 py-2 rounded-full text-[11px] text-[#EDEFF3] opacity-70 hover:opacity-100 transition-all hover:-translate-y-px glass-dense"
-          style={{ boxShadow: '0 10px 30px -12px rgba(0,0,0,0.8)' }}
-        >
-          <MessageCircle size={13} style={{ color: 'var(--primary-text)' }} />
-          Preguntar
-        </button>
-      )}
-      {/* En el teléfono la pastilla chocaría con la barra de navegación: círculo. */}
+      {/* En el escritorio el disparador vive en el header. Acá solo queda el
+          del teléfono, por encima de la barra de navegación de abajo. */}
       {!abierto && (
         <button onClick={() => setAbierto('chat')} aria-label="Preguntar o reportar algo"
           className="fixed bottom-16 right-4 z-[90] sm:hidden w-11 h-11 rounded-full flex items-center justify-center glass-dense"
@@ -87,9 +98,12 @@ export function Ayuda({ pagina }: { pagina: string }) {
         </button>
       )}
 
+      {/* El panel arranca bajo el header (top-16) y termina antes del borde del
+          shell: así nunca tapa el switcher de cuentas ni queda montado sobre la
+          esquina redondeada de la ventana. */}
       {abierto && (
-        <div className="fixed bottom-4 right-4 z-[90] w-[390px] max-w-[calc(100vw-32px)] rounded-2xl flex flex-col glass"
-          style={{ borderRadius: 16, maxHeight: '72vh', boxShadow: '0 28px 70px -20px rgba(0,0,0,0.85)' }}>
+        <div className="fixed right-4 top-[64px] bottom-[72px] sm:bottom-5 z-[90] w-[390px] max-w-[calc(100vw-32px)] rounded-2xl flex flex-col glass"
+          style={{ borderRadius: 16, maxHeight: 'min(620px, calc(100% - 84px))', boxShadow: '0 28px 70px -20px rgba(0,0,0,0.85)' }}>
           <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
               {[
@@ -144,7 +158,7 @@ export function Ayuda({ pagina }: { pagina: string }) {
               </div>
             </>
           ) : (
-            <div className="p-3 space-y-2.5">
+            <div className="p-3 space-y-2.5 overflow-y-auto custom-scrollbar">
               {ticketOk ? (
                 <div className="text-[12px] leading-relaxed py-5 text-center" style={{ color: '#F5F7FA' }}>
                   <div className="text-[#EDEFF3] font-medium mb-1">Ticket #{ticketOk} guardado.</div>
