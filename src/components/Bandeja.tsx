@@ -94,14 +94,25 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   // la primera dimensión de triage; sin él cada ítem obliga a abrirlo para saber.
   const origenDe = (a: any) => a.origen === 'Pulso diario' ? 'análisis diario' : a.origen === 'Anomalias' ? 'anomalías' : a.origen ? String(a.origen).toLowerCase() : 'semanal';
 
+  // Grupos plegables con tope: la cola muestra poco y ofrece el resto. Los dos
+  // primeros grupos con ítems abren solos; el resto queda en una línea con su
+  // conteo. Un grupo de 20 filas expandido de entrada es scroll, no decisión.
+  const [gAbierto, setGAbierto] = useState<Record<string, boolean>>({});
+  const [gTodo, setGTodo] = useState<Record<string, boolean>>({});
+  const TOPE = 6;
+  const ordenGrupos: [string, number][] = [['hoy', hoy.length], ['listos', listosOrd.length], ['preguntas', preguntasOrd.length], ['aMano', aManoOrd.length], ['confirmar', confirmar.length], ['prop', propPend.length], ['rep', reportes.length]];
+  const abiertosDefault = ordenGrupos.filter(([, n]) => n > 0).slice(0, 2).map(([id]) => id);
+  const estaAbierto = (id: string) => gAbierto[id] ?? abiertosDefault.includes(id);
+  const vis = <T,>(arr: T[], id: string): T[] => !estaAbierto(id) ? [] : (gTodo[id] ? arr : arr.slice(0, TOPE));
+
   const nav: { id: string; click: () => void; rapida?: () => void }[] = [
-    ...hoy.map((a: any) => ({ id: 'al' + a.id, click: () => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] })), rapida: () => resolverAlerta(a.id) })),
-    ...listosOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
-    ...preguntasOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
-    ...aManoOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
-    ...confirmar.map(a => ({ id: String(a.id), click: () => abrir(a) })),
-    ...propPend.map((p: any) => ({ id: 'prop' + p.id, click: () => onGoTo('cuenta', p.account, 'diagnostico') })),
-    ...reportes.map((r: any, i: number) => ({ id: 'rep' + i, click: () => onGoTo('cuenta', r.cuenta, 'reportes') })),
+    ...vis(hoy, 'hoy').map((a: any) => ({ id: 'al' + a.id, click: () => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] })), rapida: () => resolverAlerta(a.id) })),
+    ...vis(listosOrd, 'listos').map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...vis(preguntasOrd, 'preguntas').map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...vis(aManoOrd, 'aMano').map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...vis(confirmar, 'confirmar').map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...vis(propPend, 'prop').map((p: any) => ({ id: 'prop' + p.id, click: () => onGoTo('cuenta', p.account, 'diagnostico') })),
+    ...vis(reportes, 'rep').map((r: any, i: number) => ({ id: 'rep' + i, click: () => onGoTo('cuenta', r.cuenta, 'reportes') })),
   ];
   const curIdx = nav.length ? Math.min(Math.max(cur, -1), nav.length - 1) : -1;
   const activaId = curIdx >= 0 ? nav[curIdx].id : null;
@@ -193,55 +204,53 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       ) : (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           {hoy.length > 0 && (
-            <Grupo titulo="Pide acción hoy" n={hoy.length} icono={<AlertTriangle size={13} />} destacado>
-              {hoy.map(a => (
+            <Grupo id="hoy" titulo="Pide acción hoy" n={hoy.length} icono={<AlertTriangle size={13} />} destacado abierto={estaAbierto('hoy')} onToggle={() => setGAbierto(s => ({ ...s, hoy: !estaAbierto('hoy') }))} todo={!!gTodo.hoy} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, hoy: true }))}>
+              {vis(hoy, 'hoy').map((a: any) => (
                 <Fila key={'al' + a.id} activa={activaId === 'al' + a.id} cuenta={a.account || 'Sistema'} titulo={a.titulo} sub={[a.origen, a.accion].filter(Boolean).join(' · ')} onClick={() => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] }))}
                   accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3]">Resuelta</button>} />
               ))}
             </Grupo>
           )}
           {listosOrd.length > 0 && (
-            <Grupo titulo="Un clic" n={listosOrd.length} icono={<Zap size={13} />} destacado>
-              {listosOrd.map(a => (
-                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={[origenDe(a), a.priority === 'Urgente' || a.priority === 'Alta' ? `prioridad ${a.priority.toLowerCase()}` : null].filter(Boolean).join(' · ')} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#4D9DFF]">el ejecutor lo aplica</span>} />
+            <Grupo id="listos" titulo="Un clic" nota="el ejecutor los aplica al aprobar" n={listosOrd.length} icono={<Zap size={13} />} destacado abierto={estaAbierto('listos')} onToggle={() => setGAbierto(s => ({ ...s, listos: !estaAbierto('listos') }))} todo={!!gTodo.listos} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, listos: true }))}>
+              {vis(listosOrd, 'listos').map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={[origenDe(a), a.priority === 'Urgente' || a.priority === 'Alta' ? `prioridad ${a.priority.toLowerCase()}` : null].filter(Boolean).join(' · ')} onClick={() => abrir(a)} />
               ))}
             </Grupo>
           )}
           {preguntasOrd.length > 0 && (
-            <Grupo titulo="Lo sabés vos" n={preguntasOrd.length}>
-              {preguntasOrd.map(a => (
-                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={origenDe(a)} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{a.accion?.verbo === 'preguntar_cliente' ? 'un mensaje al cliente' : 'responder y cerrar'}</span>} />
+            <Grupo id="preguntas" titulo="Lo sabés vos" nota="responder y cerrar" n={preguntasOrd.length} abierto={estaAbierto('preguntas')} onToggle={() => setGAbierto(s => ({ ...s, preguntas: !estaAbierto('preguntas') }))} todo={!!gTodo.preguntas} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, preguntas: true }))}>
+              {vis(preguntasOrd, 'preguntas').map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={origenDe(a)} onClick={() => abrir(a)} />
               ))}
             </Grupo>
           )}
           {aManoOrd.length > 0 && (
-            <Grupo titulo="A mano" n={aManoOrd.length}>
-              {aManoOrd.map(a => (
+            <Grupo id="aMano" titulo="A mano" nota="los pasos, adentro de cada uno" n={aManoOrd.length} abierto={estaAbierto('aMano')} onToggle={() => setGAbierto(s => ({ ...s, aMano: !estaAbierto('aMano') }))} todo={!!gTodo.aMano} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, aMano: true }))}>
+              {vis(aManoOrd, 'aMano').map(a => (
                 <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={origenDe(a)} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#E2B453]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
+                  accion={bloqueados[a.id] ? <span className="text-[11px] text-[#E2B453]">conflicto abierto</span> : undefined} />
               ))}
             </Grupo>
           )}
           {confirmar.length > 0 && (
-            <Grupo titulo="Esperan tu confirmación" n={confirmar.length}>
-              {confirmar.map(a => (
-                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${fmtFechaCorta(a.vence)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
+            <Grupo id="confirmar" titulo="Esperan tu confirmación" nota="deducciones: confirmá o descartá" n={confirmar.length} abierto={estaAbierto('confirmar')} onToggle={() => setGAbierto(s => ({ ...s, confirmar: !estaAbierto('confirmar') }))} todo={!!gTodo.confirmar} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, confirmar: true }))}>
+              {vis(confirmar, 'confirmar').map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={[origenDe(a), a.vence ? `vence ${fmtFechaCorta(a.vence)}` : null].filter(Boolean).join(' · ')} onClick={() => abrir(a)} />
               ))}
             </Grupo>
           )}
           {propPend.length > 0 && (
-            <Grupo titulo="Propuestas estratégicas para decidir" n={propPend.length}>
-              {propPend.map((p: any) => (
-                <Fila key={'prop' + p.id} activa={activaId === 'prop' + p.id} cuenta={p.account} titulo={p.titulo} sub={`${p.resultado_esperado} · el sistema propone algo más grande que un accionable`} onClick={() => onGoTo('cuenta', p.account, 'diagnostico')} />
+            <Grupo id="prop" titulo="Propuestas estratégicas" nota="más grandes que un accionable" n={propPend.length} abierto={estaAbierto('prop')} onToggle={() => setGAbierto(s => ({ ...s, prop: !estaAbierto('prop') }))} todo={!!gTodo.prop} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, prop: true }))}>
+              {vis(propPend, 'prop').map((p: any) => (
+                <Fila key={'prop' + p.id} activa={activaId === 'prop' + p.id} cuenta={p.account} titulo={p.titulo} sub={p.resultado_esperado} onClick={() => onGoTo('cuenta', p.account, 'diagnostico')} />
               ))}
             </Grupo>
           )}
           {reportes.length > 0 && (
-            <Grupo titulo="Reportes para aprobar" n={reportes.length} icono={<FileText size={13} />}>
-              {reportes.map((r: any, i: number) => (
-                <Fila key={'rep' + i} activa={activaId === 'rep' + i} cuenta={r.cuenta} titulo={`Reporte semanal · ${r.periodo}`} sub="Leelo, editalo si querés, aprobalo" onClick={() => onGoTo('cuenta', r.cuenta, 'reportes')} />
+            <Grupo id="rep" titulo="Reportes para aprobar" nota="leelo, editá y aprobá" n={reportes.length} icono={<FileText size={13} />} abierto={estaAbierto('rep')} onToggle={() => setGAbierto(s => ({ ...s, rep: !estaAbierto('rep') }))} todo={!!gTodo.rep} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, rep: true }))}>
+              {vis(reportes, 'rep').map((r: any, i: number) => (
+                <Fila key={'rep' + i} activa={activaId === 'rep' + i} cuenta={r.cuenta} titulo={`Reporte semanal · ${r.periodo}`} onClick={() => onGoTo('cuenta', r.cuenta, 'reportes')} />
               ))}
             </Grupo>
           )}
@@ -273,7 +282,9 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
         </Colapsable>
       )}
 
-      {/* Colapsados: contexto, no decisiones */}
+      {/* Colapsados: contexto, no decisiones. Lado a lado en escritorio:
+          la mitad del scroll con la misma información. */}
+      <div className="grid md:grid-cols-2 gap-4 items-start">
       <Colapsable titulo="Ayer en cada cuenta" abierto={abierto.ayer} onToggle={() => setAbierto(s => ({ ...s, ayer: !s.ayer }))}
         resumen={cuentas.map(c => { const p = ultimoPulso[c]; return p ? `${c}: ${nivelPulso(p.nivel).etiqueta.toLowerCase()}` : `${c}: sin análisis`; }).join(' · ')}>
         <div className="space-y-1.5">
@@ -315,21 +326,32 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           </div>
         </Colapsable>
       )}
+      </div>
 
       <p className="text-[10px] text-[#F5F7FA] opacity-30 text-center pt-2">j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
     </div>
   );
 }
 
-function Grupo({ titulo, n, icono, destacado, children }: { titulo: string; n: number; icono?: React.ReactNode; destacado?: boolean; children: React.ReactNode }) {
+function Grupo({ titulo, nota, n, icono, destacado, abierto, onToggle, todo, tope, onVerTodo, children }: {
+  id?: string; titulo: string; nota?: string; n: number; icono?: React.ReactNode; destacado?: boolean;
+  abierto: boolean; onToggle: () => void; todo: boolean; tope: number; onVerTodo: () => void; children: React.ReactNode;
+}) {
   return (
     <div style={{ borderBottom: '1px solid var(--border)' }}>
-      <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: destacado ? 'var(--primary-faint)' : 'transparent' }}>
+      <button onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-white/5 transition-colors" style={{ backgroundColor: destacado && abierto ? 'var(--primary-faint)' : 'transparent' }}>
+        <ChevronRight size={12} className={`text-[#F5F7FA] opacity-40 shrink-0 transition-transform ${abierto ? 'rotate-90' : ''}`} />
         {icono && <span className={destacado ? 'text-[#4D9DFF]' : 'text-[#F5F7FA] opacity-50'}>{icono}</span>}
         <span className="text-[11px] font-semibold text-[#EDEFF3]">{titulo}</span>
-        <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular">{n}</span>
-      </div>
-      <div>{children}</div>
+        <span className="text-[10px] tabular px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'var(--surface-2)', color: 'var(--text-secondary)' }}>{n}</span>
+        {nota && <span className="text-[10px] text-[#F5F7FA] opacity-40 truncate hidden sm:inline">{nota}</span>}
+      </button>
+      {abierto && <div>{children}</div>}
+      {abierto && !todo && n > tope && (
+        <button onClick={onVerTodo} className="w-full px-4 py-1.5 text-left text-[10px] text-[#4D9DFF] hover:bg-white/5" style={{ borderTop: '1px solid var(--border)' }}>
+          ver los {n} de este grupo
+        </button>
+      )}
     </div>
   );
 }

@@ -194,7 +194,7 @@ export function Sistema() {
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lecciones</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.">Lo que el sistema aprendió de sus propias decisiones, hacia atrás: en qué contexto, qué se hizo, qué pasó, qué regla queda. Los errores valen más que los aciertos. La confianza sube cada vez que otra corrida ve lo mismo.</p>
             </div>
             {aprendido.lecciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía ninguna. La tarea del lunes escribe al menos una por cuenta.</p> : (
               <div className="space-y-1.5">
@@ -211,7 +211,7 @@ export function Sistema() {
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprendió afuera</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
             </div>
             <div className="space-y-1.5">
               {aprendido.conocimiento.map((k: any) => (
@@ -229,7 +229,7 @@ export function Sistema() {
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Accionables que no cumplen el estándar</h2>
-                <p className="text-xs text-[#F5F7FA] opacity-60">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
+                <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
               </div>
               <div className="space-y-1">
                 {aprendido.invalidos.map((a: any) => (
@@ -246,7 +246,7 @@ export function Sistema() {
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Qué tipo de cambio funciona en cada cuenta</h2>
-                <p className="text-xs text-[#F5F7FA] opacity-60">Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que "suele empeorar" sin decir por qué esta vez es distinto.</p>
+                <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que “suele empeorar” sin decir por qué esta vez es distinto.">Tasa de acierto por tipo de accionable ejecutado, medida 14 días después. El sistema no repite un tipo que “suele empeorar” sin decir por qué esta vez es distinto.</p>
               </div>
               <div className="space-y-1">
                 {aprendido.acierto_por_tipo.map((t: any, i: number) => (
@@ -269,7 +269,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Alertas</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
           </div>
           {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
             <div className="space-y-1.5">
@@ -302,7 +302,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprobaste para que el sistema ejecute</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
             {(() => {
               // Salud del propio control: si de N decisiones no rechazaste ninguna,
               // no hay humano en el circuito — hay un botón lento.
@@ -336,7 +336,7 @@ export function Sistema() {
           <div className="flex items-start justify-between gap-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <div>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Qué puede hacer el sistema sin preguntarte</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas y cambios de concordancia, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Negativas, pausas y cambios de concordancia, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.">Negativas, pausas y cambios de concordancia, que se deshacen. Cada tipo tiene su regla: quién lo puede proponer, con qué confianza, hasta qué gasto. Con el interruptor general apagado, nada se ejecuta solo aunque las reglas estén activas. Empezá en simular: el script escribe qué haría y vos lo mirás una semana.</p>
             </div>
             <label className="flex items-center gap-2 shrink-0 cursor-pointer">
               <span className="text-xs text-[#F5F7FA]">{politicas.general ? 'Encendido' : 'Apagado'}</span>
@@ -378,7 +378,7 @@ export function Sistema() {
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Quién es dueño de qué</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.">Cada cosa tiene un solo escritor. Los demás proponen, y lo que proponen nace bloqueado con vencimiento hasta que el dueño lo confirme. Así ninguno pisa lo que escribió otro.</p>
             </div>
             <div className="space-y-1">
               {(coherencia.escritores || []).map((e: any) => (
@@ -393,7 +393,7 @@ export function Sistema() {
           <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que el reconciliador corrigió</h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.">Cada día a las 6:35 compara lo que cada proceso escribió. Vence lo que nadie tocó en siete días, marca duplicados por entidad, avisa si algo propuesto ya se hizo en Google Ads, y cierra alertas cuya condición cesó. Sin modelo: reglas.</p>
             </div>
             {(coherencia.reconciliaciones || []).length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Nada que corregir todavía. Corre por primera vez mañana.</p> : (
               <div className="space-y-1">
@@ -416,7 +416,7 @@ export function Sistema() {
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Tickets para Claude</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.">Lo que reportaste desde el botón de abajo a la derecha. Claude los lee al empezar cada sesión de trabajo y responde acá o los resuelve en el siguiente fix.</p>
           </div>
           {tickets.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ningún ticket todavía.</p> : (
             <div className="space-y-1.5">
@@ -446,7 +446,7 @@ export function Sistema() {
             <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: latidos.some((l: any) => l.en_silencio) ? '1px solid rgba(249,112,102,0.4)' : '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Agentes</h2>
-                <p className="text-xs text-[#F5F7FA] opacity-60">Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.</p>
+                <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.">Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.</p>
               </div>
               <div className="space-y-0.5">
                 {latidos.map((l: any) => (
@@ -487,7 +487,7 @@ export function Sistema() {
                 </div>
               ))}
               {!(saludSistema.fallas || []).length && !(saludSistema.atencion || []).length && (
-                <p className="text-xs text-[#F5F7FA] opacity-60">Nada roto y nada para mirar.</p>
+                <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Nada roto y nada para mirar.">Nada roto y nada para mirar.</p>
               )}
               {(saludSistema.esperando_despliegue || []).length > 0 && (
                 <p className="text-[11px] text-[#F5F7FA] opacity-50">
@@ -883,7 +883,7 @@ export function Sistema() {
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Tasa de acierto
             </h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.">De los accionables ejecutados, cuántos movieron la métrica en la dirección esperada. Si las inferencias aciertan mucho menos que las observaciones, el sistema propone demasiado sin evidencia.</p>
             {aprendizaje.tasa_acierto.length === 0 ? (
               <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin accionables evaluados todavía. El cron de los lunes 05:30 sincroniza los Hechos con fecha de ejecución y calcula impacto a los 14 días.</p>
             ) : (
@@ -949,7 +949,7 @@ export function Sistema() {
               <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 Lo que el sistema propone cambiar en sus instrucciones
               </h2>
-              <p className="text-xs text-[#F5F7FA] opacity-60">Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.</p>
+              <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.">Reflexiones que aparecieron en 2 o más corridas y aún no se aplicaron. Cada una es una regla que el prompt todavía no tiene.</p>
               {aprendizaje.propuestas.map((p: any, i: number) => (
                 <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center justify-between mb-1">
@@ -995,7 +995,7 @@ export function Sistema() {
           <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             Tamaño y crecimiento
           </h2>
-          <p className="text-xs text-[#F5F7FA] opacity-60">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
+          <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
           {tamano.length === 0 ? (
             <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
           ) : (

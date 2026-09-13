@@ -349,7 +349,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Propuestas estratégicas</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
           </div>
           <div className="space-y-2">
             {propuestas.map((p: any) => (
@@ -433,7 +433,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               </div>
             ))}
           </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.</p>}
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.">Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.</p>}
 
         {target?.notas && <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{target.notas}</p>}
 
@@ -462,7 +462,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Por qué está donde está</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
           </div>
           <p className="text-sm text-[#EDEFF3] leading-relaxed">{limitada.por_que}</p>
           <div className="grid grid-cols-3 gap-2">
@@ -518,7 +518,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1">{escalera.recomendada.recomendacion}</p>
             )}
           </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
       </div>
 
       </>)}
@@ -738,7 +738,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Doc maestro</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion</p>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion">Capa humana editable · series, umbrales, conversiones y cronología calculados · aprendizajes desde Notion</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setVistaDoc('ensamblado')} className={`px-3 py-1 rounded-lg text-xs ${vistaDoc === 'ensamblado' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Ensamblado</button>
