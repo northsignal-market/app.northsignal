@@ -824,10 +824,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           <div className="relative z-[60]">
             <button 
               onClick={() => setShowColSelector(!showColSelector)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--surface-1)] hover:bg-white/5 text-[#EDEFF3] border border-[var(--border-strong)] text-sm transition-colors font-medium shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-[11px] transition-colors" style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
             >
-              <Settings2 size={16} className="text-[#4D9DFF]" />
-              Personalizar Columnas
+              <Settings2 size={13} style={{ color: '#ADADAD' }} />
+              Columnas
             </button>
             {showColSelector && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-[var(--surface-1)] border border-[var(--border-strong)] rounded-xl shadow-2xl z-[100] p-2">
@@ -1015,10 +1015,22 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                  </div>
               </div>
             ) : data.length === 0 ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-[#F5F7FA]/50 z-20">
-                 <Search size={48} className="mb-4 opacity-30 text-[#4D9DFF]" />
-                 <p className="text-lg font-medium text-[#EDEFF3]">No hay filas para este rango. Probá otro rango o quitá el filtro de texto.</p>
-                 <p className="text-sm mt-1 text-[#F5F7FA]/70">Ajusta los filtros o cambia de vista.</p>
+              /* Vacío por CAUSA (patrón Geist): esto es un "no-results" — el filtro
+                 devolvió cero filas — y se dice con una frase, no con una lupa de
+                 48px ocupando media pantalla. Y ofrece la salida concreta. */
+              <div className="absolute inset-x-0 top-20 flex flex-col items-center z-20 px-6">
+                 <p className="text-sm text-[#FAFAFA] text-center">
+                   {search ? <>Ningún resultado para “{search}” en esta ventana.</> : <>Sin filas en esta ventana para {selectedClient}.</>}
+                 </p>
+                 <p className="text-xs mt-1 text-center" style={{ color: '#ADADAD' }}>
+                   No es cero: es que el filtro no encontró nada. Probá otro rango o cambiá de vista.
+                 </p>
+                 {search && (
+                   <button onClick={() => setSearch('')} className="mt-3 px-3 py-1 rounded-lg text-[11px]"
+                     style={{ color: '#4D9DFF', border: '1px solid var(--border)' }}>
+                     Quitar el filtro de texto
+                   </button>
+                 )}
               </div>
             ) : null}
 
