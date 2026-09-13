@@ -66,12 +66,14 @@ function App() {
   const [navAbierta, setNavAbierta] = useState<boolean>(() => {
     try { return localStorage.getItem('nav_cerrada') !== '1'; } catch { return true; }
   });
-  const alternarNav = React.useCallback(() => {
-    setNavAbierta(v => {
-      try { localStorage.setItem('nav_cerrada', v ? '1' : '0'); } catch { /* modo privado */ }
-      return !v;
-    });
-  }, []);
+  // El updater se mantiene PURO: escribir localStorage adentro dejaba el estado
+  // y la preferencia desincronizados (React puede invocar un updater más de una
+  // vez, y cada pasada guardaba un valor distinto del que terminaba ganando).
+  // La preferencia es un efecto del valor, no parte de calcularlo.
+  const alternarNav = React.useCallback(() => setNavAbierta(v => !v), []);
+  useEffect(() => {
+    try { localStorage.setItem('nav_cerrada', navAbierta ? '0' : '1'); } catch { /* modo privado */ }
+  }, [navAbierta]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); alternarNav(); }
