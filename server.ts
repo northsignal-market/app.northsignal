@@ -3132,8 +3132,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       if (!account || !campana) return res.status(400).json({ error: 'Faltan account y campaña: la acción estructurada tiene que traer objeto.campana.' });
       const rc = await resolverCampana(account, campana);
       if ('error' in rc) return res.status(422).json({ error: rc.error });
-      if (['PERFORMANCE_MAX', 'DEMAND_GEN'].includes(String(rc.channel || '').toUpperCase())) {
-        return res.status(422).json({ error: `${rc.campana} es ${rc.channel}: Google Ads Scripts no puede tocarla (AdsApp no devuelve ese canal). Este cambio va a mano en Google Ads o por la API.`, manual: true });
+      // El ejecutor v7+ resuelve PMax con AdsApp.performanceMaxCampaigns(), así que
+      // presupuesto, puja, pausa/reactivación y etiqueta funcionan sobre PMax. Lo que
+      // NO existe en PMax son los grupos. Demand Gen sí queda afuera: AdsApp no la expone.
+      const canal = String(rc.channel || '').toUpperCase();
+      if (canal === 'DEMAND_GEN') {
+        return res.status(422).json({ error: `${rc.campana} es Demand Gen: Google Ads Scripts no la expone y el ejecutor no puede tocarla. Este cambio va a mano en Google Ads o por la API.`, manual: true });
+      }
+      if (canal === 'PERFORMANCE_MAX' && tipo === 'pausar_grupo') {
+        return res.status(422).json({ error: `${rc.campana} es Performance Max: no tiene grupos de anuncios editables. Sobre PMax se puede pausar/reactivar la campaña, cambiar presupuesto, puja o etiqueta.`, manual: true });
       }
       const p = (body.parametros || {}) as any;
       // Riesgo medio: sin el valor anterior no hay vuelta atrás, así que no se encola.
