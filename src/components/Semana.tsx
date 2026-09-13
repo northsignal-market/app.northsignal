@@ -355,7 +355,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   ))}
                   <Line yAxisId="left" type="monotone" dataKey="gasto_baseline" name="Baseline 7d"
                     stroke="#F5F7FA" strokeOpacity={0.4} strokeWidth={1} strokeDasharray="3 5" dot={false} activeDot={false} />
-                  <Line yAxisId="left" type="monotone" dataKey="gasto" name="Gasto" stroke="#0062CC" strokeWidth={2} dot={{ r: 3, fill: '#0062CC' }} activeDot={{ r: 5 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="gasto" name="Gasto" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={{ r: 3, fill: '#0062CC' }} activeDot={{ r: 5 }} />
                   <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#FFFFFF" strokeWidth={1.5} connectNulls={false} dot={{ r: 2, fill: '#FFFFFF' }} />
                   <Line yAxisId="right" type="monotone" dataKey="cpa_provisional" name="CPA (provisional)"
                     stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="2 4" dot={{ r: 2, fill: '#F5F7FA', fillOpacity: 0.4 }} />
@@ -393,7 +393,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                     <ReferenceArea yAxisId="left" x1={primerProvisional} x2={displayedDaily[displayedDaily.length - 1].date}
                       {...({ fill: 'var(--primary-faint)', strokeOpacity: 0 } as any)} />
                   )}
-                  <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR" stroke="#0062CC" strokeWidth={2} dot={false} />
+                  <Line yAxisId="left" type="monotone" dataKey="ctr" name="CTR" stroke="#4D9DFF" strokeWidth={2} style={{ filter: 'drop-shadow(0 0 5px rgba(77,157,255,0.45))' }} dot={false} />
                   <Line yAxisId="right" type="monotone" dataKey="cpc" name="CPC" stroke="#FFFFFF" strokeWidth={1.5} dot={false} />
                   <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconType="plainline" iconSize={10} />
                 </LineChart>

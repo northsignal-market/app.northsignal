@@ -109,8 +109,8 @@ export function Tarjeta({ children, attention, sinPadding, className = '' }: {
 }) {
   return (
     <div
-      className={`${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
-      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-panel)', backgroundColor: 'transparent', border: '1px solid var(--border)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
+      className={`tarjeta-pulse ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
+      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-panel)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
     >
       {children}
     </div>
@@ -151,7 +151,7 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional,
         )}
       </div>
       <div className="flex items-end justify-between gap-2 mt-1">
-        <div className="text-2xl font-medium text-[#FAFAFA] tabular leading-none" style={{ letterSpacing: '-0.6px' }}>{valor}</div>
+        <div className="text-2xl font-medium tabular leading-none cifra-luz" style={{ letterSpacing: '-0.6px' }}>{valor}</div>
         {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
       </div>
       <div className="flex items-baseline gap-1.5 mt-1.5 min-h-[14px]">
@@ -173,8 +173,8 @@ function Sparkline({ datos }: { datos: (number | null)[] }) {
   const W = 56, H = 16;
   const pts = vals.map((v, i) => v == null ? null : `${(i / (vals.length - 1)) * W},${H - 1.5 - ((v - min) / rango) * (H - 3)}`).filter(Boolean).join(' ');
   return (
-    <svg width={W} height={H} className="shrink-0 opacity-60" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke="rgba(245,247,250,0.75)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
+    <svg width={W} height={H} className="shrink-0" aria-hidden="true" style={{ filter: 'drop-shadow(0 0 3px rgba(34,211,238,0.55))' }}>
+      <polyline points={pts} fill="none" stroke="var(--acc-cyan)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" strokeOpacity="0.85" />
     </svg>
   );
 }

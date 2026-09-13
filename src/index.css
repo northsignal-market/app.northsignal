@@ -96,13 +96,72 @@ html, body {
 ::selection { background: var(--primary-soft); color: var(--white); }
 
 body {
-  /* Plano y profundo: los degradados radiales azules teñían todo de "app azul".
-     El negro neutro deja que los datos y el acento respiren (referencia noir). */
-  background: color-mix(in oklab, var(--navy) 92%, #000000);
+  /* PULSE (13/9): negro profundo con vida — dot-grid sutilísimo (textura tech)
+     y dos auroras de acento arriba, apenas visibles. El consenso 2026 para
+     dashboards: cinematográfico oscuro + acentos luminosos estratégicos. */
+  background:
+    radial-gradient(ellipse 60% 42% at 12% -8%, rgba(0, 98, 204, 0.16), transparent 60%),
+    radial-gradient(ellipse 50% 36% at 88% -6%, rgba(34, 211, 238, 0.07), transparent 55%),
+    radial-gradient(circle 0.8px at 0.8px 0.8px, rgba(255, 255, 255, 0.028) 0.8px, transparent 0) 0 0 / 26px 26px,
+    color-mix(in oklab, var(--navy) 88%, #000000);
+  background-attachment: fixed;
   color: var(--text);
   margin: 0;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* Acentos Pulse */
+:root {
+  --acc-cyan: #22D3EE;
+  --glow-cyan: 0 0 18px rgba(34, 211, 238, 0.35);
+  --glow-azul: 0 0 16px rgba(77, 157, 255, 0.4);
+}
+
+/* Cifra protagonista con gradiente de luz (blanco → azul hielo). */
+.cifra-luz {
+  background: linear-gradient(100deg, #FFFFFF 30%, #9BC8FF 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Tarjeta Pulse: elevación real (no outline muerto) + top-highlight luminoso,
+   la firma de las cards futuristas. Hover: el borde respira acento. */
+.tarjeta-pulse {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012) 55%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-slow) var(--ease);
+}
+.tarjeta-pulse::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: 8%; right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.55), rgba(34, 211, 238, 0.35), transparent);
+  pointer-events: none;
+}
+.tarjeta-pulse:hover {
+  border-color: rgba(77, 157, 255, 0.28);
+  box-shadow: 0 0 0 1px rgba(77, 157, 255, 0.06), 0 8px 40px -18px rgba(0, 98, 204, 0.5);
+}
+
+/* Punto de estado con halo: el glow es información (vivo/atención/caído). */
+.punto-glow-ok { box-shadow: 0 0 8px rgba(74, 222, 128, 0.7); }
+.punto-glow-warn { box-shadow: 0 0 8px rgba(226, 180, 83, 0.75); }
+.punto-glow-bad { box-shadow: 0 0 8px rgba(249, 112, 102, 0.75); }
+
+/* La línea luminosa bajo el header: separa el shell del contenido con luz. */
+.glass-dense { position: relative; }
+header.glass-dense::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 2%, rgba(77, 157, 255, 0.35) 30%, rgba(34, 211, 238, 0.25) 70%, transparent 98%);
+  pointer-events: none;
 }
 
 /* Entrada de módulos: fade + leve subida, escalonada. Es LA sensación de vivo

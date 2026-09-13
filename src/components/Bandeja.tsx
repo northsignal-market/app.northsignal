@@ -127,7 +127,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   // referencia, sin IA en runtime.
   const lecturaSistema = (() => {
     if (briefing?.datos_al_dia === false) return {
-      frase: <>Los datos tienen un problema: mirá <strong className="font-semibold">Sistema › Salud</strong> antes de decidir nada.</>,
+      frase: <>Los datos tienen un problema: mirá <strong className="font-semibold" style={{ color: '#9BC8FF' }}>Sistema › Salud</strong> antes de decidir nada.</>,
       guia: 'Ninguna decisión conviene sobre datos rotos.',
     };
     if (total === 0) return {
@@ -135,19 +135,19 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       guia: 'Lo próximo llega con el análisis diario de la mañana, o el lunes con el semanal.',
     };
     if (hoy.length > 0) return {
-      frase: <><strong className="font-semibold">{hoy.length} alerta{hoy.length !== 1 ? 's' : ''}</strong> pide{hoy.length !== 1 ? 'n' : ''} acción hoy{listosOrd.length > 0 ? <> y quedan <strong className="font-semibold">{listosOrd.length} de un clic</strong> esperando</> : null}.</>,
+      frase: <><strong className="font-semibold" style={{ color: '#9BC8FF' }}>{hoy.length} alerta{hoy.length !== 1 ? 's' : ''}</strong> pide{hoy.length !== 1 ? 'n' : ''} acción hoy{listosOrd.length > 0 ? <> y quedan <strong className="font-semibold" style={{ color: '#9BC8FF' }}>{listosOrd.length} de un clic</strong> esperando</> : null}.</>,
       guia: 'Empezá por las alertas: el resto puede esperar.',
     };
     if (listosOrd.length > 0) return {
-      frase: <>Lo que más devuelve por minuto: <strong className="font-semibold">{listosOrd.length} decisi{listosOrd.length !== 1 ? 'ones' : 'ón'} de un clic</strong>.</>,
+      frase: <>Lo que más devuelve por minuto: <strong className="font-semibold" style={{ color: '#9BC8FF' }}>{listosOrd.length} decisi{listosOrd.length !== 1 ? 'ones' : 'ón'} de un clic</strong>.</>,
       guia: 'El ejecutor las aplica dentro de la hora después de aprobar.',
     };
     if (confirmar.length > 0) return {
-      frase: <><strong className="font-semibold">{confirmar.length} deducci{confirmar.length !== 1 ? 'ones' : 'ón'}</strong> espera{confirmar.length !== 1 ? 'n' : ''} tu confirmación.</>,
+      frase: <><strong className="font-semibold" style={{ color: '#9BC8FF' }}>{confirmar.length} deducci{confirmar.length !== 1 ? 'ones' : 'ón'}</strong> espera{confirmar.length !== 1 ? 'n' : ''} tu confirmación.</>,
       guia: 'Confirmá o descartá: son hipótesis del sistema, no hechos.',
     };
     return {
-      frase: <>Quedan <strong className="font-semibold">{total} pendiente{total !== 1 ? 's' : ''}</strong>, ninguno urgente.</>,
+      frase: <>Quedan <strong className="font-semibold" style={{ color: '#9BC8FF' }}>{total} pendiente{total !== 1 ? 's' : ''}</strong>, ninguno urgente.</>,
       guia: 'Podés resolverlos cuando quieras: nada vence hoy.',
     };
   })();
@@ -178,12 +178,12 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           <div className="grid grid-cols-3 divide-x pb-6" style={HAIR}>
             <div className="pr-6">
               <div className="text-xs" style={LABEL}>Esperan tu criterio</div>
-              <div className="text-2xl font-medium text-[#FAFAFA] tabular mt-1" style={{ letterSpacing: '-0.6px' }}>{total}</div>
+              <div className="text-2xl font-medium tabular mt-1 cifra-luz" style={{ letterSpacing: '-0.6px' }}>{total}</div>
               <div className="text-xs mt-1" style={LABEL}>{hoy.length > 0 ? `${hoy.length} con urgencia de hoy` : 'sin urgencias de hoy'}</div>
             </div>
             <div className="px-6">
               <div className="text-xs" style={LABEL}>De un clic</div>
-              <div className="text-2xl font-medium text-[#FAFAFA] tabular mt-1" style={{ letterSpacing: '-0.6px' }}>{listosOrd.length}</div>
+              <div className="text-2xl font-medium tabular mt-1 cifra-luz" style={{ letterSpacing: '-0.6px' }}>{listosOrd.length}</div>
               <div className="text-xs mt-1" style={LABEL}>{listosOrd.length > 0 ? 'las más rentables por minuto' : 'ninguna lista para ejecutar'}</div>
             </div>
             <div className="pl-6">
