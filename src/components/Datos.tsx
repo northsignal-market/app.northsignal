@@ -172,7 +172,7 @@ function formatValue(col: string, val: any, currency: string) {
   return val;
 }
 
-export function Datos({ initialSearch, initialView }: { initialSearch?: string; initialView?: string } = {}) {
+export function Datos({ initialSearch, initialView, volverA }: { initialSearch?: string; initialView?: string; volverA?: { etiqueta: string; onVolver: () => void } } = {}) {
   const { selectedClient, setIsAuthenticated } = useAppStore();
   const [cuentasApi, setCuentasApi] = useState<any[]>([]);
   useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasApi(Array.isArray(x) ? x : [])).catch(() => {}); }, []);
@@ -744,6 +744,15 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
 
   return (
     <div className={`flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] ${isFullscreen ? 'fixed inset-0 z-[200]' : 'h-full'}`}>
+      {/* El hilo de la cadena: viniste desde un accionable, la vuelta es un clic
+          y restaura el drawer. Solo aparece cuando hay origen. */}
+      {volverA && (
+        <button onClick={volverA.onVolver}
+          className="flex items-center gap-2 px-8 py-2 text-left text-xs text-[#4D9DFF] hover:bg-white/5 transition-colors shrink-0"
+          style={{ borderBottom: '1px solid var(--border)' }}>
+          ← {volverA.etiqueta}
+        </button>
+      )}
       <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 bg-[#1A1F36] shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <Database size={20} className="text-[#4D9DFF]" />

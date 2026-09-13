@@ -59,7 +59,7 @@ function App() {
     if (seg) setSegmento(seg as SegmentoCuenta);
     setActiveTab(tab);
   };
-  const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string }>({});
+  const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string; origen?: string }>({});
   // Estado de servidor por TanStack Query: el briefing revalida al volver a la
   // pestaña y cada 5 min de fondo; la salud del header se DERIVA, no se copia.
   const qc = useQueryClient();
@@ -163,27 +163,58 @@ function App() {
     url.searchParams.set('page', activeTab);
     if (activeTab === 'cuenta') url.searchParams.set('seg', segmento); else url.searchParams.delete('seg');
     if (selectedClient) url.searchParams.set('cliente', selectedClient);
+    // El drawer vive en la URL: back lo cierra, un deep-link lo abre.
+    if (selectedAction) url.searchParams.set('acc', selectedAction.id); else url.searchParams.delete('acc');
     const nueva = url.toString();
     if (nueva === ultimaUrl.current) return;
     // La primera vez reemplaza; los cambios de pantalla apilan.
     if (ultimaUrl.current) window.history.pushState({ page: activeTab }, '', nueva);
     else window.history.replaceState({ page: activeTab }, '', nueva);
     ultimaUrl.current = nueva;
-  }, [activeTab, segmento, selectedClient, isAuthenticated]);
+  }, [activeTab, segmento, selectedClient, selectedAction, isAuthenticated]);
 
   // El boton atras vuelve a la pantalla anterior en vez de salir de la app.
   useEffect(() => {
     const alVolver = () => {
       const p = new URLSearchParams(window.location.search);
-      const page = p.get('page'); const seg = p.get('seg'); const cli = p.get('cliente');
+      const page = p.get('page'); const seg = p.get('seg'); const cli = p.get('cliente'); const acc = p.get('acc');
       ultimaUrl.current = window.location.href;
       if (page) setActiveTab(page as any);
       if (seg) setSegmento(seg as any);
       if (cli) setSelectedClient(cli);
+      const st = useAppStore.getState();
+      if (acc) { const f = st.actionables.find(a => a.id === acc); if (f) st.setSelectedAction(f); }
+      else if (st.selectedAction) st.setSelectedAction(null);
     };
     window.addEventListener('popstate', alVolver);
     return () => window.removeEventListener('popstate', alVolver);
   }, []);
+
+  // Deep-link con ?acc=: abre el drawer apenas los accionables cargan.
+  const accInicial = React.useRef<string | null>(new URLSearchParams(window.location.search).get('acc'));
+  useEffect(() => {
+    if (!accInicial.current || !actionables.length) return;
+    const f = actionables.find(a => a.id === accInicial.current);
+    accInicial.current = null;
+    if (f) { setSelectedClient(f.client); setSelectedAction(f); }
+  }, [actionables]);
+
+  // Queue-advance: los pendientes de decisión en el orden de la Bandeja
+  // (urgencia primero). El drawer avanza por acá sin volver a la lista.
+  const colaPendientes = React.useMemo(() => {
+    const orden = (p?: string) => p === 'Urgente' ? 0 : p === 'Alta' ? 1 : p === 'Media' ? 2 : 3;
+    return actionables
+      .filter(a => (a.status === 'Propuesto' || a.status === 'Bloqueado') && !a.reemplazado_por)
+      .sort((a, b) => orden(a.priority) - orden(b.priority));
+  }, [actionables]);
+  const siguientePendiente = () => {
+    if (!selectedAction) return;
+    const resto = colaPendientes.filter(a => a.id !== selectedAction.id);
+    const mismaCuenta = resto.filter(a => a.client === selectedAction.client);
+    const sig = mismaCuenta[0] || resto[0];
+    if (sig) { setSelectedClient(sig.client); setSelectedAction(sig); }
+    else setSelectedAction(null);
+  };
 
   if (!authChecked) {
     return (
@@ -301,7 +332,15 @@ function App() {
 
           {activeTab === 'datos' && (
             <LimiteDeError nombre="Datos">
-              <Datos initialSearch={datosInicial.search} initialView={datosInicial.view} />
+              <Datos initialSearch={datosInicial.search} initialView={datosInicial.view}
+                volverA={datosInicial.origen ? {
+                  etiqueta: 'Volver al accionable',
+                  onVolver: () => {
+                    const f = actionables.find(a => a.id === datosInicial.origen);
+                    setDatosInicial(d => ({ ...d, origen: undefined }));
+                    if (f) { setActiveTab('bandeja'); setSelectedClient(f.client); setSelectedAction(f); }
+                  },
+                } : undefined} />
             </LimiteDeError>
           )}
 
@@ -337,6 +376,8 @@ function App() {
           <ActionableDrawerContent
             action={selectedAction}
             onActionChange={(updated) => setSelectedAction(updated)}
+            onSiguiente={siguientePendiente}
+            quedan={colaPendientes.filter(a => a.id !== selectedAction.id).length}
             onNavigateToActionable={(nextId) => {
               const next = actionables.find(a => a.id === nextId);
               if (next) setSelectedAction(next);
@@ -348,8 +389,9 @@ function App() {
               setActiveTab('cuenta');
             }}
             onNavigateToKeyword={(kw) => {
+              // El contexto viaja: Datos sabe de qué accionable venís y ofrece volver.
+              setDatosInicial({ search: kw, view: 'v_keywords_analisis', origen: selectedAction.id });
               setSelectedAction(null);
-              setDatosInicial({ search: kw, view: 'v_keywords_analisis' });
               setActiveTab('datos');
             }}
           />

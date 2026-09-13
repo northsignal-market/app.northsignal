@@ -94,13 +94,18 @@ export function ActionableDrawerContent({
   onActionChange,
   onNavigateToActionable,
   onNavigateToBrief,
-  onNavigateToKeyword
+  onNavigateToKeyword,
+  onSiguiente,
+  quedan
 }: {
   action: Actionable;
   onActionChange?: (updated: Actionable) => void;
   onNavigateToActionable?: (actionId: string) => void;
   onNavigateToBrief?: (briefId: string) => void;
   onNavigateToKeyword?: (keyword: string) => void;
+  /** Queue-advance: tras decidir, avanzar al próximo pendiente sin cerrar. */
+  onSiguiente?: () => void;
+  quedan?: number;
 }) {
   const { updateActionableStatus, notionBriefs, actionables } = useAppStore();
   // Cambiar estado con lo que cada estado necesita: Descartado pide motivo, Hecho pone fecha
@@ -164,6 +169,16 @@ export function ActionableDrawerContent({
     const lote: string[] | null = accionActual?.objeto?.keywords?.length ? accionActual.objeto.keywords : null;
     const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
     if (!kw && !VERBOS_SIN_KEYWORD.includes(tipoAuto)) { avisar('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".', 'error'); return; }
+    // Ejecutar de verdad frena UNA vez y muestra exactamente qué va a cambiar:
+    // entidad, cuenta, y el antes→después si la acción lo trae. Simular no frena.
+    if (modo === 'ejecutar') {
+      const o = accionActual?.objeto || {};
+      const p = accionActual?.parametros || {};
+      const cambio = (p.valor_actual != null || o.valor_actual != null)
+        ? `\n${p.valor_actual ?? o.valor_actual} → ${p.valor_nuevo ?? o.valor_nuevo ?? '(según acción)'}` : '';
+      const detalle = [o.campana, o.grupo, lote ? `${lote.length} keywords` : (o.keyword || kw)].filter(Boolean).join(' › ');
+      if (!confirm(`Aplicar en Google Ads (${action.client}):\n${(tipoAuto || '').replace(/_/g, ' ')} · ${detalle}${cambio}\n\nEl ejecutor lo hace dentro de la próxima hora. ¿Confirmás?`)) return;
+    }
     setEjecutando(true);
     try {
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -190,6 +205,8 @@ export function ActionableDrawerContent({
     setCausaRaiz(action.causa_raiz || '');
     setGeminiResult(null);
     setShowLogForm(false);
+    // Al avanzar al siguiente (queue-advance), el estado "encolado" es del anterior.
+    setEjecutado(null);
   }, [action]);
 
   const fetchChanges = async () => {
@@ -537,7 +554,19 @@ export function ActionableDrawerContent({
       {tipoAuto && action.status !== 'Hecho' && action.status !== 'Descartado' && action.status !== 'En curso' && !contexto?.bloqueo && (
         <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           {ejecutado ? (
-            <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
+            <div className="space-y-2">
+              <p className="text-xs text-[#F5F7FA]">{ejecutado === 'ejecutar' ? 'Aprobado. El script lo aplica en Google Ads dentro de la próxima hora y te lo marca Hecho.' : 'Simulación pedida. El script va a escribir qué haría, sin tocar la cuenta. Lo ves en Sistema › Ejecuciones.'}</p>
+              {/* Queue-advance: la decisión tomada abre la siguiente, sin volver a la
+                  lista (patrón Superhuman/Gmail). El botón, no automático: ves el
+                  resultado y avanzás cuando querés. */}
+              {onSiguiente && (quedan ?? 0) > 0 && (
+                <button onClick={onSiguiente} autoFocus
+                  className="w-full py-2 rounded-lg text-xs font-medium text-[#FAFAFA] hover:bg-white/10 transition-colors flex items-center justify-center gap-1.5"
+                  style={{ border: '1px solid var(--border-strong)' }}>
+                  Siguiente pendiente ({quedan}) →
+                </button>
+              )}
+            </div>
           ) : (
             <>
               {/* Ticket 49: los avisos de pre-vuelo que NO bloquean se muestran acá, antes de aprobar */}
