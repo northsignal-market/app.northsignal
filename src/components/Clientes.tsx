@@ -1,5 +1,6 @@
 import { useCuentaActiva, useCuentas } from '../lib/useCuentas';
-import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible } from './ui';
+import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible, useJSON } from './ui';
+import { Barcode, BarraApilada100, ColumnasApiladas100, IS_COLORES } from './graficos-pulse';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
 import { Clock, Lightbulb, HelpCircle, ArrowRight, ExternalLink, Target, TrendingUp, Layers, Save } from 'lucide-react';
@@ -155,6 +156,28 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   // La moneda sale de la cuenta, no de un condicional: Fresh Monkee se mostraba
   // en pesos chilenos porque el ternario solo distinguia Karedo del resto.
   const fmtMoney = (v: any) => fmtMoneda(v == null ? null : Number(v), monedaDe(activeClient));
+
+  // P5 · La subasta (impression share) y los locales contra su manada.
+  const { data: isData } = useJSON<any>(zona !== 'memoria' && zona !== 'reportes' ? `/api/is-semana?client=${activeClient}` : null, null);
+  const { data: localesRkData } = useJSON<any>(zona !== 'memoria' && zona !== 'reportes' ? `/api/locales-ranking?client=${activeClient}` : null, null);
+  const gruposLocales = useMemo(() => {
+    // CPA ajustado 0 = grupo sin gasto (aperturas finalizadas, regla 9 de FM):
+    // esas campañas se juzgan por el evento, no por CPA — afuera del barcode.
+    const filas: any[] = (localesRkData?.locales || []).filter((l: any) => Number(l.cpa_ajustado) > 0);
+    const por: Record<string, any[]> = {};
+    filas.forEach(l => { const g = l.grupo_par || 'sin grupo'; (por[g] = por[g] || []).push(l); });
+    return Object.entries(por).map(([grupo, locs]) => {
+      const vals = locs.map(f => Number(f.cpa_ajustado)).filter(v => isFinite(v)).sort((a, b) => a - b);
+      const mediana = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+      // Se sale de la manada el que paga bien por encima de su grupo Y cuya
+      // comparación se sostiene (apto_para_recomendar de la vista bayesiana).
+      const locales = locs.map(f => ({
+        ...f,
+        fuera: Boolean(f.apto_para_recomendar) && mediana != null && Number(f.cpa_ajustado) > mediana * 1.5,
+      }));
+      return { grupo, locales, mediana, comparable: locs.some(f => f.apto_para_recomendar) };
+    }).filter(g => g.locales.length >= 2).sort((a, b) => b.locales.length - a.locales.length);
+  }, [localesRkData]);
 
   useEffect(() => {
     setLoading(true);
@@ -515,6 +538,96 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         )}
       </div>
       </>)}
+      {/* P5 · La subasta en tres franjas que suman 100 (informe 13 §4):
+          barra apilada por campaña, columnas semanales para la evolución.
+          La pregunta es comparativa y temporal — por eso no hay donut. */}
+      {ver('diagnostico') && isData?.campanas?.some((c: any) => c.impr_share != null) && (
+        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">La subasta: ganado y perdido</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="De cada 100 impresiones posibles: cuántas ganó la campaña, cuántas se perdieron por presupuesto (se arreglan con plata) y cuántas por ranking (se arreglan con calidad de anuncio y keyword).">De cada 100 impresiones posibles, cuántas ganó cada campaña — y si el resto se perdió por plata o por calidad.</p>
+          </div>
+          <div className="space-y-1.5">
+            {isData.campanas.filter((c: any) => c.impr_share != null).map((c: any) => (
+              <div key={c.campaign} className="grid grid-cols-[minmax(120px,220px)_minmax(0,1fr)_auto] items-center gap-3">
+                <span className="text-xs text-[#F5F7FA] truncate" title={c.campaign}>{c.campaign}</span>
+                <BarraApilada100 partes={[
+                  { valor: Number(c.impr_share) || 0, color: IS_COLORES.ganado, titulo: `ganado ${c.impr_share}%` },
+                  { valor: Number(c.lost_is_budget) || 0, color: IS_COLORES.budget, titulo: `perdido por presupuesto ${c.lost_is_budget}%` },
+                  { valor: Number(c.lost_is_rank) || 0, color: IS_COLORES.rank, titulo: `perdido por ranking ${c.lost_is_rank}%` },
+                ]} />
+                <span className="text-[11px] tabular text-right whitespace-nowrap" style={{ color: '#ADADAD' }}>
+                  <span className="text-[#EDEFF3]">{Math.round(Number(c.impr_share))}%</span> ganado
+                </span>
+              </div>
+            ))}
+          </div>
+          {(isData.semanas || []).filter((s: any) => s.impr_share_promedio != null).length >= 4 && (
+            <div className="pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+              <p className="text-[11px] mb-1.5" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>La evolución, semana a semana</p>
+              <ColumnasApiladas100 semanas={(isData.semanas || []).filter((s: any) => s.impr_share_promedio != null).map((s: any) => ({
+                etiqueta: fmtFechaCorta(s.week_start),
+                titulo: `semana del ${fmtFechaCorta(s.week_start)}: ganó ${s.impr_share_promedio}% · presupuesto ${s.perdido_presupuesto ?? '—'}% · ranking ${s.perdido_ranking ?? '—'}%`,
+                partes: [
+                  { valor: Number(s.impr_share_promedio) || 0, color: IS_COLORES.ganado },
+                  { valor: Number(s.perdido_presupuesto) || 0, color: IS_COLORES.budget },
+                  { valor: Number(s.perdido_ranking) || 0, color: IS_COLORES.rank },
+                ],
+              }))} />
+            </div>
+          )}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]" style={{ color: '#ADADAD' }}>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.ganado }} /> ganado</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.budget }} /> perdido por presupuesto</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.rank }} /> perdido por ranking</span>
+            {isData.semana && <span className="ml-auto tabular">campañas: semana del {fmtFechaCorta(isData.semana)}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* P5 · Los 46 locales contra su manada (informe 13 §2b): cada raya un
+          local sobre el CPA ajustado de 4 semanas; el grupo de pares es el
+          objetivo de campaña — comparar visitas con visitas. Solo FM tiene
+          locales, así que en las demás cuentas esto no existe. */}
+      {ver('diagnostico') && gruposLocales.length > 0 && (
+        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Locales contra su manada</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada raya es un local; el eje es su CPA de 4 semanas encogido hacia el promedio del grupo (el volumen bajo no grita). Cyan = paga bien por encima de su manada y la comparación se sostiene. El presupuesto de un local no se mueve a otro: esto se conversa con Pablo, no se ejecuta.">Cada raya un local, sobre el CPA ajustado de 4 semanas. Cyan = se salió de su manada. El presupuesto de un local no se mueve a otro.</p>
+          </div>
+          <div className="space-y-3.5">
+            {gruposLocales.map(g => {
+              const fuera = g.locales.filter((l: any) => l.fuera);
+              return (
+                <div key={g.grupo} className={g.comparable ? '' : 'opacity-55'}>
+                  <div className="flex items-baseline justify-between gap-3 mb-1">
+                    <span className="text-xs text-[#EDEFF3]">{g.grupo} <span className="tabular" style={{ color: '#ADADAD' }}>· {g.locales.length} local{g.locales.length !== 1 ? 'es' : ''}</span></span>
+                    {fuera.length > 0 && (
+                      <span className="text-[11px] truncate" style={{ color: 'var(--acc-cyan)' }} title={fuera.map((l: any) => `${l.local} ${fmtMoney(l.cpa_ajustado)}`).join(' · ')}>
+                        {fuera.map((l: any) => l.local).join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                  <Barcode
+                    formato={fmtMoney}
+                    items={g.locales.filter((l: any) => isFinite(Number(l.cpa_ajustado))).map((l: any) => ({
+                      id: l.local,
+                      valor: Number(l.cpa_ajustado),
+                      foco: l.fuera,
+                      titulo: `${l.local} · CPA ajustado ${fmtMoney(l.cpa_ajustado)} · ${l.conv_4sem} conv y ${fmtMoney(l.gasto_4sem)} en 4 semanas${l.apto_para_recomendar ? '' : ` · ${l.lectura}`}`,
+                    }))}
+                  />
+                  {!g.comparable && g.locales[0]?.lectura && (
+                    <p className="text-[10px] mt-1" style={{ color: '#ADADAD' }}>{g.locales[0].lectura}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px]" style={{ color: '#ADADAD', opacity: 0.8 }}>CPA encogido hacia el grupo (peso 10 conversiones): con pocas conversiones manda el grupo, no el ruido. Últimas 4 semanas cerradas.</p>
+        </div>
+      )}
+
       {ver('diagnostico') && (<>
       {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
       <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>

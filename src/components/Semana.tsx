@@ -14,6 +14,7 @@ import {
   fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON, useJSON,
 } from './ui';
 import { leerPlan, COLOR_ESTADO, abrirTextoAgente, type PlanLectura } from '../lib/lectura';
+import { Bullet, GaugeTicks } from './graficos-pulse';
 
 interface SemanaProps {
   onOpenActionable?: (actionId: string) => void;
@@ -148,6 +149,37 @@ export function Semana({ onOpenActionable }: SemanaProps) {
     };
   }, [displayedDaily, dailyData, rango]);
 
+  // P5 · La semana contra lo predicho y el mes contra su presupuesto.
+  const { data: cicloData } = useJSON<any>(`/api/ciclo?client=${activeClient}`, null);
+  const { data: pacing } = useJSON<any>(`/api/pacing?client=${activeClient}`, null);
+  const prediccionesSemana = useMemo(() => {
+    const preds = (cicloData?.predicciones || []).filter((p: any) => p.acerto === null);
+    if (!preds.length) return [];
+    const semana = preds.reduce((mx: string, p: any) => (p.semana > mx ? p.semana : mx), preds[0].semana);
+    return preds.filter((p: any) => p.semana === semana);
+  }, [cicloData]);
+  // El real de la semana que la predicción declara, acumulado desde la diaria.
+  // CPA con cero conversiones es null, no cero; CTR sin impresiones, ídem.
+  const realSemana = useMemo(() => {
+    if (!prediccionesSemana.length || !dailyData.length) return null;
+    const desde = prediccionesSemana[0].semana;
+    const hastaSem = new Date(new Date(desde + 'T12:00:00').getTime() + 6 * 864e5).toISOString().slice(0, 10);
+    const dias = dailyData.filter((d: any) => d.date >= desde && d.date <= hastaSem);
+    const sum = (k: string) => dias.reduce((s: number, d: any) => s + (Number(d[k]) || 0), 0);
+    const gasto = sum('gasto'), conv = sum('conversiones'), clics = sum('clics'), imp = sum('impresiones');
+    return {
+      dias: dias.length, gasto, conversiones: conv, clics,
+      cpa: conv > 0 ? gasto / conv : null,
+      cpc: clics > 0 ? gasto / clics : null,
+      conv_rate: clics > 0 ? (conv / clics) * 100 : null,
+      ctr: imp > 0 ? (clics / imp) * 100 : null,
+    } as Record<string, number | null>;
+  }, [prediccionesSemana, dailyData]);
+  const fmtMetrica = (met: string) => (v: number) =>
+    met === 'gasto' || met === 'cpa' || met === 'cpc' ? fmtMoneda(v, M)
+      : met === 'conv_rate' || met === 'ctr' ? `${fmtNum(v, 1)}%`
+        : fmtNum(v, v % 1 ? 1 : 0);
+
   // Fondo por severidad: la intensidad es la severidad, sin color adicional
   const severidadOpacity: Record<string, number> = { media: 0.08, alta: 0.14, critica: 0.20 };
 
@@ -254,6 +286,44 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 <p className="text-[11px] text-[#F5F7FA] opacity-50">{dias} día{dias !== 1 ? 's' : ''} de evidencia esta semana.</p>
               )}
             </div>
+            {(() => {
+              // P5 · Racha: días con TODAS las señales del plan cumplidas, seguidos
+              // hasta el último día con datos. La grilla es la semana del plan.
+              const porFecha: Record<string, { si: number; total: number }> = {};
+              p.indicadores.forEach((i: any) => (i.serie || []).forEach((s: any) => {
+                if (s.cumple == null) return;
+                if (!porFecha[s.fecha]) porFecha[s.fecha] = { si: 0, total: 0 };
+                porFecha[s.fecha].total += 1;
+                if (s.cumple === true) porFecha[s.fecha].si += 1;
+              }));
+              const fechas = Object.keys(porFecha).sort();
+              if (!fechas.length) return null;
+              let racha = 0;
+              for (let k = fechas.length - 1; k >= 0; k--) {
+                const f = porFecha[fechas[k]];
+                if (f.total > 0 && f.si === f.total) racha += 1; else break;
+              }
+              const ult = porFecha[fechas[fechas.length - 1]];
+              const faltaron = ult.total - ult.si;
+              return (
+                <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 py-1.5 px-2 mb-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[11px]" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>Racha</span>
+                  <div className="flex gap-0.5">
+                    {fechas.map(f => {
+                      const d = porFecha[f];
+                      const pleno = d.total > 0 && d.si === d.total;
+                      const frac = d.total > 0 ? d.si / d.total : 0;
+                      return <span key={f} title={`${f}: ${d.si} de ${d.total} señales cumplidas`} className="w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: frac > 0 ? `color-mix(in oklab, #0062CC ${Math.round(25 + frac * 75)}%, var(--surface-1))` : 'var(--surface-1)', border: pleno ? '1px solid rgba(34,211,238,0.55)' : '1px solid var(--border)' }} />;
+                    })}
+                  </div>
+                  <span className="text-[11px] tabular text-[#EDEFF3]">{racha > 0 ? `${racha} día${racha !== 1 ? 's' : ''} pleno${racha !== 1 ? 's' : ''} seguido${racha !== 1 ? 's' : ''}` : 'sin día pleno todavía'}</span>
+                  {racha === 0 && ult.si > 0 && faltaron > 0 && (
+                    <span className="text-[10px]" style={{ color: '#ADADAD' }}>· al último día le falt{faltaron !== 1 ? 'aron' : 'ó'} {faltaron} señal{faltaron !== 1 ? 'es' : ''} para ser pleno</span>
+                  )}
+                </div>
+              );
+            })()}
             <div className="space-y-1.5">
               {p.indicadores.map((i: any, idx: number) => {
                 const ultimo = i.serie[i.serie.length - 1];
@@ -306,6 +376,58 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           </Tarjeta>
         );
       })()}
+
+      {/* P5 · La semana contra lo predicho, y el mes contra su presupuesto.
+          Bullet: barra = real, banda = rango, tick = centro del rango (informe
+          13 §2c). El gauge radial existe SOLO acá: una meta, 0-100%, un
+          vistazo — el único uso honesto del radial (§2a). */}
+      {(prediccionesSemana.length > 0 || pacing) && (
+        <Tarjeta>
+          <div className="grid md:grid-cols-[minmax(0,1fr)_auto] gap-x-8 gap-y-4 items-start">
+            <div className="min-w-0">
+              <h2 className="text-[13px] font-medium text-[#EDEFF3]">La semana contra lo predicho</h2>
+              {prediccionesSemana.length === 0 ? (
+                <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin predicciones para esta semana. Las escribe el análisis semanal del lunes.</p>
+              ) : (
+                <div className="mt-2.5 space-y-2.5">
+                  {prediccionesSemana.map((pr: any) => {
+                    const fmt = fmtMetrica(pr.metrica);
+                    const real = realSemana?.[pr.metrica] ?? null;
+                    return (
+                      <div key={pr.id} className="grid grid-cols-[92px_minmax(0,1fr)_auto] items-center gap-3">
+                        <span className="text-xs text-[#EDEFF3] truncate" title={pr.razonamiento || undefined}>{nombres[pr.metrica] || pr.metrica}</span>
+                        <Bullet real={typeof real === 'number' ? real : null} min={Number(pr.valor_min)} max={Number(pr.valor_max)} formato={fmt} />
+                        <span className="text-[11px] tabular text-right whitespace-nowrap" style={{ color: '#ADADAD' }}>
+                          {typeof real === 'number' ? <span className="text-[#EDEFF3]">{fmt(real)}</span> : '—'} · {fmt(Number(pr.valor_min))}–{fmt(Number(pr.valor_max))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] leading-relaxed" style={{ color: '#ADADAD', opacity: 0.85 }}>
+                    Barra = real al cierre de ayer ({realSemana?.dias ?? 0} día{(realSemana?.dias ?? 0) !== 1 ? 's' : ''}) · banda = rango predicho al {Math.round(Number(prediccionesSemana[0].probabilidad || 0.8) * 100)}% · las conversiones recientes maduran; la predicción se evalúa el lunes.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="shrink-0 md:pl-7 md:border-l" style={{ borderColor: 'var(--border)' }}>
+              <h2 className="text-[13px] font-medium text-[#EDEFF3]">Pacing del mes</h2>
+              {pacing?.presupuesto != null && pacing?.consumido_pct != null ? (
+                <div className="mt-1 flex flex-col items-center">
+                  <GaugeTicks consumidoPct={pacing.consumido_pct} esperadoPct={pacing.esperado_pct ?? 0} />
+                  <p className="text-[10px] tabular text-center" style={{ color: '#ADADAD' }}>
+                    {fmtMoneda(pacing.gasto_mes, M)} de {fmtMoneda(pacing.presupuesto, M)} · día {pacing.dia_cerrado} de {pacing.dias_mes}
+                  </p>
+                  {pacing.aviso && <p className="text-[10px] mt-0.5 text-center max-w-[190px]" style={{ color: 'var(--warn)' }}>{pacing.aviso}</p>}
+                </div>
+              ) : (
+                <p className="text-[11px] mt-2 leading-relaxed max-w-[190px]" style={{ color: '#ADADAD' }}>
+                  Sin presupuesto mensual declarado, el pacing no existe. Se carga en Diagnóstico › Objetivos y estado.
+                </p>
+              )}
+            </div>
+          </div>
+        </Tarjeta>
+      )}
 
       {/* LA TENDENCIA: el gráfico principal, con anomalías, baseline y maduración */}
       <Tarjeta>

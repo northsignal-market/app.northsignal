@@ -3479,6 +3479,78 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     res.json({ calibracion: cal.data || [], global: calg.data, impactos: imp.data || [], tasa_acierto: tasa.data || [], predicciones: pred.data || [] });
   });
 
+  // ── P5 · Datos para los charts nuevos (informe 13). Solo lectura. ──
+
+  // Locales contra su grupo de pares (FM). La vista bayesiana ya trae el
+  // encogimiento y el guardarrail: un grupo de menos de 5 locales no compara.
+  app.get("/api/locales-ranking", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'Client required' });
+    const { data, error } = await supabase.from('v_location_ranking_bayes').select('*')
+      .eq('account', client).order('grupo_par').order('cpa_ajustado');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ locales: data || [] });
+  });
+
+  // Impression share en tres franjas que suman 100: ganado, perdido por
+  // presupuesto, perdido por ranking. Por campaña en la última semana cerrada
+  // y la evolución semanal de la cuenta (13 semanas).
+  app.get("/api/is-semana", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'Client required' });
+    const [{ data: sem }, { data: ult }] = await Promise.all([
+      supabase.from('v_tendencia_semanal')
+        .select('week_start, impr_share_promedio, perdido_presupuesto, perdido_ranking')
+        .eq('account', client).order('week_start', { ascending: true }),
+      supabase.from('v_campaign_analisis').select('week_start')
+        .eq('account', client).order('week_start', { ascending: false }).limit(1),
+    ]);
+    const semana = ult?.[0]?.week_start || null;
+    let campanas: any[] = [];
+    if (semana) {
+      const { data } = await supabase.from('v_campaign_analisis')
+        .select('campaign, cost, impr_share, lost_is_budget, lost_is_rank')
+        .eq('account', client).eq('week_start', semana)
+        .order('cost', { ascending: false }).limit(12);
+      campanas = data || [];
+    }
+    res.json({ semana, campanas, semanas: sem || [] });
+  });
+
+  // Pacing del presupuesto mensual: consumido al cierre de ayer (capa diaria)
+  // contra lo esperado a la fecha. Si la diaria no cubre el mes entero, se
+  // dice qué falta en vez de rellenar el hueco. Sin presupuesto declarado en
+  // account_targets no hay pacing: null, no un invento.
+  app.get("/api/pacing", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    if (!client) return res.status(400).json({ error: 'Client required' });
+    const hoy = new Date();
+    const y = hoy.getFullYear(), m = hoy.getMonth();
+    const inicioMes = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const ayer = new Date(hoy.getTime() - 864e5).toISOString().slice(0, 10);
+    const diasMes = new Date(y, m + 1, 0).getDate();
+    const [{ data: targetRows }, { data: dias }] = await Promise.all([
+      supabase.from('account_targets').select('presupuesto_mes_maximo').eq('account', client).limit(1),
+      supabase.from('campaign_daily').select('date, cost').eq('account', client).gte('date', inicioMes).lte('date', ayer),
+    ]);
+    const presupuesto = targetRows?.[0]?.presupuesto_mes_maximo != null ? Number(targetRows[0].presupuesto_mes_maximo) : null;
+    const gasto = (dias || []).reduce((s: number, d: any) => s + Number(d.cost || 0), 0);
+    const minDia = (dias || []).reduce((mn: string | null, d: any) => (!mn || d.date < mn ? d.date : mn), null as string | null);
+    const parcial = hoy.getDate() > 1 && (!minDia || minDia > inicioMes);
+    const diaCerrado = Math.max(0, hoy.getDate() - 1);
+    res.json({
+      presupuesto,
+      gasto_mes: Math.round(gasto * 100) / 100,
+      dia_cerrado: diaCerrado, dias_mes: diasMes,
+      esperado_pct: presupuesto ? Math.round((diaCerrado / diasMes) * 100) : null,
+      consumido_pct: presupuesto && presupuesto > 0 ? Math.round((gasto / presupuesto) * 100) : null,
+      parcial,
+      aviso: parcial ? `La capa diaria no cubre el mes completo: falta lo anterior al ${minDia || ayer}.` : null,
+    });
+  });
 
   // Propuestas estrategicas: las apuestas grandes. Andres aprueba, descarta, marca en test o adoptada.
   app.get("/api/propuestas", async (req, res) => {
