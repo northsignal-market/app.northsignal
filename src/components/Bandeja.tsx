@@ -20,6 +20,7 @@ import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
 import { fmtFechaCorta, useJSON } from './ui';
+import { abrirTextoAgente } from '../lib/lectura';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
 
@@ -44,9 +45,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const { data: novedadesRaw } = useJSON<any[]>('/api/novedades', [], { refetchMs: R });
   const { data: bloqueadosRaw } = useJSON<Record<string, string>>('/api/relaciones-abiertas', {}, { refetchMs: R });
   const { data: propuestasRaw } = useJSON<any[]>('/api/propuestas', [], { refetchMs: R });
-  // Desglose por lo que cuesta decidir cada cosa, y lo que los agentes
-  // respondieron a lo que les preguntaste: sin eso el círculo no cierra.
-  const { data: orden } = useJSON<any>('/api/orden-del-dia', null);
+  // Lo que los agentes respondieron a lo que les preguntaste: sin eso el
+  // círculo no cierra. (El desglose de esfuerzo se calcula de la cola misma.)
   const { data: notas } = useJSON<any>('/api/notas-agentes', null);
   const alertas = Array.isArray(alertasRaw) ? alertasRaw : [];
   const pulsos = pulsoRaw?.pulsos || [];
@@ -141,21 +141,28 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             {briefing?.datos_al_dia === false ? <span className="text-[#4D9DFF]">Los datos tienen un problema: mirá Sistema › Salud antes de decidir nada.</span> : 'Datos al día.'}
             {' '}{new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}.
           </p>
-          {orden && orden.total > 0 && (
+          {/* El desglose sale de la MISMA cola que ves abajo — antes venía de otro
+              endpoint y podía anunciar "7 de un clic" con el grupo Un clic vacío. */}
+          {total > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              {(orden.bloques || []).map((b: any) => (
-                <span key={b.nombre} className="text-[10px] px-2 py-0.5 rounded-full"
+              {[
+                { n: listosOrd.length, label: 'un clic', destacado: true },
+                { n: preguntasOrd.length, label: 'para responder' },
+                { n: aManoOrd.length, label: 'a mano' },
+                { n: confirmar.length, label: 'para confirmar' },
+              ].filter(b => b.n > 0).map(b => (
+                <span key={b.label} className="text-[10px] px-2 py-0.5 rounded-full"
                   style={{
-                    backgroundColor: b.nombre === 'Un clic' ? '#0062CC28' : 'var(--surface-2)',
-                    color: b.nombre === 'Un clic' ? '#FFFFFF' : '#F5F7FA',
+                    backgroundColor: b.destacado ? '#0062CC28' : 'var(--surface-2)',
+                    color: b.destacado ? '#FFFFFF' : '#F5F7FA',
                     border: '1px solid var(--border)'
                   }}>
-                  {b.cuantos} {b.nombre.toLowerCase()}
+                  {b.n} {b.label}
                 </span>
               ))}
-              {orden.un_clic > 0 && (
+              {listosOrd.length > 0 && (
                 <span className="text-[10px] text-[#F5F7FA] opacity-50">
-                  · empezá por los {orden.un_clic} de un clic: son los que más te devuelven por minuto
+                  · empezá por los de un clic: son los que más te devuelven por minuto
                 </span>
               )}
             </div>
@@ -167,31 +174,24 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
         </div>
       </div>
 
-      {/* Lo que los agentes contestaron. Va arriba de la cola porque es lo único
-          que llegó desde la última vez sin que tuvieras que pedirlo. */}
+      {/* Lo que los agentes contestaron: plegado. Cuatro párrafos completos arriba
+          de la cola empujaban las decisiones fuera de la primera pantalla. */}
       {notas?.respuestas?.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--primary-faint)' }}>
-            <span className="text-[11px] font-semibold text-[#EDEFF3]">Te respondieron</span>
-            <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{notas.respuestas.length}</span>
-            <span className="text-[10px] text-[#F5F7FA] opacity-50">lo que preguntaste y ya te contestaron</span>
-          </div>
-          {notas.respuestas.slice(0, 4).map((r: any) => (
-            <div key={r.id} className="px-4 py-2.5" style={{ borderTop: '1px solid var(--border)' }}>
-              <div className="flex items-baseline gap-2">
-                <span className="text-[10px] px-1.5 py-0.5 rounded tabular shrink-0" style={{ backgroundColor: 'var(--surface-2)', color: '#F5F7FA' }}>{r.cuenta}</span>
-                <span className="text-[11px] text-[#F5F7FA] opacity-60 truncate">{r.pregunta}</span>
+        <Colapsable titulo="Te respondieron" abierto={!!abierto.notas} onToggle={() => setAbierto(s => ({ ...s, notas: !s.notas }))}
+          resumen={`${notas.respuestas.length} respuesta${notas.respuestas.length !== 1 ? 's' : ''} · la última del ${fmtFechaCorta(notas.respuestas[0]?.cuando)}${notas?.pendientes?.length ? ` · ${notas.pendientes.length} pregunta${notas.pendientes.length !== 1 ? 's' : ''} en espera` : ''}`}>
+          <div className="space-y-2">
+            {notas.respuestas.slice(0, 4).map((r: any) => (
+              <div key={r.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded tabular shrink-0" style={{ backgroundColor: 'var(--surface-1)', color: '#F5F7FA' }}>{r.cuenta}</span>
+                  <span className="text-[11px] text-[#F5F7FA] opacity-60 truncate">{r.pregunta}</span>
+                </div>
+                <p className="text-xs text-[#EDEFF3] mt-1 leading-relaxed" style={{ maxWidth: '75ch' }}>{r.respuesta}</p>
+                <span className="text-[10px] text-[#F5F7FA] opacity-40">{r.respondio} · {fmtFechaCorta(r.cuando)}</span>
               </div>
-              <p className="text-xs text-[#EDEFF3] mt-1 leading-relaxed">{r.respuesta}</p>
-              <span className="text-[10px] text-[#F5F7FA] opacity-40">{r.respondio} · {new Date(r.cuando).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {notas?.pendientes?.length > 0 && (
-        <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">
-          {notas.pendientes.length} pregunta{notas.pendientes.length !== 1 ? 's' : ''} esperando la próxima corrida del agente.
-        </p>
+            ))}
+          </div>
+        </Colapsable>
       )}
 
       {/* La cola */}
@@ -299,7 +299,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               </div>
               {/* El hallazgo va entero; el resumen largo se recorta con CSS (line-clamp),
                   nunca cortando el texto del agente a mitad de palabra. */}
-              {p && <p className="text-[11px] text-[#F5F7FA] opacity-75 mt-0.5 leading-relaxed line-clamp-2" title={p.hallazgo_principal || p.resumen || ''}>{p.hallazgo_principal || p.resumen}</p>}
+              {p && (() => { const t = abrirTextoAgente(p.hallazgo_principal).titulo || abrirTextoAgente(p.hallazgo_principal).cuerpo || abrirTextoAgente(p.resumen).cuerpo; return t ? <p className="text-[11px] text-[#F5F7FA] opacity-75 mt-0.5 leading-relaxed line-clamp-2" title={t}>{t}</p> : null; })()}
             </button>
           ); })}
         </div>
@@ -362,7 +362,7 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
       ref={el => { if (activa && el) el.scrollIntoView({ block: 'nearest' }); }}
       className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${activa ? 'bg-white/10' : 'hover:bg-white/5'}`}
       style={{ borderTop: '1px solid var(--border)', boxShadow: activa ? 'inset 2px 0 0 var(--primary-text)' : undefined }}>
-      <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider">{cuenta}</span>
+      <span className="text-[9px] font-bold text-[#F5F7FA] opacity-50 w-20 shrink-0 uppercase tracking-wide truncate" title={cuenta}>{cuenta}</span>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] text-[#F5F7FA] opacity-55 truncate">{sub}</div>}
@@ -375,10 +375,10 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
 function Colapsable({ titulo, resumen, abierto, onToggle, children }: { titulo: string; resumen?: string; abierto: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left">
-        {abierto ? <ChevronDown size={14} className="text-[#F5F7FA] opacity-50" /> : <ChevronRight size={14} className="text-[#F5F7FA] opacity-50" />}
-        <span className="text-xs font-medium text-[#EDEFF3]">{titulo}</span>
-        {!abierto && resumen && <span className="text-[11px] text-[#F5F7FA] opacity-50 truncate">{resumen}</span>}
+      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left min-w-0">
+        {abierto ? <ChevronDown size={14} className="text-[#F5F7FA] opacity-50 shrink-0" /> : <ChevronRight size={14} className="text-[#F5F7FA] opacity-50 shrink-0" />}
+        <span className="text-xs font-medium text-[#EDEFF3] whitespace-nowrap shrink-0">{titulo}</span>
+        {!abierto && resumen && <span className="text-[11px] text-[#F5F7FA] opacity-50 truncate min-w-0">{resumen}</span>}
       </button>
       {abierto && <div className="px-4 pb-4">{children}</div>}
     </div>

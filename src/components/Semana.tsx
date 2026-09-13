@@ -13,7 +13,7 @@ import {
   RangoFechas, rangoPreset, type Rango, hoyLocal,
   fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON, useJSON,
 } from './ui';
-import { leerPlan, COLOR_ESTADO, type PlanLectura } from '../lib/lectura';
+import { leerPlan, COLOR_ESTADO, abrirTextoAgente, type PlanLectura } from '../lib/lectura';
 
 interface SemanaProps {
   onOpenActionable?: (actionId: string) => void;
@@ -409,16 +409,29 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           <Tarjeta><Vacio>Todavía no hay análisis diarios para {activeClient}. El primero aparece mañana a la mañana.</Vacio></Tarjeta>
         ) : (
           <div className="space-y-2">
-            {hallazgosSemana.filter((p: any) => !p.fecha || p.fecha >= rango.desde).map((p: any) => (
-              <div key={p.fecha} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-[#EDEFF3] tabular">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-                  <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#4D9DFF] font-bold' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel === 'critico' ? 'Requiere acción' : p.nivel === 'atencion' ? 'Para mirar el lunes' : 'Día normal'}</span>
+            {hallazgosSemana.filter((p: any) => !p.fecha || p.fecha >= rango.desde).map((p: any) => {
+              // El hallazgo es LA línea para leer; el resumen completo va plegado.
+              // abrirTextoAgente cubre el caso del pulso que escribió JSON crudo.
+              const h = abrirTextoAgente(p.hallazgo_principal);
+              const r = abrirTextoAgente(p.resumen);
+              const titulo = h.titulo || h.cuerpo;
+              const cuerpo = [h.titulo ? h.cuerpo : null, r.titulo, r.cuerpo].filter(Boolean).join('\n\n');
+              return (
+                <div key={p.fecha} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-1)', border: p.nivel === 'critico' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-[#EDEFF3] tabular">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                    <span className={`text-[10px] uppercase tracking-wide ${p.nivel === 'critico' ? 'text-[#4D9DFF] font-bold' : 'text-[#F5F7FA] opacity-50'}`}>{p.nivel === 'critico' ? 'Requiere acción' : p.nivel === 'atencion' ? 'Para mirar el lunes' : 'Día normal'}</span>
+                  </div>
+                  {titulo && <p className="text-xs text-[#EDEFF3] font-medium line-clamp-2" title={titulo}>{titulo}</p>}
+                  {cuerpo && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[10px] text-[#F5F7FA] opacity-45 hover:opacity-90 select-none">análisis del día</summary>
+                      <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed mt-1 whitespace-pre-wrap" style={{ maxWidth: '75ch' }}>{cuerpo}</p>
+                    </details>
+                  )}
                 </div>
-                {p.hallazgo_principal && <p className="text-xs text-[#EDEFF3] font-medium mb-1">{p.hallazgo_principal}</p>}
-                <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed">{p.resumen}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Seccion>

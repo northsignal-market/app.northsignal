@@ -127,6 +127,27 @@ export function leerPlan(pl: PlanLectura | null, hoyISO: string): LecturaPlan | 
   return { estadoId, veredicto, guia, guiaDelAgente, progreso, senalClave: top?.nombre ?? null, aviso };
 }
 
+/** Si un texto de agente ES un JSON con claves conocidas (titulo/lectura), lo
+ *  abre. JSON.parse no es heurística de texto: parsea o no parsea. Cualquier
+ *  otro texto pasa INTACTO — jamás se recorta ni se interpreta. Existe porque
+ *  algún pulso escribió su hallazgo como JSON y el front lo pegaba crudo. */
+export function abrirTextoAgente(texto: string | null | undefined): { titulo: string | null; cuerpo: string | null } {
+  const t = (texto || '').trim();
+  if (!t) return { titulo: null, cuerpo: null };
+  if (t.startsWith('{') && t.endsWith('}')) {
+    try {
+      const j = JSON.parse(t);
+      if (j && typeof j === 'object') {
+        const titulo = typeof j.titulo === 'string' ? j.titulo : null;
+        const cuerpo = [typeof j.lectura === 'string' ? j.lectura : null, typeof j.numeros === 'string' ? j.numeros : null]
+          .filter(Boolean).join(' — ') || null;
+        if (titulo || cuerpo) return { titulo, cuerpo };
+      }
+    } catch { /* no era JSON: sigue como texto tal cual */ }
+  }
+  return { titulo: null, cuerpo: t };
+}
+
 /** Color del estado. Texto SIEMPRE acompaña: el color solo refuerza. */
 export const COLOR_ESTADO: Record<EstadoPlan, string> = {
   tranquilo: '#4ADE80',
