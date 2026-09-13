@@ -253,12 +253,16 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </div>
       )}
 
-      {/* EL PLAN DE LA SEMANA: contra qué se mide todo lo demás */}
+      {/* CONTRA QUÉ SE MIDE LA SEMANA, en una sola franja: el plan manda (7
+          columnas) y a su lado lo que el sistema predijo y cómo viene el mes.
+          Antes eran dos bloques de ancho completo, uno debajo del otro: dos
+          pantallas para responder la misma pregunta. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       {plan?.plan && (() => {
         const p = plan.plan;
         const dias = plan.pulsos.length;
         return (
-          <Tarjeta hero>
+          <Tarjeta hero className="lg:col-span-7">
             <div className="pb-2.5 mb-3 space-y-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>
@@ -350,8 +354,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           13 §2c). El gauge radial existe SOLO acá: una meta, 0-100%, un
           vistazo — el único uso honesto del radial (§2a). */}
       {(prediccionesSemana.length > 0 || pacing) && (
-        <Tarjeta>
-          <div className="grid md:grid-cols-[minmax(0,1fr)_auto] gap-x-8 gap-y-4 items-start">
+        <Tarjeta className="lg:col-span-5">
+          <div className="space-y-4">
             <div className="min-w-0">
               <h2 className="text-[13px] font-medium text-[#EDEFF3]">La semana contra lo predicho</h2>
               {prediccionesSemana.length === 0 ? (
@@ -377,7 +381,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 </div>
               )}
             </div>
-            <div className="shrink-0 md:pl-7 md:border-l" style={{ borderColor: 'var(--border)' }}>
+            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
               <h2 className="text-[13px] font-medium text-[#EDEFF3]">Pacing del mes</h2>
               {pacing?.presupuesto != null && pacing?.consumido_pct != null ? (
                 <div className="mt-1 flex flex-col items-center">
@@ -396,8 +400,11 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           </div>
         </Tarjeta>
       )}
+      </div>
 
-      {/* LA TENDENCIA: el gráfico principal, con anomalías, baseline y maduración */}
+      {/* LA TENDENCIA: el gráfico principal, con anomalías, baseline y maduración.
+          Va a ancho completo a propósito: catorce días con dos ejes necesitan
+          el ancho, y es el hero de la vista. */}
       <Tarjeta>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="space-y-0.5 min-w-0">
