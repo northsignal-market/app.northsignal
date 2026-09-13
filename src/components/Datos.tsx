@@ -156,7 +156,8 @@ function formatValue(col: string, val: any, currency: string) {
 
   if (typeof val === 'number') {
     if (isCurrency) {
-      const locale = currency === 'EUR' ? 'de-DE' : 'es-CL';
+      // es-AR para USD y CLP: antes USD caía a es-CL y Fresh Monkee se leía como pesos.
+      const locale = currency === 'EUR' ? 'de-DE' : 'es-AR';
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currency,
@@ -461,6 +462,49 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     });
   };
 
+  /** El rango efectivo según el modo. Una sola definición: la que ve el título es la que va a la consulta. */
+  const rangoEfectivo = (): { from: string; to: string } => {
+    if (dateRangeMode === 'last_week' && weeks.length > 0) return { from: weeks[0], to: weeks[0] };
+    if (dateRangeMode === '4_weeks' && weeks.length > 0) return { from: weeks[Math.min(3, weeks.length - 1)], to: weeks[0] };
+    if (dateRangeMode === '8_weeks' && weeks.length > 0) return { from: weeks[Math.min(7, weeks.length - 1)], to: weeks[0] };
+    if (dateRangeMode === '12_weeks' && weeks.length > 0) return { from: weeks[Math.min(11, weeks.length - 1)], to: weeks[0] };
+    if (dateRangeMode === 'all_time' && weeks.length > 0) return { from: weeks[weeks.length - 1], to: weeks[0] };
+    if (dateRangeMode === 'last_7d') return { from: isoDaysAgo(7), to: isoDaysAgo(1) };
+    if (dateRangeMode === 'last_14d') return { from: isoDaysAgo(14), to: isoDaysAgo(1) };
+    if (dateRangeMode === 'custom') return { from: customRange.from, to: customRange.to };
+    return { from: '', to: '' };
+  };
+
+  /**
+   * UNA sola construcción de URL para tabla, CSV y PDF. Cuando estaba
+   * triplicada, un filtro cambiado en un lugar y no en los otros hacía que
+   * lo exportado no fuera lo que se veía. Devuelve null si el modo exige un
+   * rango que todavía no está (entidades sin fechas elegidas).
+   */
+  const construirUrl = (limitOverride?: number, offsetOverride?: number): string | null => {
+    const offset = offsetOverride ?? (page - 1) * limit;
+    const lim = limitOverride ?? limit;
+    const { from: from_date, to: to_date } = rangoEfectivo();
+
+    if (isEntidad) {
+      if (!from_date || !to_date) return null;
+      let url = `/api/entidades/${activeView.replace('ent_', '')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${lim}&offset=${offset}`;
+      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
+      return url;
+    }
+    let url = `/api/metrics/${activeView}?client=${selectedClient}&limit=${lim}&offset=${offset}`;
+    if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
+    const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
+    if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
+    if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
+    if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
+    if (comparePrev) url += `&compare=true`;
+    if (groupBy) url += `&groupBy=${groupBy}`;
+    if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
+    return url;
+  };
+
   // Fetch Data
   useEffect(() => {
     if (!selectedClient) {
@@ -468,42 +512,12 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
       return;
     }
     const abortController = new AbortController();
-    
+
     const fetchData = async () => {
       setLoading(true); setError(null);
       try {
-        const offset = (page - 1) * limit;
-        let url = `/api/metrics/${activeView}?client=${selectedClient}&limit=${limit}&offset=${offset}`;
-    
-    let from_date = '';
-    let to_date = '';
-    if (dateRangeMode === 'last_week' && weeks.length > 0) { from_date = weeks[0]; to_date = weeks[0]; }
-    else if (dateRangeMode === '4_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(3, weeks.length - 1)]; }
-    else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
-    else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
-    else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
-    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
-
-    // Entidades por rango: endpoint propio, requiere from/to
-    if (isEntidad) {
-      const offset = (page - 1) * limit;
-      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
-      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
-      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
-    }
-    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-    const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (!isEntidad) {
-      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-      if (comparePrev) url += `&compare=true`;
-      if (groupBy) url += `&groupBy=${groupBy}`;
-      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
-    }
+        const url = construirUrl();
+        if (!url) { setData([]); setTotalCount(0); setLoading(false); return; }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -554,37 +568,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
   const exportToCSV = async () => {
     if (!selectedClient) return;
     try {
-      let url = `/api/metrics/${activeView}?client=${selectedClient}&limit=10000`;
-    
-    let from_date = '';
-    let to_date = '';
-    if (dateRangeMode === 'last_week' && weeks.length > 0) { from_date = weeks[0]; to_date = weeks[0]; }
-    else if (dateRangeMode === '4_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(3, weeks.length - 1)]; }
-    else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
-    else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
-    else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
-    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
-
-    // Entidades por rango: endpoint propio, requiere from/to
-    if (isEntidad) {
-      const offset = (page - 1) * limit;
-      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
-      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
-      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
-    }
-    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-    const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (!isEntidad) {
-      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-      if (comparePrev) url += `&compare=true`;
-      if (groupBy) url += `&groupBy=${groupBy}`;
-      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
-    }
+    // La misma URL que la tabla, con más filas: lo exportado ES lo que se ve.
+    const url = construirUrl(10000, 0);
+    if (!url) { avisar('Elegí un rango de fechas antes de exportar.', 'info'); return; }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -631,37 +617,9 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     if (!selectedClient) return;
     try {
       setLoading(true);
-      let url = `/api/metrics/${activeView}?client=${selectedClient}&limit=1000`;
-    
-    let from_date = '';
-    let to_date = '';
-    if (dateRangeMode === 'last_week' && weeks.length > 0) { from_date = weeks[0]; to_date = weeks[0]; }
-    else if (dateRangeMode === '4_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(3, weeks.length - 1)]; }
-    else if (dateRangeMode === '8_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(7, weeks.length - 1)]; }
-    else if (dateRangeMode === '12_weeks' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[Math.min(11, weeks.length - 1)]; }
-    else if (dateRangeMode === 'all_time' && weeks.length > 0) { to_date = weeks[0]; from_date = weeks[weeks.length - 1]; }
-    else if (dateRangeMode === 'last_7d') { from_date = isoDaysAgo(7); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'last_14d') { from_date = isoDaysAgo(14); to_date = isoDaysAgo(1); }
-    else if (dateRangeMode === 'custom') { from_date = customRange.from; to_date = customRange.to; }
-
-    // Entidades por rango: endpoint propio, requiere from/to
-    if (isEntidad) {
-      const offset = (page - 1) * limit;
-      if (!from_date || !to_date) { setData([]); setTotalCount(0); setLoading(false); return; }
-      url = `/api/entidades/${activeView.replace('ent_','')}?client=${selectedClient}&from=${from_date}&to=${to_date}&limit=${limit}&offset=${offset}`;
-      if (orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
-    }
-    if (!isEntidad && orderBy) url += `&orderBy=${orderBy}&orderDir=${orderDir}`;
-    const searchCol = VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.searchCol;
-    if (!isEntidad) {
-      if (debouncedSearch && searchCol) url += `&search=${encodeURIComponent(debouncedSearch)}&searchColumn=${searchCol}`;
-      if (from_date) url += `&from=${encodeURIComponent(from_date)}`;
-      if (to_date) url += `&to=${encodeURIComponent(to_date)}`;
-      if (comparePrev) url += `&compare=true`;
-      if (groupBy) url += `&groupBy=${groupBy}`;
-      if (filters.length > 0) url += `&filters=${encodeURIComponent(JSON.stringify(filters))}`;
-    }
+    // La misma URL que la tabla: el PDF muestra exactamente lo que estás viendo.
+    const url = construirUrl(1000, 0);
+    if (!url) { avisar('Elegí un rango de fechas antes de exportar.', 'info'); setLoading(false); return; }
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -884,13 +842,99 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
           </div>
         </div>
 
-        {VIEW_CONFIGS[activeView]?.description && (
-           <div className="mb-4 text-sm text-[#F5F7FA]/70 flex items-center gap-2 shrink-0">
-             <Filter size={14} className="text-[#0062CC]" />
-             {VIEW_CONFIGS[activeView].description}
-           </div>
-        )}
-        
+        {/* CONTROLES ARRIBA: primero se elige qué mirar, después se mira.
+            Antes el buscador y el rango vivían DEBAJO de la tabla y había que
+            pasar mil filas para encontrarlos. */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 mt-3 mb-1 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA]/50" size={14} />
+              <input
+                type="text"
+                placeholder={`Buscar en ${VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.label}...`}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#FFFFFF] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
+                style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+              />
+            </div>
+
+            <select aria-label="Rango de fechas"
+              value={dateRangeMode}
+              onChange={e => setDateRangeMode(e.target.value)}
+              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#FFFFFF] focus:outline-none cursor-pointer"
+              style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+            >
+              {isDailyView ? (<>
+                <option value="last_7d">Últimos 7 días</option>
+                <option value="last_14d">Últimos 14 días</option>
+              </>) : (<>
+                <option value="last_week">Última semana</option>
+                <option value="4_weeks">Últimas 4 semanas</option>
+                <option value="8_weeks">Últimas 8 semanas</option>
+                <option value="12_weeks">Últimas 12 semanas</option>
+                <option value="all_time">Todo el histórico</option>
+              </>)}
+              <option value="custom">Rango personalizado...</option>
+            </select>
+
+            {dateRangeMode === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <input aria-label="Desde" type="date" value={customRange.from} max={customRange.to || undefined}
+                  onChange={e => setCustomRange(p => ({ ...p, from: e.target.value }))}
+                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#FFFFFF] focus:outline-none tabular [color-scheme:dark]"
+                  style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }} />
+                <span className="text-[#F5F7FA]/50 text-xs">→</span>
+                <input aria-label="Hasta" type="date" value={customRange.to} min={customRange.from || undefined}
+                  onChange={e => setCustomRange(p => ({ ...p, to: e.target.value }))}
+                  className="rounded-lg px-2.5 py-1.5 text-xs text-[#FFFFFF] focus:outline-none tabular [color-scheme:dark]"
+                  style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }} />
+                {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
+              </div>
+            )}
+
+            <select aria-label="Filas"
+              value={limit}
+              onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
+              className="appearance-none rounded-lg pl-3 pr-7 py-1.5 text-xs text-[#FFFFFF] focus:outline-none cursor-pointer"
+              style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
+            >
+              <option value={100}>100 filas</option>
+              <option value={250}>250 filas</option>
+              <option value={500}>500 filas</option>
+              <option value={1000}>Todas (hasta 1000)</option>
+            </select>
+          </div>
+
+          {/* La ventana que se declara es la que se pidió: este texto sale del
+              MISMO rangoEfectivo() que arma la consulta. */}
+          <div className="text-[11px] tabular text-[#F5F7FA]/60 text-right shrink-0">
+            {(() => {
+              const { from, to } = rangoEfectivo();
+              if (!from || !to) return '';
+              const etiquetas: Record<string, string> = { last_week: 'Semana', '4_weeks': '4 semanas', '8_weeks': '8 semanas', '12_weeks': '12 semanas', all_time: 'Todo el histórico', last_7d: 'Últimos 7 días', last_14d: 'Últimos 14 días', custom: 'Personalizado' };
+              const hasta = isDailyView || dateRangeMode === 'custom' ? formatDatePretty(to) : getEndOfWeek(to);
+              return `${etiquetas[dateRangeMode] || ''}: del ${formatDatePretty(from)} al ${hasta} · ${totalCount} filas`;
+            })()}
+          </div>
+        </div>
+
+        {/* El resumen antes del detalle: los totales del filtro actual */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-1 shrink-0">
+          {[
+            { label: 'Inversión (filtro)', valor: formatValue('cost', totals.cost || 0, currency) },
+            { label: 'Conversiones (filtro)', valor: String(totals.conversions || 0) },
+            { label: 'CPA ponderado', valor: formatValue('cpa', totals.cpa || 0, currency), azul: true },
+            { label: 'CPC promedio', valor: formatValue('avg_cpc', totals.avg_cpc || 0, currency) },
+            { label: 'Restricción principal', valor: totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A', azul: true, title: totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen' },
+          ].map((k: any) => (
+            <div key={k.label} className="surface p-2.5" style={{ borderRadius: 'var(--r-panel)' }} title={k.title}>
+              <p className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 mb-0.5">{k.label}</p>
+              <h3 className={`text-sm font-semibold tabular ${k.azul ? 'text-[#0062CC]' : 'text-[#FFFFFF]'}`}>{k.valor}</h3>
+            </div>
+          ))}
+        </div>
+
         {filters.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4 shrink-0">
             {filters.map((f, i) => (
@@ -903,38 +947,38 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         )}
 
         {activeView === 'v_tendencia_semanal' && data.length > 0 && (
-          <div className="mb-4 p-5 rounded-2xl bg-[#1A1F36] border border-[#0062CC]/30 shadow-md shrink-0">
+          <div className="glass mb-4 p-4 md:p-5 shrink-0" style={{ borderRadius: 'var(--r-tarjeta)' }}>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-sm font-semibold text-[#FFFFFF] flex items-center gap-2">
-                  <TrendingUp size={16} className="text-[#0062CC]" /> Curva de Tendencia Semanal (Gasto vs CPA)
+                <h3 className="text-[13px] font-medium text-[#FFFFFF] flex items-center gap-2">
+                  <TrendingUp size={14} className="text-[#0062CC]" /> Tendencia semanal · gasto y CPA
                 </h3>
-                <p className="text-xs text-[#F5F7FA]/70">Evolución de inversión vs costo por adquisición semana a semana.</p>
+                <p className="text-[11px] text-[#F5F7FA] opacity-50">Cada barra es una semana cerrada de lunes a domingo; la línea es el CPA ponderado de esa semana.</p>
               </div>
-              <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-4 text-[11px]">
                 <span className="flex items-center gap-1.5 text-[#F5F7FA]/70">
-                  <span className="w-3 h-3 rounded-sm bg-[#0062CC]" /> Gasto Semanal
+                  <span className="w-3 h-3 rounded-sm bg-[#0062CC] opacity-60" /> Gasto
                 </span>
-                <span className="flex items-center gap-1.5 text-[#0062CC]">
-                  <span className="w-3 h-0.5 bg-[#0062CC]" /> CPA Ponderado
+                <span className="flex items-center gap-1.5 text-[#F5F7FA]">
+                  <span className="w-3 h-0.5 bg-[#FFFFFF]" /> CPA
                 </span>
               </div>
             </div>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={[...data].reverse()} margin={{ top: 10, right: 30, left: 10, bottom: 15 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#0062CC" strokeOpacity={0.15} />
-                  <XAxis dataKey="week_start" stroke="#F5F7FA" strokeOpacity={0.6} tick={{ fontSize: 10 }} tickFormatter={v => formatDatePretty(v)} />
-                  <YAxis yAxisId="left" stroke="#F5F7FA" strokeOpacity={0.6} tick={{ fontSize: 10 }} tickFormatter={v => formatValue('gasto', v, currency)} />
-                  <YAxis yAxisId="right" orientation="right" stroke="#0062CC" strokeOpacity={0.8} tick={{ fontSize: 10 }} tickFormatter={v => formatValue('cpa', v, currency)} />
-                  <RechartsTooltip 
-                    contentStyle={{ backgroundColor: '#1A1F36', borderColor: '#0062CC', borderRadius: '12px' }}
-                    labelStyle={{ color: '#FFFFFF', fontWeight: 'bold' }}
+                <ComposedChart data={[...data].reverse()} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="week_start" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => formatDatePretty(v)} minTickGap={20} />
+                  <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => formatValue('gasto', v, currency)} width={70} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => formatValue('cpa', v, currency)} width={64} />
+                  <RechartsTooltip
+                    contentStyle={{ background: 'var(--glass-tint-dense)', border: '1px solid var(--glass-border)', borderRadius: 10, backdropFilter: 'blur(12px)', fontSize: 11, color: '#F5F7FA' }}
+                    labelStyle={{ color: '#FFFFFF', fontWeight: 600 }}
                     formatter={(val: any, name: any) => [formatValue(name === 'CPA' ? 'cpa' : 'gasto', Number(val) || 0, currency), name]}
-                    labelFormatter={v => `Semana: ${formatDatePretty(String(v))}`}
+                    labelFormatter={v => `Semana del ${formatDatePretty(String(v))}`}
                   />
-                  <Bar yAxisId="left" dataKey="gasto" name="Gasto" fill="#0062CC" fillOpacity={0.8} radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#0062CC" strokeWidth={2.5} dot={{ r: 4 }} />
+                  <Bar yAxisId="left" dataKey="gasto" name="Gasto" fill="#0062CC" fillOpacity={0.55} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                  <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#FFFFFF" strokeWidth={1.5} dot={{ r: 3, fill: '#FFFFFF' }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -1160,111 +1204,6 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
 
 
         
-        <div className="grid grid-cols-5 gap-2 mt-3 shrink-0">
-          <div className="bg-[#1A1F36] rounded-lg p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Inversión (Filtro)</p>
-            <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('cost', totals.cost || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">Conversiones (Filtro)</p>
-            <h3 className="text-sm font-semibold text-[#FFFFFF]">{totals.conversions || 0}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPA (Ponderado)</p>
-            <h3 className="text-sm font-semibold text-[#0062CC]">{formatValue('cpa', totals.cpa || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-0">CPC (Promedio)</p>
-            <h3 className="text-sm font-semibold text-[#FFFFFF]">{formatValue('avg_cpc', totals.avg_cpc || 0, currency)}</h3>
-          </div>
-          <div className="bg-[#1A1F36] rounded-none p-2.5 border border-[#0062CC]/20 flex flex-col justify-center shadow-sm">
-            <p className="text-xs font-semibold text-[#F5F7FA]/60 uppercase tracking-wider mb-1" title={totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen'}>Restricción Principal</p>
-            <h3 className="text-lg font-medium text-[#0062CC] line-clamp-1">
-              {totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A'}
-            </h3>
-          </div>
-        </div>
-
-        
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2 mb-2 shrink-0 px-1">
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F5F7FA]/50" size={16} />
-              <input 
-                type="text" 
-                placeholder={`Buscar en ${VIEW_CONFIGS[activeView as keyof typeof VIEW_CONFIGS]?.label}...`}
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
-                className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-9 pr-4 py-2 text-sm text-[#FFFFFF] placeholder-[#F5F7FA]/40 focus:outline-none focus:border-[#0062CC] transition-all"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <select aria-label="Date Range Mode" 
-                value={dateRangeMode} 
-                onChange={e => setDateRangeMode(e.target.value)}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-              >
-                {isDailyView ? (<>
-                  <option value="last_7d">Últimos 7 días</option>
-                  <option value="last_14d">Últimos 14 días</option>
-                </>) : (<>
-                  <option value="last_week">Última semana</option>
-                  <option value="4_weeks">Últimas 4 semanas</option>
-                  <option value="8_weeks">Últimas 8 semanas</option>
-                  <option value="12_weeks">Últimas 12 semanas</option>
-                  <option value="all_time">Todo el histórico</option>
-                </>)}
-                <option value="custom">Rango personalizado...</option>
-              </select>
-              
-              {dateRangeMode === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input aria-label="Custom Range" type="date" value={customRange.from} max={customRange.to || undefined}
-                    onChange={e => setCustomRange(p => ({...p, from: e.target.value}))}
-                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
-                    style={{ colorScheme: 'dark' }} />
-                  <span className="text-[#F5F7FA]/50">→</span>
-                  <input aria-label="Custom Range" type="date" value={customRange.to} min={customRange.from || undefined}
-                    onChange={e => setCustomRange(p => ({...p, to: e.target.value}))}
-                    className="bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl px-3 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] tabular"
-                    style={{ colorScheme: 'dark' }} />
-                  {!isDailyView && <span className="text-[10px] text-[#F5F7FA] opacity-50">semanas: se usa el lunes de cada fecha</span>}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select aria-label="Limit" 
-                value={limit} 
-                onChange={e => { setLimit(Number(e.target.value)); setPage(1); }}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl pl-4 pr-8 py-2 text-sm text-[#FFFFFF] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-              >
-                <option value={100}>100 filas</option>
-                <option value={250}>250 filas</option>
-                <option value={500}>500 filas</option>
-                <option value={1000}>Todas (hasta 1000)</option>
-              </select>
-            </div>
-          </div>
-          
-          <div className="text-sm font-medium text-[#F5F7FA]/60 text-right">
-             {(() => {
-                let text = '';
-                if (dateRangeMode === 'last_week' && weeks.length > 0) text = `Semana del ${formatDatePretty(weeks[0])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '4_weeks' && weeks.length > 0) text = `4 semanas: del ${formatDatePretty(weeks[Math.min(3, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '8_weeks' && weeks.length > 0) text = `8 semanas: del ${formatDatePretty(weeks[Math.min(7, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === '12_weeks' && weeks.length > 0) text = `12 semanas: del ${formatDatePretty(weeks[Math.min(11, weeks.length - 1)])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === 'all_time' && weeks.length > 0) text = `Todo el histórico: del ${formatDatePretty(weeks[weeks.length - 1])} al ${getEndOfWeek(weeks[0])}`;
-                else if (dateRangeMode === 'last_7d') text = `Últimos 7 días: del ${formatDatePretty(isoDaysAgo(7))} al ${formatDatePretty(isoDaysAgo(1))}`;
-                else if (dateRangeMode === 'last_14d') text = `Últimos 14 días: del ${formatDatePretty(isoDaysAgo(14))} al ${formatDatePretty(isoDaysAgo(1))}`;
-                else if (dateRangeMode === 'custom' && customRange.from && customRange.to) text = `Del ${formatDatePretty(customRange.from)} al ${formatDatePretty(customRange.to)}`;
-                
-                return text ? `${text} · ${totalCount} filas` : '';
-             })()}
-          </div>
-        </div>
-
       <div className="mt-4 space-y-3">
         {burnRate && (
           <div className="mb-6 p-5 rounded-xl bg-[#1A1F36] border border-[#0062CC]/20 flex items-center justify-between gap-4 shrink-0 shadow-sm">
