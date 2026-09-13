@@ -2340,7 +2340,13 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
     // con sesion de la app (prueba manual desde el navegador) o con APP_ACCESS_TOKEN.
     try {
       const r = await runAnomalyWorker();
-      res.json({ ok: true, ran_at: new Date().toISOString(), ...r });
+      // La presión competitiva se evalúa acá y no en su propio cron: usa los
+      // mismos datos diarios que las anomalías, así que correrla aparte sería
+      // un segundo pase sobre lo mismo. Si falla, las anomalías igual salen.
+      let presion: any = null;
+      try { const { data } = await supabase.rpc('alertar_presion_competitiva'); presion = data; }
+      catch (e: any) { presion = { error: String(e?.message || e).slice(0, 120) }; }
+      res.json({ ok: true, ran_at: new Date().toISOString(), presion_competitiva: presion, ...r });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

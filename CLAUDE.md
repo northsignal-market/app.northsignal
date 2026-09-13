@@ -14,6 +14,7 @@ analizan, Notion donde viven los accionables, y una app en Vercel donde Andrés 
 select get_contexto_sistema();   -- ~44 KB: última sesión, salud, las 4 cuentas y sus reglas,
                                  -- flujos, guardarraíles, lecciones y tickets abiertos
 select * from v_para_actuar;     -- lo único que pide acción hoy. Si está vacía, no hay nada.
+select get_mercado_contexto();   -- lo que pasa AFUERA de las cuentas (ver abajo)
 ```
 
 Se genera al momento, así que nunca queda viejo. **No lo copies a un archivo**: el día que lo
@@ -54,6 +55,32 @@ semanales 91. Nunca escribas `current_date - N` a mano: llamá a `ventana_metric
 ficha. El reporte no sale solo al cliente: llega a Andrés listo para reenviar.
 
 **"No se puede saber con estos datos" es una respuesta válida y preferible a un número inventado.**
+
+## Lo que pasa afuera: mercado y competencia
+
+`get_mercado_contexto('LA_CUENTA')` trae dos cosas que **no** son nuestras métricas y que
+cambian cómo se lee todo lo demás:
+
+**Presión competitiva** (`v_presion_competitiva`, dato propio): compara el perdido por ranking
+de los últimos 3 días contra los 7 previos y descarta los casos donde la causa fuimos nosotros
+—cruza `change_events`, la bitácora y las ejecuciones—. Distingue tres diagnósticos con
+**remedios opuestos**: entró un competidor (sube el ranking perdido *y* el CPC), el anuncio
+perdió relevancia (sube el ranking perdido, CPC estable), o fue nuestra puja/presupuesto (sube
+el ranking perdido pero el CPC **cae**). Antes de recomendar subir una puja por perder
+ranking, mirá cuál de los tres es: subir la puja cuando el problema es el anuncio paga más
+caro el mismo lugar.
+
+**Demanda** (`demanda_mercado` + `v_mercado_vs_nosotros`, Keyword Planner): el único lugar
+donde Google dice cuán grande es la subasta. Sirve para no culpar a la gestión de lo que es
+estacionalidad. **Es mensual, redondeada y agrupa variantes cercanas**: es un índice
+direccional, nunca una cifra exacta, y **no se cruza con la capa diaria** — un mes de mercado
+contra 17 días propios es justo el *semantic drift* que este sistema caza. Se refresca sola
+el día 3 de cada mes porque Google refresca una vez por mes.
+
+**Lo que NO tenemos y no se puede inventar:** la comparativa de subastas (quién es el
+competidor, overlap, outranking) **no sale por la API de Google** y Looker perdió los campos
+en 2024. Si un análisis necesita nombrar competidores, la respuesta es que con estos datos no
+se puede: se mira a mano en la interfaz de Google Ads.
 
 ## La capa de calidad
 

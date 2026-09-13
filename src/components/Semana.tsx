@@ -152,6 +152,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // P5 · La semana contra lo predicho y el mes contra su presupuesto.
   const { data: cicloData } = useJSON<any>(`/api/ciclo?client=${activeClient}`, null);
   const { data: pacing } = useJSON<any>(`/api/pacing?client=${activeClient}`, null);
+  // El mercado: ¿caímos nosotros o se achicó la cancha? Y quién entró a pujar.
+  const { data: mercado } = useJSON<any>(`/api/mercado?client=${activeClient}`, null);
+  const { data: presion } = useJSON<any>(`/api/presion-competitiva?client=${activeClient}`, null);
+  const presionReal = useMemo(() => (presion?.campanas || [])
+    .filter((c: any) => c.sin_causa_propia && c.salto_ranking >= 8 && !String(c.lectura).startsWith('sin volumen'))
+    .sort((a: any, b: any) => b.salto_ranking - a.salto_ranking), [presion]);
   const prediccionesSemana = useMemo(() => {
     const preds = (cicloData?.predicciones || []).filter((p: any) => p.acerto === null);
     if (!preds.length) return [];
@@ -401,6 +407,60 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         </Tarjeta>
       )}
       </div>
+
+      {/* LA CANCHA · lo que pasa afuera. Va antes de la tendencia porque cambia
+          cómo se lee la tendencia: una caída en un mercado que se achicó no es
+          la misma caída. Solo aparece cuando hay algo que decir. */}
+      {(presionReal.length > 0 || mercado?.resumen) && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {mercado?.resumen && (
+            <Tarjeta className="lg:col-span-7">
+              <h2 className="text-[13px] font-medium text-[#EDEFF3] mb-2">El mercado, y vos dentro de él</h2>
+              <p className="text-[15px] leading-relaxed text-[#FAFAFA]" style={{ maxWidth: '58ch' }}>
+                {mercado.resumen.lectura}
+              </p>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-[11px] tabular" style={{ color: '#ADADAD' }}>
+                <span>demanda <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado > 0 ? '+' : ''}{mercado.resumen.var_mercado}%</span> vs mes previo</span>
+                {mercado.resumen.var_mercado_interanual != null && (
+                  <span>vs mismo mes del año pasado <span className="text-[#EDEFF3]">{mercado.resumen.var_mercado_interanual > 0 ? '+' : ''}{mercado.resumen.var_mercado_interanual}%</span></span>
+                )}
+                {mercado.resumen.var_conv != null && (
+                  <span>tus conversiones <span className="text-[#EDEFF3]">{mercado.resumen.var_conv > 0 ? '+' : ''}{mercado.resumen.var_conv}%</span></span>
+                )}
+              </div>
+              <p className="text-[10px] mt-2 leading-relaxed" style={{ color: '#ADADAD', opacity: 0.75 }}>
+                {mercado.resumen.como_se_calcula}. Los volúmenes son promedios redondeados por Google: sirven para ver la dirección, no como cifra exacta.
+              </p>
+            </Tarjeta>
+          )}
+
+          {presionReal.length > 0 && (
+            <Tarjeta className={mercado?.resumen ? 'lg:col-span-5' : 'lg:col-span-12'}>
+              <h2 className="text-[13px] font-medium text-[#EDEFF3]">Alguien más está pujando</h2>
+              <p className="text-[11px] mt-0.5 mb-2.5 leading-snug" style={{ color: '#ADADAD' }}>
+                Se perdió ranking sin que tocaras nada en la ventana.
+              </p>
+              <div className="space-y-2">
+                {presionReal.slice(0, 4).map((c: any) => (
+                  <div key={c.campaign} className="px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[12px] text-[#EDEFF3] truncate">{c.campaign}</span>
+                      <span className="text-[11px] tabular shrink-0" style={{ color: 'var(--warn)' }}>+{c.salto_ranking} pts</span>
+                    </div>
+                    <div className="text-[10px] mt-0.5 leading-snug" style={{ color: '#ADADAD' }}>
+                      perdido por ranking {c.perdido_ranking_antes}% → {c.perdido_ranking_ahora}%
+                      {c.cpc_ahora > c.cpc_antes && <> · CPC {fmtMoneda(c.cpc_antes, M)} → {fmtMoneda(c.cpc_ahora, M)}</>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] mt-2.5 leading-relaxed" style={{ color: '#ADADAD', opacity: 0.8 }}>
+                Google no dice quién es: la comparativa de subastas no sale por API. Lo que sí sabemos es que el cambio no fue nuestro.
+              </p>
+            </Tarjeta>
+          )}
+        </div>
+      )}
 
       {/* LA TENDENCIA: el gráfico principal, con anomalías, baseline y maduración.
           Va a ancho completo a propósito: catorce días con dos ejes necesitan
