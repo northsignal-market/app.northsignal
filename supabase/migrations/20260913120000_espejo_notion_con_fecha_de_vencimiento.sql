@@ -52,18 +52,24 @@ values (
   true,
   current_date,
   'global',
-  -- El paso de correr_relaciones() es imprescindible: v_relaciones_violadas lee
-  -- de corridas_verdad, asi que sin una corrida nueva la vista muestra el estado
-  -- viejo y el mutante parece sobrevivir cuando en realidad nadie lo evaluo.
+  -- DOS trampas que este mutante tuvo que aprender a esquivar, y las dos hacian
+  -- que el control PARECIERA no funcionar:
+  --  1. correr_relaciones() es imprescindible. v_relaciones_violadas lee de
+  --     corridas_verdad, no evalua nada: sin una corrida nueva muestra el
+  --     estado viejo.
+  --  2. Hay que ordenar por id y NO por corrida_el. Dentro de una transaccion
+  --     now() queda congelado, las dos corridas escriben el mismo timestamp y
+  --     "la ultima" se vuelve ambigua — devuelve la de antes de mutar y el
+  --     mutante parece sobrevivir.
   $m$begin;
   update notion_espejo_cuentas set sincronizado = now() - interval '30 days' where account = '360';
   select * from correr_relaciones();
-  -- izquierda pasa a 3, derecha sigue en 4: la relacion TIENE que aparecer aca.
-  select * from v_relaciones_violadas where nombre = 'espejo_notion_al_dia';
+  select * from corridas_verdad c join relaciones_verdad r on r.id = c.relacion_id
+   where r.nombre = 'espejo_notion_al_dia' order by c.id desc limit 1;
 rollback;$m$,
-  -- 'sin_probar' y no NULL: el mutante esta escrito pero nadie lo corrio todavia,
-  -- y un control que no demostro que puede fallar no cuenta. Decirlo con el valor
-  -- del enum es mas honesto que dejar el campo vacio, que se lee como olvido.
-  'sin_probar'
+  -- Corrido el 13/9/2026 dentro de un DO que termina en RAISE, para que el
+  -- rollback lo garantice el motor y no el modo de commit del cliente:
+  -- cumple (izq 4) -> viola (izq 3, der 4, desvio 25%). El control atrapa.
+  'mato_al_mutante'
 )
 on conflict (nombre) do nothing;
