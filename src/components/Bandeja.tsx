@@ -31,7 +31,10 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const [propuestas, setPropuestas] = useState<any[]>([]);
   const [bloqueados, setBloqueados] = useState<Record<string, string>>({});
   const [novedades, setNovedades] = useState<any[]>([]);
-  const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false });
+  const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false, novs: false });
+  // Cursor de teclado sobre la cola: j/k mueven, Enter abre, 1 dispara la acción
+  // rápida del ítem señalado (si tiene). El mouse no se entera.
+  const [cur, setCur] = useState(-1);
   // Desglose por lo que cuesta decidir cada cosa. "23 cosas esperan tu criterio" no
   // dice si son 23 clics o 23 investigaciones, y esa diferencia es la que decide
   // si abrís la app o la cerrás.
@@ -89,6 +92,40 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
 
   const abrir = (a: Actionable) => { setSelectedClient(a.client); onOpenActionable(a); };
   const prioridadOrden = (p?: string) => p === 'Urgente' ? 0 : p === 'Alta' ? 1 : p === 'Media' ? 2 : 3;
+  // Una sola versión ordenada por sección: el render y el cursor de teclado tienen
+  // que recorrer EXACTAMENTE la misma lista o el resaltado apunta a otra fila.
+  const listosOrd = [...listos].sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority));
+  const preguntasOrd = [...preguntas].sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority));
+  const aManoOrd = [...aMano].sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority));
+  // Procedencia en una línea, uniforme: quién lo propuso. El motivo de llegada es
+  // la primera dimensión de triage; sin él cada ítem obliga a abrirlo para saber.
+  const origenDe = (a: any) => a.origen === 'Pulso diario' ? 'análisis diario' : a.origen === 'Anomalias' ? 'anomalías' : a.origen ? String(a.origen).toLowerCase() : 'semanal';
+
+  const nav: { id: string; click: () => void; rapida?: () => void }[] = [
+    ...hoy.map((a: any) => ({ id: 'al' + a.id, click: () => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] })), rapida: () => resolverAlerta(a.id) })),
+    ...listosOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...preguntasOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...aManoOrd.map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...confirmar.map(a => ({ id: String(a.id), click: () => abrir(a) })),
+    ...propPend.map((p: any) => ({ id: 'prop' + p.id, click: () => onGoTo('cuenta', p.account, 'diagnostico') })),
+    ...reportes.map((r: any, i: number) => ({ id: 'rep' + i, click: () => onGoTo('cuenta', r.cuenta, 'reportes') })),
+  ];
+  const curIdx = nav.length ? Math.min(Math.max(cur, -1), nav.length - 1) : -1;
+  const activaId = curIdx >= 0 ? nav[curIdx].id : null;
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (useAppStore.getState().selectedAction) return; // el drawer tiene su propio teclado
+      if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); setCur(c => Math.min(c + 1, nav.length - 1)); }
+      else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); setCur(c => Math.max(0, c - 1)); }
+      else if (e.key === 'Enter' && curIdx >= 0) { e.preventDefault(); nav[curIdx].click(); }
+      else if (e.key === '1' && curIdx >= 0 && nav[curIdx].rapida) { e.preventDefault(); nav[curIdx].rapida!(); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
 
   return (
     <div className="p-6 md:p-8 space-y-4 max-w-5xl mx-auto">
@@ -125,29 +162,6 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] ${filtroCuenta === c ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>{c}</button>)}
         </div>
       </div>
-
-      {/* Novedades: lo que los agentes hicieron y no viste */}
-      {novs.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--primary-faint)' }}>
-            <span className="text-[11px] font-semibold text-[#EDEFF3]">Novedades</span>
-            <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular">{novs.length}</span>
-            <span className="text-[10px] text-[#F5F7FA] opacity-50">lo que los agentes hicieron desde la última vez</span>
-            <button onClick={leerTodas} className="ml-auto text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100">marcar todo visto</button>
-          </div>
-          {novs.slice(0, 12).map(n => (
-            <div key={n.id} onClick={() => abrirNovedad(n)} className="flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-white/5" style={{ borderTop: '1px solid var(--border)' }}>
-              <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider pt-0.5">{n.account || 'Sist.'}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#EDEFF3] truncate">{n.titulo}</div>
-                {n.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{n.texto}</div>}
-              </div>
-              <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(() => { const v = n.ultima || n.creada; return v ? `${fmtFechaCorta(v)} ${String(v).slice(11, 16)}` : ''; })()}</span>
-            </div>
-          ))}
-          {novs.length > 12 && <div className="px-4 py-1.5 text-[10px] text-[#F5F7FA] opacity-40" style={{ borderTop: '1px solid var(--border)' }}>y {novs.length - 12} más</div>}
-        </div>
-      )}
 
       {/* Lo que los agentes contestaron. Va arriba de la cola porque es lo único
           que llegó desde la última vez sin que tuvieras que pedirlo. */}
@@ -188,57 +202,82 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           {hoy.length > 0 && (
             <Grupo titulo="Pide acción hoy" n={hoy.length} icono={<AlertTriangle size={13} />} destacado>
               {hoy.map(a => (
-                <Fila key={'al' + a.id} cuenta={a.account || 'Sistema'} titulo={a.titulo} sub={a.accion} onClick={() => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] }))}
+                <Fila key={'al' + a.id} activa={activaId === 'al' + a.id} cuenta={a.account || 'Sistema'} titulo={a.titulo} sub={[a.origen, a.accion].filter(Boolean).join(' · ')} onClick={() => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] }))}
                   accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] bg-[#0062CC] text-[#EDEFF3]">Resuelta</button>} />
               ))}
             </Grupo>
           )}
-          {listos.length > 0 && (
-            <Grupo titulo="Un clic" n={listos.length} icono={<Zap size={13} />} destacado>
-              {listos.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
-                <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.priority === 'Urgente' || a.priority === 'Alta' ? `Prioridad ${a.priority.toLowerCase()}` : undefined} onClick={() => abrir(a)}
+          {listosOrd.length > 0 && (
+            <Grupo titulo="Un clic" n={listosOrd.length} icono={<Zap size={13} />} destacado>
+              {listosOrd.map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={[origenDe(a), a.priority === 'Urgente' || a.priority === 'Alta' ? `prioridad ${a.priority.toLowerCase()}` : null].filter(Boolean).join(' · ')} onClick={() => abrir(a)}
                   accion={<span className="text-[11px] text-[#4D9DFF]">el ejecutor lo aplica</span>} />
               ))}
             </Grupo>
           )}
-          {preguntas.length > 0 && (
-            <Grupo titulo="Lo sabés vos" n={preguntas.length}>
-              {preguntas.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
-                <Fila key={a.id} cuenta={a.client} titulo={a.title} onClick={() => abrir(a)}
+          {preguntasOrd.length > 0 && (
+            <Grupo titulo="Lo sabés vos" n={preguntasOrd.length}>
+              {preguntasOrd.map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={origenDe(a)} onClick={() => abrir(a)}
                   accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{a.accion?.verbo === 'preguntar_cliente' ? 'un mensaje al cliente' : 'responder y cerrar'}</span>} />
               ))}
             </Grupo>
           )}
-          {aMano.length > 0 && (
-            <Grupo titulo="A mano" n={aMano.length}>
-              {aMano.sort((a, b) => prioridadOrden(a.priority) - prioridadOrden(b.priority)).map(a => (
-                <Fila key={a.id} cuenta={a.client} titulo={a.title} onClick={() => abrir(a)}
-                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#4D9DFF]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
+          {aManoOrd.length > 0 && (
+            <Grupo titulo="A mano" n={aManoOrd.length}>
+              {aManoOrd.map(a => (
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={origenDe(a)} onClick={() => abrir(a)}
+                  accion={<span className="text-[11px] text-[#F5F7FA] opacity-50">{bloqueados[a.id] ? <span className="text-[#E2B453]">espera: conflicto abierto</span> : 'los pasos están adentro'}</span>} />
               ))}
             </Grupo>
           )}
           {confirmar.length > 0 && (
             <Grupo titulo="Esperan tu confirmación" n={confirmar.length}>
               {confirmar.map(a => (
-                <Fila key={a.id} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${fmtFechaCorta(a.vence)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
+                <Fila key={a.id} activa={activaId === String(a.id)} cuenta={a.client} titulo={a.title} sub={a.origen && a.origen !== 'Semanal' ? `Lo propuso ${a.origen === 'Pulso diario' ? 'el análisis diario' : 'el detector de anomalías'}${a.vence ? ` · vence ${fmtFechaCorta(a.vence)}` : ''}` : 'Es una deducción: confirmá o descartá'} onClick={() => abrir(a)} />
               ))}
             </Grupo>
           )}
           {propPend.length > 0 && (
             <Grupo titulo="Propuestas estratégicas para decidir" n={propPend.length}>
               {propPend.map((p: any) => (
-                <Fila key={'prop' + p.id} cuenta={p.account} titulo={p.titulo} sub={`${p.resultado_esperado} · el sistema propone algo más grande que un accionable`} onClick={() => onGoTo('cuenta', p.account, 'diagnostico')} />
+                <Fila key={'prop' + p.id} activa={activaId === 'prop' + p.id} cuenta={p.account} titulo={p.titulo} sub={`${p.resultado_esperado} · el sistema propone algo más grande que un accionable`} onClick={() => onGoTo('cuenta', p.account, 'diagnostico')} />
               ))}
             </Grupo>
           )}
           {reportes.length > 0 && (
             <Grupo titulo="Reportes para aprobar" n={reportes.length} icono={<FileText size={13} />}>
               {reportes.map((r: any, i: number) => (
-                <Fila key={'rep' + i} cuenta={r.cuenta} titulo={`Reporte semanal · ${r.periodo}`} sub="Leelo, editalo si querés, aprobalo" onClick={() => onGoTo('cuenta', r.cuenta, 'reportes')} />
+                <Fila key={'rep' + i} activa={activaId === 'rep' + i} cuenta={r.cuenta} titulo={`Reporte semanal · ${r.periodo}`} sub="Leelo, editalo si querés, aprobalo" onClick={() => onGoTo('cuenta', r.cuenta, 'reportes')} />
               ))}
             </Grupo>
           )}
         </div>
+      )}
+
+      {/* Actividad de los agentes: abajo de las decisiones y plegada. Mezclada con
+          la cola, la actividad entierra lo que pide tu criterio — que es lo único
+          por lo que esta pantalla existe. */}
+      {novs.length > 0 && (
+        <Colapsable titulo="Actividad de los agentes" abierto={abierto.novs} onToggle={() => setAbierto(s => ({ ...s, novs: !s.novs }))}
+          resumen={`${novs.length} novedad${novs.length !== 1 ? 'es' : ''} desde tu última visita`}>
+          <div className="flex justify-end pb-1">
+            <button onClick={leerTodas} className="text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100">marcar todo visto</button>
+          </div>
+          <div className="space-y-0.5">
+            {novs.slice(0, 20).map(n => (
+              <div key={n.id} onClick={() => abrirNovedad(n)} className="flex items-start gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)' }}>
+                <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider pt-0.5">{n.account || 'Sist.'}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-[#EDEFF3] truncate">{n.titulo}</div>
+                  {n.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{n.texto}</div>}
+                </div>
+                <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0">{(() => { const v = n.ultima || n.creada; return v ? `${fmtFechaCorta(v)} ${String(v).slice(11, 16)}` : ''; })()}</span>
+              </div>
+            ))}
+            {novs.length > 20 && <div className="px-3 py-1 text-[10px] text-[#F5F7FA] opacity-40">y {novs.length - 20} más</div>}
+          </div>
+        </Colapsable>
       )}
 
       {/* Colapsados: contexto, no decisiones */}
@@ -279,7 +318,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
         </Colapsable>
       )}
 
-      <p className="text-[10px] text-[#F5F7FA] opacity-30 text-center pt-2">Cmd+K para ir a cualquier lado. El botón de abajo a la derecha para preguntar o reportar.</p>
+      <p className="text-[10px] text-[#F5F7FA] opacity-30 text-center pt-2">j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
     </div>
   );
 }
@@ -297,9 +336,12 @@ function Grupo({ titulo, n, icono, destacado, children }: { titulo: string; n: n
   );
 }
 
-function Fila({ cuenta, titulo, sub, onClick, accion }: { cuenta: string; titulo: string; sub?: string; onClick: () => void; accion?: React.ReactNode; key?: any }) {
+function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string; titulo: string; sub?: string; onClick: () => void; accion?: React.ReactNode; activa?: boolean; key?: any }) {
   return (
-    <div onClick={onClick} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-white/5 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
+    <div onClick={onClick}
+      ref={el => { if (activa && el) el.scrollIntoView({ block: 'nearest' }); }}
+      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${activa ? 'bg-white/10' : 'hover:bg-white/5'}`}
+      style={{ borderTop: '1px solid var(--border)', boxShadow: activa ? 'inset 2px 0 0 var(--primary-text)' : undefined }}>
       <span className="text-[10px] font-bold text-[#F5F7FA] opacity-50 w-14 shrink-0 uppercase tracking-wider">{cuenta}</span>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#EDEFF3] truncate">{titulo}</div>
