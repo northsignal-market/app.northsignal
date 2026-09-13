@@ -103,7 +103,15 @@ html, body {
   outline-offset: 2px;
 }
 
-::selection { background: var(--primary-soft); color: var(--white); }
+/* El resalte de selección NO usa --primary-soft. Esa variable es el azul de
+   marca al 18%, pensada para fondos de fila: sobre el negro templado es un
+   lavado que casi no se ve, y una selección que no se ve se lee como una
+   selección que no pasó. Al 38% el bloque azul es inequívoco y el texto blanco
+   encima sigue teniendo contraste de sobra. */
+::selection {
+  background: color-mix(in oklab, var(--primary) 38%, transparent);
+  color: var(--white);
+}
 
 body {
   /* BETA AMBIENT (informe 16): el body ya no es la app — es el LIENZO detrás
