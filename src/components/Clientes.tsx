@@ -541,14 +541,16 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* P5 · La subasta en tres franjas que suman 100 (informe 13 §4):
           barra apilada por campaña, columnas semanales para la evolución.
           La pregunta es comparativa y temporal — por eso no hay donut. */}
-      {ver('diagnostico') && isData?.campanas?.some((c: any) => c.impr_share != null) && (
+      {ver('diagnostico') && isData?.campanas?.some((c: any) => Number(c.impr_share) > 0) && (
         <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">La subasta: ganado y perdido</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="De cada 100 impresiones posibles: cuántas ganó la campaña, cuántas se perdieron por presupuesto (se arreglan con plata) y cuántas por ranking (se arreglan con calidad de anuncio y keyword).">De cada 100 impresiones posibles, cuántas ganó cada campaña — y si el resto se perdió por plata o por calidad.</p>
           </div>
           <div className="space-y-1.5">
-            {isData.campanas.filter((c: any) => c.impr_share != null).map((c: any) => (
+            {/* Solo campañas con IS de búsqueda: en display la métrica no aplica
+                y una fila con "—" es ruido, no honestidad. */}
+            {isData.campanas.filter((c: any) => Number(c.impr_share) > 0).map((c: any) => (
               <div key={c.campaign} className="grid grid-cols-[minmax(120px,220px)_minmax(0,1fr)_auto] items-center gap-3">
                 <span className="text-xs text-[#F5F7FA] truncate" title={c.campaign}>{c.campaign}</span>
                 <BarraApilada100 partes={[

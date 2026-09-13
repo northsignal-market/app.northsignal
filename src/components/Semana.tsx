@@ -286,44 +286,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 <p className="text-[11px] text-[#F5F7FA] opacity-50">{dias} día{dias !== 1 ? 's' : ''} de evidencia esta semana.</p>
               )}
             </div>
-            {(() => {
-              // P5 · Racha: días con TODAS las señales del plan cumplidas, seguidos
-              // hasta el último día con datos. La grilla es la semana del plan.
-              const porFecha: Record<string, { si: number; total: number }> = {};
-              p.indicadores.forEach((i: any) => (i.serie || []).forEach((s: any) => {
-                if (s.cumple == null) return;
-                if (!porFecha[s.fecha]) porFecha[s.fecha] = { si: 0, total: 0 };
-                porFecha[s.fecha].total += 1;
-                if (s.cumple === true) porFecha[s.fecha].si += 1;
-              }));
-              const fechas = Object.keys(porFecha).sort();
-              if (!fechas.length) return null;
-              let racha = 0;
-              for (let k = fechas.length - 1; k >= 0; k--) {
-                const f = porFecha[fechas[k]];
-                if (f.total > 0 && f.si === f.total) racha += 1; else break;
-              }
-              const ult = porFecha[fechas[fechas.length - 1]];
-              const faltaron = ult.total - ult.si;
-              return (
-                <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 py-1.5 px-2 mb-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <span className="text-[11px]" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>Racha</span>
-                  <div className="flex gap-0.5">
-                    {fechas.map(f => {
-                      const d = porFecha[f];
-                      const pleno = d.total > 0 && d.si === d.total;
-                      const frac = d.total > 0 ? d.si / d.total : 0;
-                      return <span key={f} title={`${f}: ${d.si} de ${d.total} señales cumplidas`} className="w-3 h-3 rounded-sm"
-                        style={{ backgroundColor: frac > 0 ? `color-mix(in oklab, #0062CC ${Math.round(25 + frac * 75)}%, var(--surface-1))` : 'var(--surface-1)', border: pleno ? '1px solid rgba(34,211,238,0.55)' : '1px solid var(--border)' }} />;
-                    })}
-                  </div>
-                  <span className="text-[11px] tabular text-[#EDEFF3]">{racha > 0 ? `${racha} día${racha !== 1 ? 's' : ''} pleno${racha !== 1 ? 's' : ''} seguido${racha !== 1 ? 's' : ''}` : 'sin día pleno todavía'}</span>
-                  {racha === 0 && ult.si > 0 && faltaron > 0 && (
-                    <span className="text-[10px]" style={{ color: '#ADADAD' }}>· al último día le falt{faltaron !== 1 ? 'aron' : 'ó'} {faltaron} señal{faltaron !== 1 ? 'es' : ''} para ser pleno</span>
-                  )}
-                </div>
-              );
-            })()}
+            {/* La "racha GitHub-style" del informe 13 se evaluó y NO va: ese
+                patrón presupone un plan de cumplimiento (hábitos, logro diario).
+                Este plan es de SEÑALES — cumple=true es evidencia que se
+                enciende ("problema de pago", "confirma H10"), no un logro — y
+                una racha de "días plenos" leería el peor escenario como hazaña.
+                Las pastillas por señal de abajo ya cuentan la historia real. */}
             <div className="space-y-1.5">
               {p.indicadores.map((i: any, idx: number) => {
                 const ultimo = i.serie[i.serie.length - 1];
