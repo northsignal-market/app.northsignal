@@ -115,6 +115,17 @@ function App() {
   const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda
     || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
 
+  // Cuando llegan las cuentas y todavía no hay ninguna elegida, se elige la
+  // primera DE VERDAD, en el store. El switcher ya pintaba clients[0] como
+  // seleccionada, pero el valor del store seguía vacío: la pantalla decía "360"
+  // mientras cada consulta salía con `client=`. Datos lo mostraba sin disimulo
+  // — "Sin filas en esta ventana para ." y cuatro ceros — y Semana lo tapaba
+  // resolviendo la cuenta por su cuenta, que es peor: cada vista nueva tenía
+  // que acordarse del truco. El default vive donde vive el dato.
+  useEffect(() => {
+    if (!selectedClient && clients.length > 0) setSelectedClient(clients[0]);
+  }, [clients, selectedClient, setSelectedClient]);
+
   // ⌥1–⌥4 cambia de cuenta manteniendo la pantalla (misma vista, otro alcance).
   // Option y no Cmd: el navegador reserva ⌘1-9 para sus pestañas y no se puede
   // cancelar. e.code y no e.key: con Option apretada, e.key da el carácter muerto.
