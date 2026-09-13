@@ -3684,6 +3684,168 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   });
 
   // ================================================================
+  // RECONCILIACIÓN CONTRA LA API: el dato bueno de entrada, todos los días
+  // ================================================================
+  // La API es la fuente de Google sin foto congelada. Este cron compara lo que
+  // los scripts escribieron contra lo que la API dice HOY y corrige la diferencia
+  // sin esperar a que nadie sospeche: la sospecha demostró ser un mal gatillo
+  // (58 conversiones perdidas en 18 semanas pasaron meses sin que nadie dudara).
+  // Corrige SOLO métricas (gasto, conversiones, valor y sus derivadas), nunca
+  // estructura ni semanas que el script no escribió; tope de correcciones por
+  // capa para que un bug propio no arrase; el resultado queda en
+  // `reconciliaciones`, que vigila la relación api_reconcilia_a_diario.
+  app.all("/api/cron/reconciliar-api", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
+    const t0 = Date.now();
+    const TOPE_CORRECCIONES = 400;   // por cuenta y capa: más que esto es un bug, no maduración
+    const TOL_CONV = 0.005;
+    const tolGasto = (v: number) => Math.max(0.02, Math.abs(v) * 0.002);
+    const f = (d: Date) => d.toISOString().slice(0, 10);
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    const cuentas = (await cuentasActivas()).filter((c: any) => c.cid && (!soloCuenta || c.account === soloCuenta));
+    const resumen: any[] = [];
+    const registrar = async (r: any) => {
+      resumen.push(r);
+      try { await supabase.from('reconciliaciones').insert(r); } catch (e: any) { console.error('[reconciliar] no pude registrar: ' + e.message); }
+    };
+
+    for (const cta of cuentas) {
+      // ---- CAPA DIARIA: últimos 14 días por (día, campaña) — la ventana que el script reescribe
+      try {
+        const hasta = new Date(); hasta.setDate(hasta.getDate() - 1);
+        const desde = new Date(hasta); desde.setDate(desde.getDate() - 13);
+        const api = await gadsSearch(cta.cid, `SELECT segments.date, campaign.name, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${f(desde)}' AND '${f(hasta)}' AND campaign.status != 'REMOVED'`);
+        const verdad = new Map<string, { cost: number; conv: number }>();
+        for (const r of api) verdad.set(`${r.segments?.date}§${r.campaign?.name}`, { cost: +(Number(r.metrics?.costMicros || 0) / 1e6).toFixed(2), conv: +Number(r.metrics?.conversions || 0).toFixed(2) });
+        const { data: base } = await supabase.from('campaign_daily').select('date, campaign, cost, conversions').eq('account', cta.account).gte('date', f(desde)).lte('date', f(hasta));
+        if (!base?.length) {
+          await registrar({ account: cta.account, capa: 'diaria', filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: verdad.size, veredicto: 'sin_base', detalle: 'campaign_daily no tiene la ventana: eso es extracción, no reconciliación.' });
+        } else {
+          let comparadas = 0, corregidas = 0, faltantes = 0, maxG = 0, maxC = 0;
+          for (const b of base) {
+            const v = verdad.get(`${b.date}§${b.campaign}`);
+            if (!v) continue;   // la campaña no vino en la API: sin más señal, no se toca
+            comparadas++;
+            const dG = Math.abs(Number(b.cost) - v.cost), dC = Math.abs(Number(b.conversions) - v.conv);
+            maxG = Math.max(maxG, dG); maxC = Math.max(maxC, dC);
+            if (dG > tolGasto(v.cost) || dC > TOL_CONV) {
+              if (++corregidas > TOPE_CORRECCIONES) break;
+              await supabase.from('campaign_daily').update({
+                cost: v.cost, conversions: v.conv,
+                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : 0,
+              }).eq('account', cta.account).eq('date', b.date).eq('campaign', b.campaign);
+            }
+          }
+          for (const [k, v] of verdad) { if (v.cost > 0 && !base.some((b: any) => `${b.date}§${b.campaign}` === k)) faltantes++; }
+          await registrar({
+            account: cta.account, capa: 'diaria', filas_comparadas: comparadas,
+            filas_corregidas: Math.min(corregidas, TOPE_CORRECCIONES), filas_insertadas: 0, faltantes_en_base: faltantes,
+            max_divergencia_gasto: +maxG.toFixed(2), max_divergencia_conv: +maxC.toFixed(2),
+            veredicto: corregidas > TOPE_CORRECCIONES ? 'excedio_tope' : corregidas ? 'corregido' : 'limpio',
+            detalle: corregidas > TOPE_CORRECCIONES
+              ? `Se frenó en ${TOPE_CORRECCIONES}: una divergencia tan masiva es un bug, no maduración. Revisar antes de seguir.`
+              : (faltantes ? `${faltantes} día-campaña con gasto en la API que la base no tiene (el script las trae en su corrida; si persiste, migrar esa tabla a extracción por API).` : null),
+          });
+        }
+      } catch (e: any) {
+        await registrar({ account: cta.account, capa: 'diaria', filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: 0, veredicto: 'error', detalle: String(e.message).slice(0, 400) });
+      }
+
+      // ---- CAPA SEMANAL: últimas 4 semanas cerradas, campaign (+derivadas) y conversion_actions
+      try {
+        const hoy = new Date(); const dow = (hoy.getUTCDay() + 6) % 7;
+        const lunesActual = new Date(hoy); lunesActual.setUTCDate(hoy.getUTCDate() - dow);
+        const semanas: string[] = [];
+        for (let i = 1; i <= 4; i++) { const d = new Date(lunesActual); d.setUTCDate(lunesActual.getUTCDate() - 7 * i); semanas.push(f(d)); }
+        let compS = 0, corrS = 0, compA = 0, corrA = 0, insA = 0, cerosA = 0, maxCs = 0;
+        let moneda: string | null = cta.currency || null;
+        if (!moneda) {
+          const { data: mon } = await supabase.from('conversion_actions').select('currency').eq('account', cta.account).not('currency', 'is', null).limit(1);
+          moneda = mon?.[0]?.currency || null;
+        }
+        for (const w of semanas) {
+          const wf = new Date(w + 'T12:00:00Z'); wf.setUTCDate(wf.getUTCDate() + 6); const wEnd = f(wf);
+          const { data: baseC } = await supabase.from('campaign').select('campaign, cost, clicks, conversions, all_conversions, conv_value').eq('account', cta.account).eq('week_start', w);
+          if (!baseC?.length) continue;   // semana que el script nunca escribió: no se reconcilia, se extrae
+          const apiC = await gadsSearch(cta.cid, `SELECT campaign.name, metrics.conversions, metrics.all_conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          for (const b of baseC) {
+            const v = apiC.find((r: any) => r.campaign?.name === b.campaign);
+            if (!v) continue;
+            compS++;
+            const cv = +Number(v.metrics?.conversions || 0).toFixed(2), acv = +Number(v.metrics?.allConversions || 0).toFixed(2), val = +Number(v.metrics?.conversionsValue || 0).toFixed(2);
+            maxCs = Math.max(maxCs, Math.abs(Number(b.conversions) - cv));
+            if (Math.abs(Number(b.conversions) - cv) > TOL_CONV || Math.abs(Number(b.all_conversions) - acv) > TOL_CONV || Math.abs(Number(b.conv_value) - val) > tolGasto(val)) {
+              corrS++;
+              const cost = Number(b.cost) || 0, clicks = Number(b.clicks) || 0;
+              await supabase.from('campaign').update({
+                conversions: cv, all_conversions: acv, conv_value: val,
+                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : 0,
+                conv_rate: clicks > 0 ? +((cv / clicks) * 100).toFixed(2) : 0,   // porcentaje: la convención de la tabla
+                roas: cost > 0 ? +(val / cost).toFixed(2) : 0,
+              }).eq('account', cta.account).eq('week_start', w).eq('campaign', b.campaign);
+            }
+          }
+          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          const va = new Map<string, any>();
+          for (const r of apiA) {
+            if (!r.campaign?.name || !r.segments?.conversionActionName) continue;
+            va.set(`${r.campaign.name}§${r.segments.conversionActionName}`, {
+              cat: r.segments?.conversionActionCategory || 'DEFAULT',
+              cv: +Number(r.metrics?.conversions || 0).toFixed(2), acv: +Number(r.metrics?.allConversions || 0).toFixed(2),
+              val: +Number(r.metrics?.conversionsValue || 0).toFixed(2), aval: +Number(r.metrics?.allConversionsValue || 0).toFixed(2),
+            });
+          }
+          const { data: baseA } = await supabase.from('conversion_actions').select('campaign, conversion_action, conversions, all_conversions, conv_value, all_conv_value').eq('account', cta.account).eq('week_start', w);
+          const enBase = new Set((baseA || []).map((b: any) => `${b.campaign}§${b.conversion_action}`));
+          for (const b of baseA || []) {
+            const v = va.get(`${b.campaign}§${b.conversion_action}`);
+            compA++;
+            if (!v) {
+              // la API ya no reporta el par: sus métricas reales hoy son cero
+              if (Number(b.conversions) || Number(b.all_conversions) || Number(b.conv_value) || Number(b.all_conv_value)) {
+                corrA++; cerosA++;
+                await supabase.from('conversion_actions').update({ conversions: 0, all_conversions: 0, conv_value: 0, all_conv_value: 0 }).eq('account', cta.account).eq('week_start', w).eq('campaign', b.campaign).eq('conversion_action', b.conversion_action);
+              }
+              continue;
+            }
+            if (Math.abs(Number(b.conversions) - v.cv) > TOL_CONV || Math.abs(Number(b.all_conversions) - v.acv) > TOL_CONV || Math.abs(Number(b.conv_value) - v.val) > tolGasto(v.val) || Math.abs(Number(b.all_conv_value) - v.aval) > tolGasto(v.aval)) {
+              corrA++;
+              await supabase.from('conversion_actions').update({ conversions: v.cv, all_conversions: v.acv, conv_value: v.val, all_conv_value: v.aval }).eq('account', cta.account).eq('week_start', w).eq('campaign', b.campaign).eq('conversion_action', b.conversion_action);
+            }
+          }
+          for (const [key, v] of va) {
+            if (enBase.has(key)) continue;
+            insA++;
+            const sep = key.indexOf('§');
+            await supabase.from('conversion_actions').insert({
+              week_start: w, week_end: wEnd, account: cta.account,
+              campaign: key.slice(0, sep), conversion_action: key.slice(sep + 1), category: v.cat, currency: moneda,
+              conversions: v.cv, all_conversions: v.acv, conv_value: v.val, all_conv_value: v.aval, run_ts: 'reconciliacion-api',
+            });
+          }
+        }
+        await registrar({
+          account: cta.account, capa: 'semanal', filas_comparadas: compS + compA, filas_corregidas: corrS + corrA,
+          filas_insertadas: insA, faltantes_en_base: 0, max_divergencia_conv: +maxCs.toFixed(2),
+          veredicto: (corrS + corrA) ? 'corregido' : 'limpio',
+          detalle: (corrS || corrA || insA) ? `campaign: ${corrS} corregidas · acciones: ${corrA} corregidas (${cerosA} a cero), ${insA} insertadas` : null,
+        });
+      } catch (e: any) {
+        await registrar({ account: cta.account, capa: 'semanal', filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: 0, veredicto: 'error', detalle: String(e.message).slice(0, 400) });
+      }
+    }
+    res.json({ ok: true, ms: Date.now() - t0, resumen });
+  });
+
+  // Últimas reconciliaciones, para Sistema › Integridad
+  app.get("/api/reconciliaciones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data } = await supabase.from('reconciliaciones').select('*').order('corrida', { ascending: false }).limit(40);
+    res.json(data || []);
+  });
+
+  // ================================================================
   // PULSO DIARIO: Gemini interpreta ayer, por cuenta
   // ================================================================
   // Vercel Cron, 09:45 UTC (06:45 BA): despues del script diario (06:00) y

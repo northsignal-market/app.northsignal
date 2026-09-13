@@ -62,6 +62,7 @@ export function Sistema() {
   const enGrupo = (tab: string) => (GRUPOS.find(g => g.id === grupo)?.tabs || []).includes(tab);
   const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia' | 'ejecuciones'>('salud');
   const [ejecuciones, setEjecuciones] = useState<any[]>([]);
+  const [reconciliaciones, setReconciliaciones] = useState<any[]>([]);
   const [aprendido, setAprendido] = useState<any>(null);
   const [politicas, setPoliticas] = useState<{ politicas: any[]; general: boolean }>({ politicas: [], general: false });
   const cargarPoliticas = () => fetch('/api/politicas', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPoliticas(d)).catch(() => {});
@@ -77,6 +78,7 @@ export function Sistema() {
     cargarPoliticas();
     fetch('/api/aprendido', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {});
     fetch('/api/acciones-aprobadas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setEjecuciones(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch('/api/reconciliaciones', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setReconciliaciones(Array.isArray(d) ? d : [])).catch(() => {});
   }, [grupo]);
   const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
 
@@ -613,6 +615,24 @@ export function Sistema() {
                 ))}
               </tbody>
             </table>
+          </div>
+          {/* El contralor diario: la API de Google verifica y corrige cada mañana (10:50 UTC) */}
+          <div className="pt-2 space-y-1.5" style={{ borderTop: '1px solid var(--border)' }}>
+            <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Reconciliación contra la API de Google · corre sola cada mañana y corrige con el dato real</span>
+            {reconciliaciones.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-1">Sin corridas todavía. La primera queda registrada acá con su veredicto por cuenta y capa.</p>
+            ) : (
+              <div className="space-y-1">
+                {reconciliaciones.slice(0, 8).map((r: any) => (
+                  <div key={r.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(r.corrida).slice(5, 16).replace('T', ' ')}</span>
+                    <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#FFFFFF]' : 'text-[#0062CC]'}`}>{r.veredicto}</span>
+                    <span className="text-[#F5F7FA] flex-1">{r.account} · {r.capa} · {r.filas_comparadas} comparadas{r.filas_corregidas ? `, ${r.filas_corregidas} corregidas` : ''}{r.filas_insertadas ? `, ${r.filas_insertadas} insertadas` : ''}</span>
+                    {r.detalle && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[280px] truncate" title={r.detalle}>{r.detalle}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
