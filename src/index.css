@@ -234,6 +234,46 @@ button:active, [role="button"]:active { transform: scale(0.97); }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
+/* ── P6 · Selects nativos con la piel del sistema ───────────────────
+   appearance: base-select (Chrome/Edge 135+): el desplegable deja de ser
+   el menú del sistema operativo y se estiliza con los tokens — mismo
+   material que los tooltips. App interna de un operador en Chrome, así
+   que es enhancement progresivo: sin soporte queda el select nativo
+   oscuro de color-scheme y nada se rompe. Los selects de la app son
+   todos cortos y fijos (ventana, orden, estado); las entidades nunca
+   se eligen de una lista — se resuelven contra la base. */
+@supports (appearance: base-select) {
+  select {
+    appearance: base-select;
+  }
+  select::picker(select) {
+    appearance: base-select;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+  select option {
+    padding: 5px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-1);
+    background: transparent;
+  }
+  select option:hover,
+  select option:focus-visible {
+    background: color-mix(in oklab, var(--white) 8%, transparent);
+  }
+  select option:checked {
+    background: var(--primary);
+    color: #EDEFF3;
+  }
+  select::picker-icon {
+    color: #ADADAD;
+  }
+}
+
 /* ── P4b · Sistema en una página ────────────────────────────────────
    Header de grupo pegajoso (patrón iOS-contactos): fondo OPACO porque
    pinnea SOBRE las filas, y sombra solo cuando está efectivamente

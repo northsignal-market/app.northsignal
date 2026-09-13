@@ -25,6 +25,17 @@ const GRUPOS: { id: string; label: string; ayuda: string }[] = [
   { id: 'g-soporte', label: 'Soporte', ayuda: 'Tickets para Claude y tu bitácora' },
 ];
 
+/** Regla 11 (informe 14): una lista que crece no se muestra entera de entrada.
+ *  Tope 6 + "ver los N": el recorte es de presentación — el dato ya vino. */
+function useTope<T>(items: T[], tope = 6): { vis: T[]; resto: number; abrir: () => void } {
+  const [todo, setTodo] = useState(false);
+  return {
+    vis: todo ? items : items.slice(0, tope),
+    resto: todo ? 0 : Math.max(0, items.length - tope),
+    abrir: () => setTodo(true),
+  };
+}
+
 /** Header de grupo pegajoso (patrón iOS-contactos): fondo opaco, el título del
  *  grupo abierto te acompaña mientras su sección cruza el viewport. */
 function GrupoSistema({ id, label, ayuda, n, children }: {
@@ -199,6 +210,22 @@ export function Sistema() {
   const nAutomatizacion = alertas.length + ejecuciones.filter((e: any) => e.estado === 'pendiente').length;
   const nSoporte = tickets.filter((t: any) => t.estado === 'abierto').length;
   const nDe = (g: string) => g === 'g-automatizacion' ? nAutomatizacion : g === 'g-soporte' ? nSoporte : 0;
+
+  // Las listas que crecen con el tiempo, acotadas de entrada. Las de tamaño
+  // fijo (latidos, tamaño, escritores, políticas, datos por cuenta) van enteras,
+  // y las alertas activas también: lo que pide acción no se recorta.
+  const tLecciones = useTope(aprendido?.lecciones || []);
+  const tConocimiento = useTope(aprendido?.conocimiento || []);
+  const tInvalidos = useTope(aprendido?.invalidos || []);
+  const tEjecuciones = useTope(ejecuciones);
+  const tTickets = useTope(tickets);
+  const tReflexiones = useTope(aprendizaje.reflexiones || []);
+  const tImpacto = useTope(aprendizaje.impacto || []);
+  const tScorecard = useTope(healthData?.runScorecard || []);
+  const tReconciliador = useTope(coherencia.reconciliaciones || []);
+  const tCambios = useTope(healthData?.cambiosDetectados || []);
+  const verMas = (t: { resto: number; abrir: () => void }, frase: string) =>
+    t.resto > 0 ? <button onClick={t.abrir} className="text-[11px] text-[#4D9DFF] hover:opacity-80 pt-0.5 text-left">{frase}</button> : null;
 
   const handleSaveRevision = async (id: string) => {
     setSavingRevisionId(id);
@@ -525,13 +552,14 @@ export function Sistema() {
             </div>
             {aprendido.lecciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Todavía ninguna. La tarea del lunes escribe al menos una por cuenta.</p> : (
               <div className="space-y-1.5">
-                {aprendido.lecciones.map((l: any) => (
+                {tLecciones.vis.map((l: any) => (
                   <div key={l.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: l.tipo === 'error' ? '2px solid var(--bad)' : '2px solid transparent' }}>
                     <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{l.tipo}</span><span>{l.account || 'general'} · {fmtFechaCorta(l.fecha)}</span><span className="ml-auto tabular">confianza {Math.round(l.confianza * 100)}%{l.veces_confirmada > 1 ? ` · vista ${l.veces_confirmada} veces` : ''}</span></div>
                     <div className="text-xs text-[#EDEFF3] mt-0.5">{l.leccion}</div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{l.contexto} → {l.decision} → {l.resultado}</div>
                   </div>
                 ))}
+                {verMas(tLecciones, `ver las ${aprendido.lecciones.length} lecciones`)}
               </div>
             )}
           </div>
@@ -541,7 +569,7 @@ export function Sistema() {
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.">Cambios de Google Ads, benchmarks, métodos y regulación que el sistema buscó y registró con fuente. Nunca cambia una regla por esto: lo propone.</p>
             </div>
             <div className="space-y-1.5">
-              {aprendido.conocimiento.map((k: any) => (
+              {tConocimiento.vis.map((k: any) => (
                 <div key={k.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{k.tema}</span><span>{fmtFechaCorta(k.fecha)}</span>{k.vigente_hasta && <span>· hasta {fmtFechaCorta(k.vigente_hasta)}</span>}<span className="ml-auto">{(k.aplica_a || []).join(', ')} · {String(k.fuente_tipo).replace(/_/g, ' ')}{k.verificado ? ' · verificado' : ''}</span></div>
                   <div className="text-xs text-[#EDEFF3] mt-0.5">{k.titulo}</div>
@@ -550,6 +578,7 @@ export function Sistema() {
                   <a href={String(k.fuente).split(' ')[0]} target="_blank" rel="noreferrer" className="text-[10px] text-[#4D9DFF] opacity-70 hover:opacity-100">{String(k.fuente).split(' ')[0].slice(0, 70)}</a>
                 </div>
               ))}
+              {verMas(tConocimiento, `ver los ${aprendido.conocimiento.length} registros`)}
             </div>
           </div>
           {(aprendido.invalidos || []).length > 0 && (
@@ -559,13 +588,14 @@ export function Sistema() {
                 <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.">Sin acción estructurada válida, el sistema no puede ejecutarlos ni deduplicarlos bien. Los anteriores al estándar se van cerrando; los nuevos de la tarea del lunes vienen con él.</p>
               </div>
               <div className="space-y-1">
-                {aprendido.invalidos.map((a: any) => (
+                {tInvalidos.vis.map((a: any) => (
                   <div key={a.notion_id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[#F5F7FA] opacity-50 w-14 shrink-0">{a.account}</span>
                     <span className="text-[#EDEFF3] flex-1 truncate">{a.titulo}</span>
                     <span className="text-[10px] text-[#F5F7FA] opacity-50 shrink-0 max-w-[280px] truncate" title={a.accion_error}>{a.accion_error}</span>
                   </div>
                 ))}
+                {verMas(tInvalidos, `ver los ${aprendido.invalidos.length}`)}
               </div>
             </div>
           )}
@@ -631,7 +661,7 @@ export function Sistema() {
                     <th className="py-2 px-2">Cuenta</th><th className="py-2 px-2">Accionable</th><th className="py-2 px-2">Ejecutado</th><th className="py-2 px-2">Métrica</th><th className="py-2 px-2 text-right">Antes → Después</th><th className="py-2 px-2 text-right">Var.</th><th className="py-2 px-2">Veredicto</th>
                   </tr></thead>
                   <tbody>
-                    {aprendizaje.impacto.map((i: any) => {
+                    {tImpacto.vis.map((i: any) => {
                       const m = i.metrica_objetivo;
                       const ad = m === 'cpa' ? `${i.cpa_antes ?? '—'} → ${i.cpa_despues ?? '—'}` : m === 'gasto' ? `${i.gasto_antes ?? '—'} → ${i.gasto_despues ?? '—'}` : m === 'conversiones' ? `${i.conv_antes ?? '—'} → ${i.conv_despues ?? '—'}` : `${i.ctr_antes ?? '—'} → ${i.ctr_despues ?? '—'}`;
                       const ok = String(i.veredicto).startsWith('FUNCIONO');
@@ -648,6 +678,11 @@ export function Sistema() {
                         </tr>
                       );
                     })}
+                    {tImpacto.resto > 0 && (
+                      <tr><td colSpan={7} className="pt-1.5">
+                        <button onClick={tImpacto.abrir} className="text-[11px] text-[#4D9DFF] hover:opacity-80">ver los {aprendizaje.impacto.length} accionables medidos</button>
+                      </td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -683,7 +718,7 @@ export function Sistema() {
               <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Las tareas semanales escriben acá qué harían distinto. Empieza el lunes 7.</p>
             ) : (
               <div className="space-y-2">
-                {aprendizaje.reflexiones.map((r: any) => (
+                {tReflexiones.vis.map((r: any) => (
                   <div key={r.id} className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-[#EDEFF3] uppercase">{r.account}</span>
@@ -695,6 +730,7 @@ export function Sistema() {
                     <p className="text-[#EDEFF3] mt-1">→ {r.que_haria_distinto}</p>
                   </div>
                 ))}
+                {verMas(tReflexiones, `ver las ${aprendizaje.reflexiones.length} reflexiones`)}
               </div>
             )}
           </div>
@@ -722,7 +758,7 @@ export function Sistema() {
             </div>
             {(coherencia.reconciliaciones || []).length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Nada que corregir todavía. Corre por primera vez mañana.</p> : (
               <div className="space-y-1">
-                {coherencia.reconciliaciones.map((r: any) => (
+                {tReconciliador.vis.map((r: any) => (
                   <div key={r.id} className="flex items-start gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                     <span className="text-[10px] uppercase tracking-wider shrink-0 w-24 text-[#F5F7FA] opacity-70">{r.accion.replace('_', ' ')}</span>
@@ -730,6 +766,7 @@ export function Sistema() {
                     <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#4D9DFF]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
                   </div>
                 ))}
+                {verMas(tReconciliador, `ver las ${coherencia.reconciliaciones.length} correcciones`)}
               </div>
             )}
           </div>
@@ -746,7 +783,7 @@ export function Sistema() {
             </div>
 
             <div className="space-y-3">
-              {(healthData?.runScorecard || []).map((run: any, idx: number) => {
+              {tScorecard.vis.map((run: any, idx: number) => {
                 const runKey = `scorecard-${run.id || run.run_date || 'date'}-${run.account || 'all'}-${idx}`;
                 const revisionId = run.id || run.run_date || `run-${idx}`;
                 return (
@@ -797,6 +834,7 @@ export function Sistema() {
                   </div>
                 );
               })}
+              {verMas(tScorecard, `ver las ${(healthData?.runScorecard || []).length} corridas`)}
             </div>
           </div>
           </GrupoSistema>
@@ -853,7 +891,7 @@ export function Sistema() {
             </div>
             {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
               <div className="space-y-1">
-                {ejecuciones.map((e: any) => (
+                {tEjecuciones.vis.map((e: any) => (
                   <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(e.aprobada_el)} {String(e.aprobada_el).slice(11, 16)}</span>
                     <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#EDEFF3]' : e.estado === 'fallida' ? 'text-[#F97066]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
@@ -861,6 +899,7 @@ export function Sistema() {
                     {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
                   </div>
                 ))}
+                {verMas(tEjecuciones, `ver las ${ejecuciones.length} ejecuciones`)}
               </div>
             )}
           </div>
@@ -912,7 +951,7 @@ export function Sistema() {
             </h2>
 
             <div className="space-y-2 text-xs">
-              {(healthData?.cambiosDetectados || []).map((ch: any, idx: number) => (
+              {tCambios.vis.map((ch: any, idx: number) => (
                 <div
                   key={idx}
                   className="p-3 rounded-xl flex items-center justify-between gap-3"
@@ -930,6 +969,7 @@ export function Sistema() {
                   </div>
                 </div>
               ))}
+              {verMas(tCambios, `ver los ${(healthData?.cambiosDetectados || []).length} cambios`)}
             </div>
           </div>
           </GrupoSistema>
@@ -944,7 +984,7 @@ export function Sistema() {
             </div>
             {tickets.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ningún ticket todavía.</p> : (
               <div className="space-y-1.5">
-                {tickets.map((t: any) => (
+                {tTickets.vis.map((t: any) => (
                   <div key={t.id} className={`p-3 rounded-lg ${t.estado === 'resuelto' ? 'opacity-60' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
                     <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50">
                       <span className="tabular">#{t.id}</span><span>{fmtFechaCorta(t.creado)} {String(t.creado).slice(11, 16)}</span><span>{t.pagina}{t.cuenta ? ` · ${t.cuenta}` : ''}</span>
@@ -955,6 +995,7 @@ export function Sistema() {
                     {t.respuesta && <div className="text-[11px] text-[#F5F7FA] mt-1.5 pl-2" style={{ borderLeft: '2px solid var(--primary)' }}><span className="opacity-60">Claude:</span> {t.respuesta}{t.resuelto_en_version ? <span className="opacity-50"> · {t.resuelto_en_version}</span> : ''}</div>}
                   </div>
                 ))}
+                {verMas(tTickets, `ver los ${tickets.length} tickets`)}
               </div>
             )}
           </div>
@@ -982,15 +1023,16 @@ export function Sistema() {
                   <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
                     Cuenta
                   </label>
+                  {/* Cuentas desde la base, no cableadas: acá faltaba FRESH_MONKEE
+                      desde su alta — la clase de bug que fix-v95 ya cazó en otros
+                      tres selectores. Un cambio manual en FM no se podía anotar. */}
                   <select aria-label="Log Account"
                     value={logAccount}
                     onChange={e => setLogAccount(e.target.value)}
                     className="w-full bg-transparent rounded p-2 text-xs text-[#EDEFF3] outline-none"
                     style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
                   >
-                    <option value="360" className="bg-[#1A1F36]">360</option>
-                    <option value="BHI" className="bg-[#1A1F36]">BHI</option>
-                    <option value="KAREDO" className="bg-[#1A1F36]">KAREDO</option>
+                    {nombresCuentas.map(c => <option key={c} value={c} className="bg-[#1A1F36]">{c}</option>)}
                   </select>
                 </div>
 
