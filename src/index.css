@@ -234,6 +234,25 @@ button:active, [role="button"]:active { transform: scale(0.97); }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
+/* ── P4b · Sistema en una página ────────────────────────────────────
+   Header de grupo pegajoso (patrón iOS-contactos): fondo OPACO porque
+   pinnea SOBRE las filas, y sombra solo cuando está efectivamente
+   pegado — scroll-state(stuck) es Chrome 133+; sin soporte, no hay
+   sombra y nada más cambia. */
+.grupo-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in oklab, var(--navy) 88%, #000000);
+  container-type: scroll-state;
+}
+@supports (container-type: scroll-state) {
+  .grupo-sticky-inner { transition: box-shadow var(--dur-base) var(--ease); }
+  @container scroll-state(stuck: top) {
+    .grupo-sticky-inner { box-shadow: 0 14px 22px -16px rgba(0, 0, 0, 0.7); }
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: var(--radius-pill); }

@@ -1,5 +1,5 @@
 import { useCuentaActiva, useCuentas } from '../lib/useCuentas';
-import { fmtMoneda, fmtFechaCorta, fetchJSON } from './ui';
+import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible } from './ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
 import { Clock, Lightbulb, HelpCircle, ArrowRight, ExternalLink, Target, TrendingUp, Layers, Save } from 'lucide-react';
@@ -273,78 +273,17 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <span className="text-[10px] text-[#F5F7FA] opacity-50">objetivos, reportes, pendientes, decisiones</span>
       </div>}
 
-      {ver('diagnostico') && (<>
-      {/* Ficha de Cuenta */}
-      <div 
-        className="p-5 rounded-2xl space-y-4"
-        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
-      >
-        <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          Ficha de Cuenta · {activeClient}
-        </h2>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="text-[11px] text-[#F5F7FA] opacity-60">Moneda Operativa</div>
-            <div className="text-base font-bold text-[#EDEFF3] mt-0.5">
-              {currentInfo.currency || monedaDe(activeClient)}
-            </div>
-            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
-              Zona: {currentInfo.timezone || zonaDe(activeClient)}
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="text-[11px] text-[#F5F7FA] opacity-60">Fuente de Verdad</div>
-            <div className="text-base font-bold text-[#EDEFF3] mt-0.5">
-              Google Ads + Supabase
-            </div>
-            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
-              Atribución directa
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="text-[11px] text-[#F5F7FA] opacity-60">Semanas Analizadas</div>
-            <div className="text-base font-bold text-[#EDEFF3] mt-0.5 tabular">
-              {weeksAnalyzed} semanas
-            </div>
-            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
-              Cadena en Notion
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-            <div className="text-[11px] text-[#F5F7FA] opacity-60">Último Brief</div>
-            <div className="text-xs font-semibold text-[#EDEFF3] mt-1 truncate">
-              {clientBriefs[0]?.title || 'Semana activa'}
-            </div>
-            {clientBriefs[0] && onNavigateToBrief && (
-              <button
-                onClick={() => onNavigateToBrief(clientBriefs[0].id)}
-                className="text-[11px] text-[#4D9DFF] hover:underline font-semibold mt-1 flex items-center gap-0.5"
-              >
-                <span>Abrir brief</span>
-                <ExternalLink size={10} />
-              </button>
-            )}
-          </div>
+      {/* P4b · El diagnóstico se recorre por PREGUNTA, no por origen del dato
+          (informe 14 §4: agrupar por origen es el organigrama disfrazado):
+          (1) ¿hay algo para decidir? (2) ¿cómo viene? (3) contexto, plegado. */}
+      {ver('diagnostico') && (
+        <div className="flex items-center gap-3 pt-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#EDEFF3]">¿Hay algo para decidir?</span>
+          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+          <span className="text-[10px] text-[#F5F7FA] opacity-50">propuestas, decisiones estructurales, pendientes</span>
         </div>
-      </div>
-
-      </>)}
+      )}
       {ver('diagnostico') && (<>
-
-      {/* Brecha y propuestas estratégicas: la ambición con lógica */}
-      {ver('diagnostico') && (<>
-      {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
-        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
-          <div className="text-[#F5F7FA] opacity-30">→</div>
-          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
-          <div className="flex-1 min-w-[200px] text-xs text-[#F5F7FA] opacity-80">{br.lectura}{br.dias_restantes != null ? <span className="opacity-50"> · {br.dias_restantes} días</span> : ''}</div>
-        </div>
-      ) : null; })()}
       {propuestas.length > 0 && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -393,184 +332,6 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           </div>
         </div>
       )}
-      </>)}
-
-      {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2">
-            <Target size={15} className="text-[#4D9DFF]" /> Objetivos y estado
-          </h2>
-          {!editTargets ? (
-            <button onClick={() => setEditTargets({ conversiones_mes_objetivo: target?.conversiones_mes_objetivo, cpa_maximo: target?.cpa_maximo, presupuesto_mes_maximo: target?.presupuesto_mes_maximo })}
-              className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Editar</button>
-          ) : (
-            <div className="flex gap-2">
-              <button onClick={() => setEditTargets(null)} className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Cancelar</button>
-              <button aria-label="Guardar" title="Guardar" onClick={saveTargets} disabled={savingTargets} className="text-xs px-3 py-1 rounded bg-[#0062CC] text-[#EDEFF3] flex items-center gap-1"><Save size={12} /> {savingTargets ? 'Guardando…' : 'Guardar'}</button>
-            </div>
-          )}
-        </div>
-
-        {target ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {[
-              { k: 'conversiones_mes_objetivo', label: 'Conversiones / mes', origen: target.conversiones_mes_origen, fmt: (v: any) => v },
-              { k: 'cpa_maximo', label: 'CPA máximo', origen: target.cpa_maximo_origen, fmt: fmtMoney },
-              { k: 'presupuesto_mes_maximo', label: 'Presupuesto / mes', origen: null, fmt: fmtMoney },
-            ].map(f => (
-              <div key={f.k} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                <div className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center justify-between">
-                  <span>{f.label}</span>
-                  {f.origen && <span className={`text-[10px] px-1.5 rounded-full ${f.origen === 'negocio' ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`} style={{ border: '1px solid var(--border)' }}>{f.origen}</span>}
-                </div>
-                {editTargets ? (
-                  <input aria-label="Edit Targets" type="number" value={editTargets[f.k] ?? ''} onChange={e => setEditTargets({ ...editTargets, [f.k]: Number(e.target.value) })}
-                    className="mt-1 w-full bg-transparent text-base font-bold text-[#EDEFF3] tabular outline-none" style={{ borderBottom: '1px solid var(--border-strong)' }} />
-                ) : (
-                  <div className="text-base font-bold text-[#EDEFF3] tabular mt-1">{f.fmt(target[f.k])}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.">Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.</p>}
-
-        {target?.notas && <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{target.notas}</p>}
-
-        {headroom && (
-          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: ['HEADROOM','TECHO'].some(k => headroom.veredicto?.startsWith(k)) ? '2px solid #0062CC' : undefined }}>
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#EDEFF3]"><TrendingUp size={13} className="text-[#4D9DFF]" /> Veredicto</div>
-            <p className="text-sm text-[#EDEFF3] leading-relaxed">{headroom.veredicto}</p>
-            <div className="grid grid-cols-3 gap-3 text-[11px]">
-              <div><span className="opacity-60 block">Del objetivo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.pct_del_objetivo ?? '—'}%</span></div>
-              <div><span className="opacity-60 block">CPA vs máximo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.cpa_pct_del_maximo ?? '—'}%</span></div>
-              <div><span className="opacity-60 block">Perdido por {headroom.lost_is_rank_pct > headroom.lost_is_budget_pct ? 'ranking' : 'presupuesto'}</span><span className="text-[#EDEFF3] font-semibold tabular">{Math.max(headroom.lost_is_budget_pct || 0, headroom.lost_is_rank_pct || 0)}%</span></div>
-            </div>
-            {headroom.objetivos_provisionales && (
-              <p className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center gap-1.5"><Clock size={11} /> Objetivos provisionales: pendiente confirmar con el cliente qué CPA tolera el negocio al volumen que quiere.</p>
-            )}
-            {proy?.plan_sugerido && <p className="text-[11px] text-[#F5F7FA] opacity-70">Plan: {proy.plan_sugerido}</p>}
-          </div>
-        )}
-      </div>
-
-
-      </>)}
-      {ver('diagnostico') && (<>
-      {/* Por qué está limitada: los tres componentes del Quality Score, ponderados por gasto */}
-      {limitada?.por_que && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Por qué está donde está</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
-          </div>
-          <p className="text-sm text-[#EDEFF3] leading-relaxed">{limitada.por_que}</p>
-          <div className="grid grid-cols-3 gap-2">
-            {[['CTR esperado', limitada.pct_gasto_ctr_bajo, 'Titulares más directos o concordancia más cerrada'], ['Relevancia del anuncio', limitada.pct_gasto_rel_baja, 'Anuncios que repitan la keyword'], ['Landing', limitada.pct_gasto_lp_baja, 'Solo el cliente puede cambiarla']].map(([n, v, r]) => (
-              <div key={String(n)} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
-                <div className="text-[10px] text-[#F5F7FA] opacity-50">{n}</div>
-                <div className="text-lg tabular text-[#EDEFF3]">{v ?? 0}%<span className="text-[10px] opacity-50 ml-1">del gasto bajo el promedio</span></div>
-                <div className="text-[10px] text-[#F5F7FA] opacity-50">{r}</div>
-              </div>
-            ))}
-          </div>
-          {Array.isArray(limitada.peores) && limitada.peores.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Las keywords que más pesan</div>
-              {limitada.peores.slice(0, 6).map((k: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <span className="text-[#EDEFF3] flex-1 truncate">{k.keyword}<span className="opacity-50"> · {k.grupo}</span></span>
-                  <span className="tabular text-[#F5F7FA] opacity-70">{fmtMoney(k.gasto)}</span>
-                  <span className="tabular text-[#F5F7FA] opacity-50">QS {k.qs}</span>
-                  <span className="text-[10px] text-[#F5F7FA] opacity-50">{[k.ctr && 'CTR', k.rel && 'relevancia', k.lp && 'landing'].filter(Boolean).join(', ')}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="text-[10px] text-[#F5F7FA] opacity-40">QS ponderado por gasto: {limitada.qs_ponderado}. Datos de la última semana cerrada.</p>
-        </div>
-      )}
-
-      </>)}
-      {ver('diagnostico') && (<>
-      {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-        <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2"><Layers size={15} className="text-[#4D9DFF]" /> Escalera de valor</h2>
-          <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">Smart Bidding solo ve las primarias. La primaria debe ser la etapa más profunda con 15+ eventos al mes.</p>
-        </div>
-        {escalera.etapas?.length ? (
-          <div className="space-y-2">
-            {escalera.etapas.map((e: any) => (
-              <div key={e.stage_order} className="flex items-center gap-3 p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: e.google_status === 'primaria' ? '2px solid #0062CC' : undefined }}>
-                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-[#EDEFF3] shrink-0" style={{ backgroundColor: e.google_status === 'primaria' ? '#0062CC' : 'var(--surface-3)' }}>{e.stage_order}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[#EDEFF3] font-medium truncate">{e.stage_name} <span className="opacity-50 font-normal">· {e.google_status}</span></div>
-                  <div className="text-[11px] text-[#F5F7FA] opacity-60">{e.accion}</div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-[#EDEFF3] tabular">{e.eventos_ultimos_30d ?? '—'}<span className="opacity-50 text-[10px]">/30d</span></div>
-                  <div className="text-[10px] text-[#F5F7FA] opacity-60 tabular">{e.stage_value ? fmtMoney(e.stage_value) : '—'}</div>
-                </div>
-              </div>
-            ))}
-            {escalera.recomendada?.recomendacion && (
-              <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1">{escalera.recomendada.recomendacion}</p>
-            )}
-          </div>
-        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
-      </div>
-
-      </>)}
-      {ver('reportes') && (<>
-      {/* Reportes al cliente v2 */}
-      <ReportesEditor activeClient={activeClient} />
-      </>)}
-      {ver('diagnostico') && (<>
-      {/* Accionables Abiertos de esta cuenta */}
-      <div 
-        className="p-5 rounded-2xl space-y-3"
-        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
-      >
-        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#EDEFF3]">
-            Accionables Activos para {activeClient}
-          </h2>
-          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
-            {clientActionables.length} activos
-          </span>
-        </div>
-
-        {clientActionables.length === 0 ? (
-          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
-            Nada pendiente en esta cuenta. Los accionables nuevos aparecen el lunes después de la tarea semanal.
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {clientActionables.slice(0, 6).map(act => (
-              <div
-                key={act.id}
-                onClick={() => onOpenActionable && onOpenActionable(act)}
-                className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
-                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
-              >
-                <div className="min-w-0 pr-2">
-                  <div className="text-xs font-semibold text-[#EDEFF3] truncate">
-                    {act.title}
-                  </div>
-                  <div className="text-[11px] text-[#F5F7FA] opacity-60">
-                    Prioridad: {act.priority} · Estado: {act.status}
-                  </div>
-                </div>
-                <ArrowRight size={12} className="text-[#4D9DFF] shrink-0" />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-
-
       </>)}
       {ver('diagnostico') && (<>
       {/* Decisiones estructurales */}
@@ -629,6 +390,262 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       })()}
 
 
+      </>)}
+      {ver('diagnostico') && (<>
+      {/* Accionables Abiertos de esta cuenta */}
+      <div 
+        className="p-5 rounded-2xl space-y-3"
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3]">
+            Accionables Activos para {activeClient}
+          </h2>
+          <span className="text-xs text-[#F5F7FA] opacity-60 tabular">
+            {clientActionables.length} activos
+          </span>
+        </div>
+
+        {clientActionables.length === 0 ? (
+          <div className="py-4 text-xs text-[#F5F7FA] opacity-50 italic">
+            Nada pendiente en esta cuenta. Los accionables nuevos aparecen el lunes después de la tarea semanal.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {clientActionables.slice(0, 6).map(act => (
+              <div
+                key={act.id}
+                onClick={() => onOpenActionable && onOpenActionable(act)}
+                className="p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer hover:bg-white/5 transition-colors"
+                style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-semibold text-[#EDEFF3] truncate">
+                    {act.title}
+                  </div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-60">
+                    Prioridad: {act.priority} · Estado: {act.status}
+                  </div>
+                </div>
+                <ArrowRight size={12} className="text-[#4D9DFF] shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+
+
+      </>)}
+      {ver('diagnostico') && (
+        <div className="flex items-center gap-3 pt-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#EDEFF3]">¿Cómo viene?</span>
+          <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+          <span className="text-[10px] text-[#F5F7FA] opacity-50">brecha, objetivos y escalera de valor</span>
+        </div>
+      )}
+      {ver('diagnostico') && (<>
+      {/* Brecha y propuestas estratégicas: la ambición con lógica */}
+      {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
+        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
+          <div className="text-[#F5F7FA] opacity-30">→</div>
+          <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
+          <div className="flex-1 min-w-[200px] text-xs text-[#F5F7FA] opacity-80">{br.lectura}{br.dias_restantes != null ? <span className="opacity-50"> · {br.dias_restantes} días</span> : ''}</div>
+        </div>
+      ) : null; })()}
+      </>)}
+      {ver('diagnostico') && (<>
+      {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2">
+            <Target size={15} className="text-[#4D9DFF]" /> Objetivos y estado
+          </h2>
+          {!editTargets ? (
+            <button onClick={() => setEditTargets({ conversiones_mes_objetivo: target?.conversiones_mes_objetivo, cpa_maximo: target?.cpa_maximo, presupuesto_mes_maximo: target?.presupuesto_mes_maximo })}
+              className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Editar</button>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => setEditTargets(null)} className="text-xs px-3 py-1 rounded" style={{ border: '1px solid var(--border)' }}>Cancelar</button>
+              <button aria-label="Guardar" title="Guardar" onClick={saveTargets} disabled={savingTargets} className="text-xs px-3 py-1 rounded bg-[#0062CC] text-[#EDEFF3] flex items-center gap-1"><Save size={12} /> {savingTargets ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          )}
+        </div>
+
+        {target ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { k: 'conversiones_mes_objetivo', label: 'Conversiones / mes', origen: target.conversiones_mes_origen, fmt: (v: any) => v },
+              { k: 'cpa_maximo', label: 'CPA máximo', origen: target.cpa_maximo_origen, fmt: fmtMoney },
+              { k: 'presupuesto_mes_maximo', label: 'Presupuesto / mes', origen: null, fmt: fmtMoney },
+            ].map(f => (
+              <div key={f.k} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center justify-between">
+                  <span>{f.label}</span>
+                  {f.origen && <span className={`text-[10px] px-1.5 rounded-full ${f.origen === 'negocio' ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`} style={{ border: '1px solid var(--border)' }}>{f.origen}</span>}
+                </div>
+                {editTargets ? (
+                  <input aria-label="Edit Targets" type="number" value={editTargets[f.k] ?? ''} onChange={e => setEditTargets({ ...editTargets, [f.k]: Number(e.target.value) })}
+                    className="mt-1 w-full bg-transparent text-base font-bold text-[#EDEFF3] tabular outline-none" style={{ borderBottom: '1px solid var(--border-strong)' }} />
+                ) : (
+                  <div className="text-base font-bold text-[#EDEFF3] tabular mt-1">{f.fmt(target[f.k])}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.">Sin objetivos cargados. Hasta que el cliente los confirme, el sistema usa los provisionales del histórico.</p>}
+
+        {target?.notas && <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">{target.notas}</p>}
+
+        {headroom && (
+          <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: ['HEADROOM','TECHO'].some(k => headroom.veredicto?.startsWith(k)) ? '2px solid #0062CC' : undefined }}>
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#EDEFF3]"><TrendingUp size={13} className="text-[#4D9DFF]" /> Veredicto</div>
+            <p className="text-sm text-[#EDEFF3] leading-relaxed">{headroom.veredicto}</p>
+            <div className="grid grid-cols-3 gap-3 text-[11px]">
+              <div><span className="opacity-60 block">Del objetivo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.pct_del_objetivo ?? '—'}%</span></div>
+              <div><span className="opacity-60 block">CPA vs máximo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.cpa_pct_del_maximo ?? '—'}%</span></div>
+              <div><span className="opacity-60 block">Perdido por {headroom.lost_is_rank_pct > headroom.lost_is_budget_pct ? 'ranking' : 'presupuesto'}</span><span className="text-[#EDEFF3] font-semibold tabular">{Math.max(headroom.lost_is_budget_pct || 0, headroom.lost_is_rank_pct || 0)}%</span></div>
+            </div>
+            {headroom.objetivos_provisionales && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center gap-1.5"><Clock size={11} /> Objetivos provisionales: pendiente confirmar con el cliente qué CPA tolera el negocio al volumen que quiere.</p>
+            )}
+            {proy?.plan_sugerido && <p className="text-[11px] text-[#F5F7FA] opacity-70">Plan: {proy.plan_sugerido}</p>}
+          </div>
+        )}
+      </div>
+      </>)}
+      {ver('diagnostico') && (<>
+      {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
+      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2"><Layers size={15} className="text-[#4D9DFF]" /> Escalera de valor</h2>
+          <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">Smart Bidding solo ve las primarias. La primaria debe ser la etapa más profunda con 15+ eventos al mes.</p>
+        </div>
+        {escalera.etapas?.length ? (
+          <div className="space-y-2">
+            {escalera.etapas.map((e: any) => (
+              <div key={e.stage_order} className="flex items-center gap-3 p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)', borderLeft: e.google_status === 'primaria' ? '2px solid #0062CC' : undefined }}>
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-[#EDEFF3] shrink-0" style={{ backgroundColor: e.google_status === 'primaria' ? '#0062CC' : 'var(--surface-3)' }}>{e.stage_order}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[#EDEFF3] font-medium truncate">{e.stage_name} <span className="opacity-50 font-normal">· {e.google_status}</span></div>
+                  <div className="text-[11px] text-[#F5F7FA] opacity-60">{e.accion}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[#EDEFF3] tabular">{e.eventos_ultimos_30d ?? '—'}<span className="opacity-50 text-[10px]">/30d</span></div>
+                  <div className="text-[10px] text-[#F5F7FA] opacity-60 tabular">{e.stage_value ? fmtMoney(e.stage_value) : '—'}</div>
+                </div>
+              </div>
+            ))}
+            {escalera.recomendada?.recomendacion && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1">{escalera.recomendada.recomendacion}</p>
+            )}
+          </div>
+        ) : <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.">Esta cuenta no tiene etapas de embudo cargadas. Se definen en Supabase, tabla funnel_stages.</p>}
+      </div>
+
+      </>)}
+      {/* Contexto estable: cambia poco, es consulta y no lectura diaria — plegado
+          por defecto. Se despliega entero: ficha y calidad (QS) se leen juntas. */}
+      {ver('diagnostico') && (
+        <Collapsible titulo="Contexto de la cuenta" resumen="ficha · por qué está donde está">
+          <div className="space-y-4">
+      {/* Ficha de Cuenta */}
+      <div 
+        className="p-5 rounded-2xl space-y-4"
+        style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
+      >
+        <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+          Ficha de Cuenta · {activeClient}
+        </h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Moneda Operativa</div>
+            <div className="text-base font-bold text-[#EDEFF3] mt-0.5">
+              {currentInfo.currency || monedaDe(activeClient)}
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Zona: {currentInfo.timezone || zonaDe(activeClient)}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Fuente de Verdad</div>
+            <div className="text-base font-bold text-[#EDEFF3] mt-0.5">
+              Google Ads + Supabase
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Atribución directa
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Semanas Analizadas</div>
+            <div className="text-base font-bold text-[#EDEFF3] mt-0.5 tabular">
+              {weeksAnalyzed} semanas
+            </div>
+            <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
+              Cadena en Notion
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] text-[#F5F7FA] opacity-60">Último Brief</div>
+            <div className="text-xs font-semibold text-[#EDEFF3] mt-1 truncate">
+              {clientBriefs[0]?.title || 'Semana activa'}
+            </div>
+            {clientBriefs[0] && onNavigateToBrief && (
+              <button
+                onClick={() => onNavigateToBrief(clientBriefs[0].id)}
+                className="text-[11px] text-[#4D9DFF] hover:underline font-semibold mt-1 flex items-center gap-0.5"
+              >
+                <span>Abrir brief</span>
+                <ExternalLink size={10} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {/* Por qué está limitada: los tres componentes del Quality Score, ponderados por gasto */}
+      {limitada?.por_que && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#EDEFF3]">Por qué está donde está</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.">Google puntúa cada keyword en tres cosas: cuánto espera que la clickeen, si el anuncio la menciona, y cómo es la página de destino. Esto dice cuál pesa más en el gasto real.</p>
+          </div>
+          <p className="text-sm text-[#EDEFF3] leading-relaxed">{limitada.por_que}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[['CTR esperado', limitada.pct_gasto_ctr_bajo, 'Titulares más directos o concordancia más cerrada'], ['Relevancia del anuncio', limitada.pct_gasto_rel_baja, 'Anuncios que repitan la keyword'], ['Landing', limitada.pct_gasto_lp_baja, 'Solo el cliente puede cambiarla']].map(([n, v, r]) => (
+              <div key={String(n)} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
+                <div className="text-[10px] text-[#F5F7FA] opacity-50">{n}</div>
+                <div className="text-lg tabular text-[#EDEFF3]">{v ?? 0}%<span className="text-[10px] opacity-50 ml-1">del gasto bajo el promedio</span></div>
+                <div className="text-[10px] text-[#F5F7FA] opacity-50">{r}</div>
+              </div>
+            ))}
+          </div>
+          {Array.isArray(limitada.peores) && limitada.peores.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">Las keywords que más pesan</div>
+              {limitada.peores.slice(0, 6).map((k: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[#EDEFF3] flex-1 truncate">{k.keyword}<span className="opacity-50"> · {k.grupo}</span></span>
+                  <span className="tabular text-[#F5F7FA] opacity-70">{fmtMoney(k.gasto)}</span>
+                  <span className="tabular text-[#F5F7FA] opacity-50">QS {k.qs}</span>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-50">{[k.ctr && 'CTR', k.rel && 'relevancia', k.lp && 'landing'].filter(Boolean).join(', ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-[#F5F7FA] opacity-40">QS ponderado por gasto: {limitada.qs_ponderado}. Datos de la última semana cerrada.</p>
+        </div>
+      )}
+          </div>
+        </Collapsible>
+      )}
+      {ver('reportes') && (<>
+      {/* Reportes al cliente v2 */}
+      <ReportesEditor activeClient={activeClient} />
       </>)}
       {/* ZONA 2: lo que el sistema recuerda entre semanas. Lo escribe la tarea del lunes; vos lo corregís si está mal. */}
       {zona === 'todo' && <div className="flex items-center gap-3 pt-4">
