@@ -277,13 +277,18 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
       <Colapsable titulo="Ayer en cada cuenta" abierto={abierto.ayer} onToggle={() => setAbierto(s => ({ ...s, ayer: !s.ayer }))}
         resumen={cuentas.map(c => { const p = ultimoPulso[c]; return p ? `${c}: ${nivelPulso(p.nivel).etiqueta.toLowerCase()}` : `${c}: sin análisis`; }).join(' · ')}>
         <div className="space-y-1.5">
-          {cuentas.map(c => { const p = ultimoPulso[c]; return (
+          {cuentas.map(c => { const p = ultimoPulso[c]; const nivel = p ? nivelPulso(p.nivel) : null; return (
             <button key={c} onClick={() => onGoTo('cuenta', c, 'semana')} className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5" style={{ backgroundColor: 'var(--surface-2)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#EDEFF3]">{c}</span>
-                <span className="text-[10px] text-[#F5F7FA] opacity-50">{p ? `${p.fecha} · ${nivelPulso(p.nivel).etiqueta}` : 'sin análisis todavía'}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-[#EDEFF3] flex items-center gap-1.5">
+                  {p && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: p.nivel === 'critico' ? 'var(--bad)' : p.nivel === 'atencion' ? 'var(--warn)' : '#4ADE80' }} />}
+                  {c}
+                </span>
+                <span className="text-[10px] text-[#F5F7FA] opacity-50" title={nivel?.descripcion}>{p ? `${nivel!.etiqueta} · análisis diario del ${fmtFechaCorta(p.fecha)}` : 'sin análisis todavía'}</span>
               </div>
-              {p && <p className="text-[11px] text-[#F5F7FA] opacity-75 mt-0.5 leading-relaxed">{p.hallazgo_principal || p.resumen?.slice(0, 160)}</p>}
+              {/* El hallazgo va entero; el resumen largo se recorta con CSS (line-clamp),
+                  nunca cortando el texto del agente a mitad de palabra. */}
+              {p && <p className="text-[11px] text-[#F5F7FA] opacity-75 mt-0.5 leading-relaxed line-clamp-2" title={p.hallazgo_principal || p.resumen || ''}>{p.hallazgo_principal || p.resumen}</p>}
             </button>
           ); })}
         </div>

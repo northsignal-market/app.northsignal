@@ -625,7 +625,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   <div className="text-sm font-semibold text-[#EDEFF3] tabular">{selectedDay.clics ?? selectedDay.clicks ?? 0}</div>
                 </div>
               </div>
-              {selectedDay.explicacion && <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1" style={{ borderTop: '1px solid var(--border)' }}>{selectedDay.explicacion}</p>}
+              {selectedDay.explicacion && (
+                <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
+                  {selectedDay.explicacion}
+                  <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider align-middle" style={{ backgroundColor: 'var(--surface-2)', color: 'var(--text-secondary)' }} title="Explicación escrita por el detector de anomalías, sin resumir">análisis del agente</span>
+                </p>
+              )}
             </div>
 
             <div className="p-3.5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
