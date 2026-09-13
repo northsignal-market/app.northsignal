@@ -33,6 +33,10 @@
       "schedule": "20 10 * * 1"
     },
     {
+      "path": "/api/cron/espejo-notion",
+      "schedule": "5 10 * * 1"
+    },
+    {
       "path": "/api/cron/reportes",
       "schedule": "15 12 * * 1"
     },

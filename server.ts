@@ -3968,8 +3968,95 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     }
 
     const ok = resumen.filter(r => r.estado === 'ok').length;
-    try { await supabase.rpc('registrar_latido', { p_tarea: 'demanda_mercado', p_ok: ok > 0, p_error: ok ? null : 'ninguna cuenta trajo demanda' }); } catch { /* el latido es opcional */ }
+    try { await supabase.rpc('latir', { p_tarea: 'demanda_mercado', p_ok: ok > 0, p_error: ok ? null : 'ninguna cuenta trajo demanda' }); } catch { /* el latido es opcional */ }
     res.json({ ok: ok > 0, cuentas: resumen, ms: Date.now() - t0 });
+  });
+
+  /**
+   * ESPEJO DE NOTION · la foto contra la que se compara Supabase.
+   *
+   * Existía la comparación (v_notion_vs_supabase) pero no existía quién
+   * refrescara la foto: el espejo se llenó el 8/9/2026 y quedó ahí. La
+   * comparación devuelve cero filas cuando Notion y Supabase coinciden, y cero
+   * filas es también lo que devuelve con un espejo congelado. El mismo vacío
+   * para dos estados opuestos, y envejecer no genera ninguna fila que lo delate.
+   *
+   * EL CRUCE VA POR CUSTOMER ID, no por nombre. La ficha "ZZ duplicada · no
+   * usar" documenta en su propio cuerpo el bug que costó esa lección: el
+   * sincronizador viejo derivaba el account del título del Cliente y sobre esa
+   * página escribía FRESH en vez de FRESH_MONKEE, dejando accionables
+   * huérfanos. El CID es único, estable y lo pone Google; además la duplicada
+   * tiene "PENDIENTE · no vinculada al MCC" ahí, así que no cruza con nada y
+   * queda afuera por estructura, sin necesidad de excluirla a mano.
+   *
+   * El espejo guarda lo que dice NOTION, tal cual, sin normalizar: si se
+   * arreglara acá una diferencia, la comparación dejaría de verla.
+   */
+  app.all("/api/cron/espejo-notion", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!notion || !NOTION_BASES.CLIENTES) return res.status(503).json({ error: 'Notion no configurado' });
+    const t0 = Date.now();
+    try {
+      const { data: cuentas } = await supabase.from('cuentas').select('account, cid').eq('activa', true);
+      const porCid = new Map((cuentas || []).map((c: any) => [String(c.cid || '').replace(/\D/g, ''), c.account]));
+
+      const fichas: any = await notion.databases.query({ database_id: NOTION_BASES.CLIENTES });
+      const texto = (p: any) => p?.rich_text?.map((t: any) => t.plain_text).join('') || null;
+      const filas: any[] = [];
+      const sinCruce: string[] = [];
+
+      for (const f of fichas.results) {
+        const props = f.properties || {};
+        const cid = texto(props['Customer ID']);
+        const account = porCid.get(String(cid || '').replace(/\D/g, ''));
+        const titulo = props.Cliente?.title?.map((t: any) => t.plain_text).join('') || '(sin título)';
+        if (!account) { sinCruce.push(`${titulo} · CID ${cid || '—'}`); continue; }
+        filas.push({
+          account,
+          cliente: titulo,
+          customer_id: cid,
+          estado: props.Estado?.select?.name ?? null,
+          // El espejo viene guardando el checkbox con la convención de Notion
+          // ("__YES__"/"__NO__") desde la primera carga: se respeta, porque
+          // cambiarla ahora haría aparecer una diferencia que no existe.
+          automatizado: props.Automatizado?.checkbox ? '__YES__' : '__NO__',
+          moneda: props.Moneda?.select?.name ?? null,
+          presupuesto_diario: props['Presupuesto diario']?.number ?? null,
+          canales: (props.Canales?.multi_select || []).map((o: any) => o.name),
+          facturacion: props.Facturacion?.select?.name ?? null,
+          doc_maestro: props['Doc maestro']?.url ?? null,
+          sheet: props.Sheet?.url ?? null,
+          sincronizado: new Date().toISOString(),
+        });
+      }
+
+      if (filas.length === 0) {
+        // Cero filas acá NO es un espejo vacío legítimo: es que ninguna ficha
+        // cruzó. Escribirlo borraría la foto anterior y dejaría la comparación
+        // sin nada que comparar, que es peor que tenerla vieja.
+        await supabase.rpc('latir', { p_tarea: 'espejo_notion', p_ok: false, p_error: 'ninguna ficha de Notion cruzó por Customer ID' });
+        return res.status(500).json({ ok: false, error: 'Ninguna ficha cruzó por Customer ID. No se tocó el espejo.', sin_cruce: sinCruce });
+      }
+
+      const { error } = await supabase.from('notion_espejo_cuentas').upsert(filas, { onConflict: 'account' });
+      if (error) throw new Error(error.message);
+
+      const { data: difs } = await supabase.from('v_notion_vs_supabase').select('*');
+      // El latido no puede tumbar al endpoint: el dato ya se escribió.
+      try { await supabase.rpc('latir', { p_tarea: 'espejo_notion', p_ok: true, p_error: null }); } catch { /* el latido es opcional */ }
+      res.json({
+        ok: true,
+        sincronizadas: filas.map(f => f.account),
+        // Las fichas que no cruzaron se informan siempre: una lista incompleta
+        // que se ve completa es peor que una vacía.
+        sin_cruce: sinCruce,
+        diferencias: difs || [],
+        ms: Date.now() - t0,
+      });
+    } catch (e: any) {
+      try { await supabase.rpc('latir', { p_tarea: 'espejo_notion', p_ok: false, p_error: String(e.message).slice(0, 200) }); } catch { /* el latido es opcional */ }
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   /** Lo que la app lee: el mercado contra nosotros, por cuenta. */

@@ -5333,10 +5333,76 @@ Reporte completo: ${url}`;
     }
     const ok = resumen.filter((r) => r.estado === "ok").length;
     try {
-      await supabase.rpc("registrar_latido", { p_tarea: "demanda_mercado", p_ok: ok > 0, p_error: ok ? null : "ninguna cuenta trajo demanda" });
+      await supabase.rpc("latir", { p_tarea: "demanda_mercado", p_ok: ok > 0, p_error: ok ? null : "ninguna cuenta trajo demanda" });
     } catch {
     }
     res.json({ ok: ok > 0, cuentas: resumen, ms: Date.now() - t0 });
+  });
+  app2.all("/api/cron/espejo-notion", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!notion || !NOTION_BASES.CLIENTES) return res.status(503).json({ error: "Notion no configurado" });
+    const t0 = Date.now();
+    try {
+      const { data: cuentas } = await supabase.from("cuentas").select("account, cid").eq("activa", true);
+      const porCid = new Map((cuentas || []).map((c) => [String(c.cid || "").replace(/\D/g, ""), c.account]));
+      const fichas = await notion.databases.query({ database_id: NOTION_BASES.CLIENTES });
+      const texto = (p) => p?.rich_text?.map((t) => t.plain_text).join("") || null;
+      const filas = [];
+      const sinCruce = [];
+      for (const f of fichas.results) {
+        const props = f.properties || {};
+        const cid = texto(props["Customer ID"]);
+        const account = porCid.get(String(cid || "").replace(/\D/g, ""));
+        const titulo = props.Cliente?.title?.map((t) => t.plain_text).join("") || "(sin t\xEDtulo)";
+        if (!account) {
+          sinCruce.push(`${titulo} \xB7 CID ${cid || "\u2014"}`);
+          continue;
+        }
+        filas.push({
+          account,
+          cliente: titulo,
+          customer_id: cid,
+          estado: props.Estado?.select?.name ?? null,
+          // El espejo viene guardando el checkbox con la convención de Notion
+          // ("__YES__"/"__NO__") desde la primera carga: se respeta, porque
+          // cambiarla ahora haría aparecer una diferencia que no existe.
+          automatizado: props.Automatizado?.checkbox ? "__YES__" : "__NO__",
+          moneda: props.Moneda?.select?.name ?? null,
+          presupuesto_diario: props["Presupuesto diario"]?.number ?? null,
+          canales: (props.Canales?.multi_select || []).map((o) => o.name),
+          facturacion: props.Facturacion?.select?.name ?? null,
+          doc_maestro: props["Doc maestro"]?.url ?? null,
+          sheet: props.Sheet?.url ?? null,
+          sincronizado: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      if (filas.length === 0) {
+        await supabase.rpc("latir", { p_tarea: "espejo_notion", p_ok: false, p_error: "ninguna ficha de Notion cruz\xF3 por Customer ID" });
+        return res.status(500).json({ ok: false, error: "Ninguna ficha cruz\xF3 por Customer ID. No se toc\xF3 el espejo.", sin_cruce: sinCruce });
+      }
+      const { error } = await supabase.from("notion_espejo_cuentas").upsert(filas, { onConflict: "account" });
+      if (error) throw new Error(error.message);
+      const { data: difs } = await supabase.from("v_notion_vs_supabase").select("*");
+      try {
+        await supabase.rpc("latir", { p_tarea: "espejo_notion", p_ok: true, p_error: null });
+      } catch {
+      }
+      res.json({
+        ok: true,
+        sincronizadas: filas.map((f) => f.account),
+        // Las fichas que no cruzaron se informan siempre: una lista incompleta
+        // que se ve completa es peor que una vacía.
+        sin_cruce: sinCruce,
+        diferencias: difs || [],
+        ms: Date.now() - t0
+      });
+    } catch (e) {
+      try {
+        await supabase.rpc("latir", { p_tarea: "espejo_notion", p_ok: false, p_error: String(e.message).slice(0, 200) });
+      } catch {
+      }
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
   app2.get("/api/mercado", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
