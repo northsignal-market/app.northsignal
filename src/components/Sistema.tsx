@@ -158,6 +158,9 @@ export function Sistema() {
       raf = 0;
       const els: HTMLElement[] = contRef.current ? Array.from(contRef.current.querySelectorAll<HTMLElement>('[data-toc]')) : [];
       if (!els.length) return;
+      // Con el scroll al fondo, la última sección nunca alcanza la línea de
+      // lectura (no queda página debajo): tocar fondo la activa directo.
+      if (main.scrollTop + main.clientHeight >= main.scrollHeight - 2) { setActiva(els[els.length - 1].id); return; }
       const base = main.getBoundingClientRect().top;
       let id = els[0].id;
       for (const el of els) {
