@@ -9,7 +9,7 @@ import { Termino } from './Termino';
 import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import {
-  PageShell, Seccion, Tarjeta, Collapsible, Chips, Vacio,
+  PageShell, Seccion, Tarjeta, Collapsible, Chips, Vacio, Stat,
   RangoFechas, rangoPreset, type Rango, hoyLocal,
   fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON,
 } from './ui';
@@ -119,6 +119,31 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
   const primerProvisional = useMemo(() => displayedDaily.find((d: any) => d.madurez === 'provisional')?.date ?? null, [displayedDaily]);
 
+  // Los cinco números de la ventana, comparados contra la ventana previa del
+  // MISMO largo. La ventana que se declara es la que se suma — la nota lo dice.
+  // Con menos historia previa que rango, el delta no se muestra: sin base no hay %.
+  const kpis = useMemo(() => {
+    const en = displayedDaily.filter((d: any) => !d.sin_datos);
+    const sum = (arr: any[], k: string) => arr.reduce((s: number, d: any) => s + (Number(d[k]) || 0), 0);
+    const dias = Math.round((new Date(rango.hasta + 'T12:00:00').getTime() - new Date(rango.desde + 'T12:00:00').getTime()) / 864e5) + 1;
+    const desdeAnt = new Date(new Date(rango.desde + 'T12:00:00').getTime() - dias * 864e5).toISOString().slice(0, 10);
+    const hastaAnt = new Date(new Date(rango.desde + 'T12:00:00').getTime() - 864e5).toISOString().slice(0, 10);
+    const ant = dailyData.filter((d: any) => d.date >= desdeAnt && d.date <= hastaAnt);
+    const hayAnt = ant.length >= Math.max(3, Math.floor(dias * 0.7));
+    const delta = (a: number | null, b: number | null) => (hayAnt && a != null && b != null && b > 0) ? ((a - b) / b) * 100 : null;
+    const conv = sum(en, 'conversiones'), gasto = sum(en, 'gasto'), clics = sum(en, 'clics');
+    const convAnt = sum(ant, 'conversiones'), gastoAnt = sum(ant, 'gasto'), clicsAnt = sum(ant, 'clics');
+    const cpa = conv > 0 ? gasto / conv : null, cpaAnt = convAnt > 0 ? gastoAnt / convAnt : null;
+    const cpc = clics > 0 ? gasto / clics : null, cpcAnt = clicsAnt > 0 ? gastoAnt / clicsAnt : null;
+    const spark = (k: string) => displayedDaily.map((d: any) => (d.sin_datos || d[k] == null ? null : Number(d[k])));
+    return {
+      dias, provisional: en.some((d: any) => d.madurez === 'provisional'),
+      conv, gasto, cpa, clics, cpc,
+      dConv: delta(conv, convAnt), dGasto: delta(gasto, gastoAnt), dCpa: delta(cpa, cpaAnt), dClics: delta(clics, clicsAnt), dCpc: delta(cpc, cpcAnt),
+      sparkConv: spark('conversiones'), sparkGasto: spark('gasto'), sparkCpa: spark('cpa'), sparkClics: spark('clics'), sparkCpc: spark('cpc'),
+    };
+  }, [displayedDaily, dailyData, rango]);
+
   // Fondo por severidad: la intensidad es la severidad, sin color adicional
   const severidadOpacity: Record<string, number> = { media: 0.08, alta: 0.14, critica: 0.20 };
 
@@ -162,6 +187,35 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       subtitulo="¿Qué pasó y por qué? Diagnóstico temporal, cambios y términos nuevos"
       derecha={<RangoFechas valor={rango} onChange={setRango} presets={['7d', '14d']} minDesde={minDesde} />}
     >
+
+      {/* LOS CINCO NÚMEROS DE LA VENTANA: la métrica norte de la cuenta primero
+          (KAREDO se juzga por CPA; el resto por conversiones). Nada más grande
+          que esto arriba: si un número no cambia una decisión, no va acá. */}
+      {displayedDaily.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {(activeClient === 'KAREDO'
+            ? ([
+              { label: 'CPA', valor: fmtMoneda(kpis.cpa, M), delta: kpis.dCpa, baja: true, spark: kpis.sparkCpa },
+              { label: 'Conversiones', valor: fmtNum(kpis.conv, kpis.conv % 1 ? 1 : 0), delta: kpis.dConv, baja: false, spark: kpis.sparkConv },
+              { label: 'Gasto', valor: fmtMoneda(kpis.gasto, M), delta: kpis.dGasto, baja: false, spark: kpis.sparkGasto },
+              { label: 'Clics', valor: fmtNum(kpis.clics), delta: kpis.dClics, baja: false, spark: kpis.sparkClics },
+              { label: 'CPC', valor: fmtMoneda(kpis.cpc, M), delta: kpis.dCpc, baja: true, spark: kpis.sparkCpc },
+            ])
+            : ([
+              { label: 'Conversiones', valor: fmtNum(kpis.conv, kpis.conv % 1 ? 1 : 0), delta: kpis.dConv, baja: false, spark: kpis.sparkConv },
+              { label: 'Gasto', valor: fmtMoneda(kpis.gasto, M), delta: kpis.dGasto, baja: false, spark: kpis.sparkGasto },
+              { label: 'CPA', valor: fmtMoneda(kpis.cpa, M), delta: kpis.dCpa, baja: true, spark: kpis.sparkCpa },
+              { label: 'Clics', valor: fmtNum(kpis.clics), delta: kpis.dClics, baja: false, spark: kpis.sparkClics },
+              { label: 'CPC', valor: fmtMoneda(kpis.cpc, M), delta: kpis.dCpc, baja: true, spark: kpis.sparkCpc },
+            ])
+          ).map(k => (
+            <React.Fragment key={k.label}>
+              <Stat label={k.label} valor={k.valor} delta={k.delta} deltaBuenoSiBaja={k.baja}
+                nota={k.delta != null ? `vs ${kpis.dias}d previos` : `${kpis.dias} días`} provisional={kpis.provisional} spark={k.spark} />
+            </React.Fragment>
+          ))}
+        </div>
+      )}
 
       {/* EL PLAN DE LA SEMANA: contra qué se mide todo lo demás */}
       {plan?.plan && (() => {

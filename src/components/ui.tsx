@@ -121,9 +121,10 @@ export function StatGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>;
 }
 
-/** Cifra con etiqueta, delta opcional y nota. El delta no grita: signo y tono. */
-export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional }: {
-  label: string; valor: React.ReactNode; delta?: number | null; deltaBuenoSiBaja?: boolean; nota?: string; provisional?: boolean;
+/** Cifra con etiqueta, delta opcional, nota y sparkline. La cifra es de las
+ *  pocas cosas en blanco puro: protagonista por contraste, no por tamaño. */
+export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional, spark }: {
+  label: string; valor: React.ReactNode; delta?: number | null; deltaBuenoSiBaja?: boolean; nota?: string; provisional?: boolean; spark?: (number | null)[];
 }) {
   const d = delta == null || isNaN(Number(delta)) ? null : Number(delta);
   const bueno = d == null ? null : (deltaBuenoSiBaja ? d < 0 : d > 0);
@@ -133,7 +134,10 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional 
         <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{label}</span>
         {provisional && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }} title="Los días recientes maduran: este número todavía se mueve">madurando</span>}
       </div>
-      <div className="text-lg text-[#EDEFF3] tabular mt-1 leading-tight">{valor}</div>
+      <div className="flex items-end justify-between gap-2">
+        <div className="text-xl text-[#FFFFFF] tabular mt-1 leading-tight">{valor}</div>
+        {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
+      </div>
       <div className="flex items-baseline gap-2 mt-0.5 min-h-[14px]">
         {d != null && (
           <span className="text-[11px] tabular" style={{ color: bueno ? 'var(--text-secondary)' : '#E8A13C' }}>
@@ -143,6 +147,23 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional 
         {nota && <span className="text-[10px] text-[#F5F7FA] opacity-40 truncate">{nota}</span>}
       </div>
     </div>
+  );
+}
+
+/** Sparkline mínima: la forma de la serie, nada más. SVG a mano — recharts para
+ *  56×16 píxeles es pagar un contenedor responsivo que acá no hace falta. */
+function Sparkline({ datos }: { datos: (number | null)[] }) {
+  const vals = datos.map(v => (v == null || isNaN(Number(v)) ? null : Number(v)));
+  const presentes = vals.filter((v): v is number => v != null);
+  if (presentes.length < 3) return null;
+  const min = Math.min(...presentes), max = Math.max(...presentes);
+  const rango = max - min || 1;
+  const W = 56, H = 16;
+  const pts = vals.map((v, i) => v == null ? null : `${(i / (vals.length - 1)) * W},${H - 1.5 - ((v - min) / rango) * (H - 3)}`).filter(Boolean).join(' ');
+  return (
+    <svg width={W} height={H} className="shrink-0 opacity-70" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke="var(--primary-text)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -317,12 +338,34 @@ export function GraficoSerie({ datos, series, moneda = 'CLP', provisionalDesde, 
     return datos.find(d => String(d[xClave]) >= provisionalDesde)?.[xClave] ?? null;
   }, [datos, provisionalDesde, xClave]);
 
+  // Trazo doble: sólido hasta el último día firme, punteado desde ahí (empalman
+  // en ese punto). La banda dice "acá maduran"; el punteado lo dice EN la línea,
+  // que es donde el ojo está mirando. Solo líneas y áreas: las barras ya quedan
+  // dentro de la banda.
+  const { datosPlot, ultimoSolido } = useMemo(() => {
+    if (!primeraProvisional || !datos?.length) return { datosPlot: datos, ultimoSolido: null as string | null };
+    const previos = datos.filter(d => String(d[xClave]) < String(primeraProvisional));
+    const us = previos.length ? String(previos[previos.length - 1][xClave]) : null;
+    if (!us) return { datosPlot: datos, ultimoSolido: null };
+    const enriquecidos = datos.map(d => {
+      const f = String(d[xClave]);
+      const extra: any = {};
+      for (const s of series) {
+        if (s.tipo === 'barra') continue;
+        extra[s.clave + '__sol'] = f <= us ? d[s.clave] : null;
+        extra[s.clave + '__prov'] = f >= us ? d[s.clave] : null;
+      }
+      return { ...d, ...extra };
+    });
+    return { datosPlot: enriquecidos, ultimoSolido: us };
+  }, [datos, series, primeraProvisional, xClave]);
+
   if (!datos?.length) return <Vacio>Sin datos en esta ventana.</Vacio>;
 
   return (
     <div style={{ width: '100%', height: alto }}>
       <ResponsiveContainer>
-        <ComposedChart data={datos} margin={{ top: 8, right: conDerecho ? 4 : 12, bottom: 0, left: 4 }}>
+        <ComposedChart data={datosPlot} margin={{ top: 8, right: conDerecho ? 4 : 12, bottom: 0, left: 4 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis dataKey={xClave} tickFormatter={fmtFechaCorta} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={24} />
           <YAxis yAxisId="izq" tickFormatter={(v: number) => series.find(s => !s.ejeDerecho)?.formato === 'moneda' ? fmtMonedaCorta(v, moneda) : fmtNum(v)} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} width={52} />
@@ -335,7 +378,8 @@ export function GraficoSerie({ datos, series, moneda = 'CLP', provisionalDesde, 
               return fmtFechaCorta(String(l)) + (esProv ? ' · madurando' : '');
             }}
             formatter={(v: any, nombre: any) => {
-              const s = series.find(x => x.nombre === nombre);
+              const limpio = String(nombre).replace(' · madurando', '');
+              const s = series.find(x => x.nombre === limpio);
               return [s ? fmtDe(s)(Number(v)) : v, nombre];
             }}
           />
@@ -346,10 +390,26 @@ export function GraficoSerie({ datos, series, moneda = 'CLP', provisionalDesde, 
           )}
           {series.map((s, i) => {
             const color = s.color || COLORES[i % COLORES.length];
-            const props = { key: s.clave, yAxisId: s.ejeDerecho ? 'der' : 'izq', dataKey: s.clave, name: s.nombre, stroke: color, strokeWidth: 1.5, dot: false as const, isAnimationActive: false };
-            if (s.tipo === 'barra') return <Bar {...props} fill={color} fillOpacity={0.5} radius={[3, 3, 0, 0]} maxBarSize={18} />;
-            if (s.tipo === 'linea') return <Line {...props} type="monotone" />;
-            return <Area {...props} type="monotone" fill={color} fillOpacity={0.12} />;
+            const base = { yAxisId: s.ejeDerecho ? 'der' : 'izq', name: s.nombre, stroke: color, strokeWidth: 1.5, dot: false as const, isAnimationActive: false };
+            if (s.tipo === 'barra') return <Bar key={s.clave} {...base} dataKey={s.clave} fill={color} fillOpacity={0.5} radius={[3, 3, 0, 0]} maxBarSize={18} />;
+            // Sin días provisionales: una sola pieza, como siempre.
+            if (!ultimoSolido) {
+              if (s.tipo === 'linea') return <Line key={s.clave} {...base} dataKey={s.clave} type="monotone" />;
+              return <Area key={s.clave} {...base} dataKey={s.clave} type="monotone" fill={color} fillOpacity={0.12} />;
+            }
+            const prov = { ...base, name: s.nombre + ' · madurando', strokeDasharray: '4 3', legendType: 'none' as const };
+            if (s.tipo === 'linea') return (
+              <React.Fragment key={s.clave}>
+                <Line {...base} dataKey={s.clave + '__sol'} type="monotone" />
+                <Line {...prov} dataKey={s.clave + '__prov'} type="monotone" />
+              </React.Fragment>
+            );
+            return (
+              <React.Fragment key={s.clave}>
+                <Area {...base} dataKey={s.clave + '__sol'} type="monotone" fill={color} fillOpacity={0.12} />
+                <Area {...prov} dataKey={s.clave + '__prov'} type="monotone" fill={color} fillOpacity={0.05} />
+              </React.Fragment>
+            );
           })}
         </ComposedChart>
       </ResponsiveContainer>
