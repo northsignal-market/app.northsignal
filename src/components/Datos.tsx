@@ -947,7 +947,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         )}
 
         {activeView === 'v_tendencia_semanal' && data.length > 0 && (
-          <div className="glass mb-4 p-4 md:p-5 shrink-0" style={{ borderRadius: 'var(--r-tarjeta)' }}>
+          <div className="mb-4 p-4 md:p-5 shrink-0" style={{ borderRadius: 'var(--r-tarjeta)', backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-[13px] font-medium text-[#EDEFF3] flex items-center gap-2">

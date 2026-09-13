@@ -5,9 +5,14 @@ import { useAppStore } from '../store/useAppStore';
 interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  /** Decisiones pendientes: número SOLO en Bandeja. Un badge que cuenta actividad
+      en vez de decisiones se vuelve ansiedad y deja de mirarse. */
+  pendientes?: number;
+  /** Estado binario del sistema: punto, no número. */
+  sistemaOk?: boolean;
 }
 
-export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = true }: SidebarProps) {
   return (
     <aside 
       className="glass-dense group fixed z-50 transition-all duration-300 ease-in-out overflow-hidden
@@ -42,11 +47,11 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
       {/* Navigation Sections */}
       <nav className="flex flex-row items-center justify-around w-full sm:flex-col sm:flex-1 sm:py-4 sm:px-2 sm:space-y-5 sm:justify-start sm:w-auto overflow-y-auto custom-scrollbar">
-          <NavItem icon={<Inbox size={18} />} label="Bandeja" active={activeTab === 'bandeja'} onClick={() => onTabChange('bandeja')} />
+          <NavItem icon={<Inbox size={18} />} label="Bandeja" active={activeTab === 'bandeja'} onClick={() => onTabChange('bandeja')} badge={pendientes} />
           <NavItem icon={<Building2 size={18} />} label="Cuenta" active={activeTab === 'cuenta'} onClick={() => onTabChange('cuenta')} />
           <NavItem icon={<Table2 size={18} />} label="Datos" active={activeTab === 'datos'} onClick={() => onTabChange('datos')} />
           <NavItem icon={<Wrench size={18} />} label="Herramientas" active={activeTab === 'herramientas'} onClick={() => onTabChange('herramientas')} />
-          <NavItem icon={<Settings size={18} />} label="Sistema" active={activeTab === 'sistema'} onClick={() => onTabChange('sistema')} />
+          <NavItem icon={<Settings size={18} />} label="Sistema" active={activeTab === 'sistema'} onClick={() => onTabChange('sistema')} punto={!sistemaOk} />
         </nav>
 
       {/* El atajo, siempre a la vista. Antes solo se anunciaba al final de la Bandeja,
@@ -97,30 +102,43 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   );
 }
 
-function NavItem({ 
-  icon, 
-  label, 
-  active = false, 
-  onClick 
-}: { 
-  icon: React.ReactNode; 
-  label: string; 
-  active?: boolean; 
-  onClick?: () => void 
+function NavItem({
+  icon,
+  label,
+  active = false,
+  onClick,
+  badge = 0,
+  punto = false
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  badge?: number;
+  punto?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      title={label}
+      title={badge > 0 ? `${label} · ${badge} pendiente${badge !== 1 ? 's' : ''}` : label}
       className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all duration-150
         sm:w-full sm:flex-row sm:gap-3 sm:px-2.5 sm:py-2 sm:text-left ${
-        active 
-          ? 'bg-[#0062CC] text-[#EDEFF3] font-semibold shadow-sm' 
+        active
+          ? 'bg-[#0062CC] text-[#EDEFF3] font-semibold shadow-sm'
           : 'text-[#F5F7FA] opacity-75 hover:opacity-100 hover:bg-white/5 font-normal'
       }`}
     >
-      <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+      <div className="relative w-5 h-5 shrink-0 flex items-center justify-center">
         {icon}
+        {badge > 0 && (
+          <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full text-[9px] font-bold tabular flex items-center justify-center leading-none"
+            style={{ backgroundColor: active ? 'rgba(255,255,255,0.25)' : 'var(--primary)', color: '#FFFFFF' }}>
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+        {punto && (
+          <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--warn)', boxShadow: '0 0 5px var(--warn)' }} />
+        )}
       </div>
       {/* En móvil el nombre va debajo del icono y siempre visible: no hay hover en un
           dedo, así que una barra que se expande al pasar el mouse deja iconos sin nombre. */}

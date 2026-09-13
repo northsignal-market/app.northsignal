@@ -58,15 +58,12 @@ function App() {
     setActiveTab(tab);
   };
   const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string }>({});
-  const [salud, setSalud] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [salud, setSalud] = useState<{ ok: boolean; pend: number; texto: string } | null>(null);
   useEffect(() => {
     const cargar = () => fetch('/api/briefing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((b: any) => {
       if (!b) return;
       const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
-      fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((nv: any[]) => {
-        const n = Array.isArray(nv) ? nv.length : 0;
-        setSalud({ ok: b.datos_al_dia !== false, texto: (b.datos_al_dia === false ? 'Datos con problema' : pend === 0 ? 'Datos al día · nada pendiente' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}`)  });
-      }).catch(() => setSalud({ ok: b.datos_al_dia !== false, texto: b.datos_al_dia === false ? 'Datos con problema' : `Datos al día · ${pend} pendiente${pend !== 1 ? 's' : ''}` }));
+      setSalud({ ok: b.datos_al_dia !== false, pend, texto: b.datos_al_dia === false ? 'Datos con problema' : pend > 0 ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : 'Datos al día · nada pendiente' });
     }).catch(() => {});
     cargar(); const t = setInterval(cargar, 5 * 60 * 1000); return () => clearInterval(t);
   }, []);
@@ -97,6 +94,21 @@ function App() {
   const clients = cuentas.map(c => c.account);
   const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda
     || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
+
+  // ⌥1–⌥4 cambia de cuenta manteniendo la pantalla (misma vista, otro alcance).
+  // Option y no Cmd: el navegador reserva ⌘1-9 para sus pestañas y no se puede
+  // cancelar. e.code y no e.key: con Option apretada, e.key da el carácter muerto.
+  useEffect(() => {
+    const atajo = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      const m = /^Digit([1-4])$/.exec(e.code);
+      if (!m) return;
+      const cuenta = clients[Number(m[1]) - 1];
+      if (cuenta) { e.preventDefault(); setSelectedClient(cuenta); }
+    };
+    window.addEventListener('keydown', atajo);
+    return () => window.removeEventListener('keydown', atajo);
+  }, [clients, setSelectedClient]);
 
   // Check authentication
   useEffect(() => {
@@ -193,90 +205,79 @@ function App() {
       </div>
     )}
     <div className={`flex min-h-screen overflow-hidden select-none ${bandaEntorno ? 'pt-6' : ''}`}>
-      <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} />
+      <Sidebar activeTab={activeTab} onTabChange={(t) => irA(t)} pendientes={salud?.pend ?? 0} sistemaOk={salud?.ok ?? true} />
       
       <div className="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 pb-14 sm:pb-0 sm:ml-16">
         
-        {/* Global Persistent Header */}
-        <header 
-          className="glass-dense h-16 flex items-center justify-between px-6 shrink-0 z-10"
+        {/* Header: una fila, cinco cosas con función — cuentas, estado, novedades, ⌘K.
+            Sin etiquetas ni perfil: en una app de un solo operador, "Andrés · Operador
+            Principal" era decoración ocupando el lugar de la información. */}
+        <header
+          className="glass-dense h-14 flex items-center justify-between gap-3 px-4 md:px-6 shrink-0 z-10"
           style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0 }}
         >
-          {/* Active Client Selector with Currency Badges */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-[#F5F7FA] opacity-60 uppercase tracking-wider hidden sm:inline">
-              Cuenta:
-            </span>
-            <div className="flex p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-              {salud && <span className="text-[10px] mr-3 tabular" style={{ color: salud.ok ? 'rgba(245,247,250,0.5)' : 'var(--warn)' }} title="Estado de los datos y lo que espera tu criterio">{salud.texto}</span>}
-              <div className="mr-3"><Campana onAbrir={(n: Novedad) => {
-                if (n.ref_tipo === 'accionable') { const f = actionables.find(x => x.id === n.ref_id); if (f) { setSelectedClient(f.client); setSelectedAction(f); } else irA('cuenta', n.account || undefined, 'accionables'); }
-                else if (n.ref_tipo === 'propuesta') irA('cuenta', n.account || undefined, 'diagnostico');
-                else if (n.ref_tipo === 'alerta') irA('bandeja');
-                else irA('sistema');
-              }} /></div>
-              {clients.length === 0 && (
-                <span className="px-3 py-1 text-xs text-[#fcd34d]" title="El endpoint /api/cuentas no devolvió nada. Mirá Sistema › Salud.">
-                  No se pudieron cargar las cuentas
-                </span>
-              )}
-              {clients.map(client => {
-                const isSelected = (selectedClient || clients[0] || '').toUpperCase() === client;
-                return (
-                  <button
-                    key={client}
-                    onClick={() => setSelectedClient(client)}
-                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${
-                      isSelected 
-                        ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' 
-                        : 'text-[#F5F7FA] opacity-70 hover:opacity-100 hover:bg-white/5'
-                    }`}
-                  >
-                    <span>{client}</span>
-                    <span 
-                      className="px-1.5 py-0.2 rounded text-[10px] font-bold"
-                      style={{
-                        backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : 'var(--surface-2)',
-                        color: isSelected ? '#FFFFFF' : 'var(--gray)'
-                      }}
-                    >
-                      {monedaDe(client)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          
-          {/* Right Header: Cmd+K and User Profile */}
-          <div className="flex items-center gap-4">
-            <span className="hidden md:inline-flex items-center text-xs text-[#F5F7FA] opacity-70">
-              <span 
-                className="px-2 py-0.5 rounded text-[11px] font-bold mr-1.5 tabular"
-                style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)', color: '#FFFFFF' }}
-              >
-                Cmd+K
+          {/* Switcher de cuenta: ⌥1–4, misma vista con otro alcance */}
+          <div className="flex items-center p-1 rounded-lg min-w-0 overflow-x-auto" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            {clients.length === 0 && (
+              <span className="px-3 py-1 text-xs text-[#E2B453]" title="El endpoint /api/cuentas no devolvió nada. Mirá Sistema › Salud.">
+                No se pudieron cargar las cuentas
               </span>
-              <span>comandos</span>
-            </span>
+            )}
+            {clients.map((client, i) => {
+              const isSelected = (selectedClient || clients[0] || '').toUpperCase() === client;
+              return (
+                <button
+                  key={client}
+                  onClick={() => setSelectedClient(client)}
+                  title={`Cambiar a ${client} (⌥${i + 1})`}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 shrink-0 ${
+                    isSelected
+                      ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm'
+                      : 'text-[#F5F7FA] opacity-70 hover:opacity-100 hover:bg-white/5'
+                  }`}
+                >
+                  <span>{client}</span>
+                  <span
+                    className="px-1.5 py-0.2 rounded text-[10px] font-bold"
+                    style={{
+                      backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : 'var(--surface-2)',
+                      color: isSelected ? '#FFFFFF' : 'var(--gray)'
+                    }}
+                  >
+                    {monedaDe(client)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-            {/* Operator Profile */}
-            <div className="flex items-center gap-2.5 pl-3" style={{ borderLeft: '1px solid var(--border)' }}>
-              <div className="text-right hidden sm:block">
-                <span className="text-xs font-bold text-[#EDEFF3] block leading-tight">
-                  Andrés
-                </span>
-                <span className="text-[10px] text-[#F5F7FA] opacity-60 block">
-                  Operador Principal
-                </span>
-              </div>
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-[#EDEFF3] shadow-sm"
-                style={{ backgroundColor: '#0062CC' }}
-              >
-                AB
-              </div>
-            </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Estado del sistema: un punto. El texto solo cuando dice algo (problema
+                o pendientes); "todo bien" no necesita ocupar lugar permanente. */}
+            {salud && (
+              <span className="flex items-center gap-1.5 text-[11px] tabular" title={salud.texto + ' · Detalle en Sistema › Salud'}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: salud.ok ? '#4ADE80' : 'var(--warn)', boxShadow: salud.ok ? 'none' : '0 0 6px var(--warn)' }} />
+                {(!salud.ok || salud.pend > 0) && (
+                  <span style={{ color: salud.ok ? 'var(--text-secondary)' : 'var(--warn)' }} className="hidden sm:inline whitespace-nowrap">{salud.texto}</span>
+                )}
+              </span>
+            )}
+
+            <Campana onAbrir={(n: Novedad) => {
+              if (n.ref_tipo === 'accionable') { const f = actionables.find(x => x.id === n.ref_id); if (f) { setSelectedClient(f.client); setSelectedAction(f); } else irA('cuenta', n.account || undefined, 'accionables'); }
+              else if (n.ref_tipo === 'propuesta') irA('cuenta', n.account || undefined, 'diagnostico');
+              else if (n.ref_tipo === 'alerta') irA('bandeja');
+              else irA('sistema');
+            }} />
+
+            <button
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+              className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold tabular text-[#EDEFF3] hover:bg-white/10 transition-colors"
+              style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)' }}
+              title="Buscar e ir a cualquier lado"
+            >
+              ⌘K
+            </button>
           </div>
         </header>
 

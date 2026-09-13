@@ -108,8 +108,8 @@ export function Tarjeta({ children, attention, sinPadding, className = '' }: {
 }) {
   return (
     <div
-      className={`glass ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
-      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-tarjeta)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
+      className={`${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
+      style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-tarjeta)', backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
     >
       {children}
     </div>
@@ -173,7 +173,7 @@ export function Collapsible({ titulo, resumen, abiertoInicial = false, children 
 }) {
   const [abierto, setAbierto] = useState(abiertoInicial);
   return (
-    <div className="glass" style={{ borderRadius: 'var(--r-tarjeta)' }}>
+    <div style={{ borderRadius: 'var(--r-tarjeta)', backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
       <button onClick={() => setAbierto(a => !a)} className="w-full flex items-center justify-between gap-3 px-4 md:px-5 py-3 text-left">
         <span className="text-[13px] font-medium text-[#EDEFF3]">{titulo}</span>
         <span className="flex items-center gap-2 shrink-0">
