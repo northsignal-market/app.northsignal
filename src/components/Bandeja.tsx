@@ -19,7 +19,7 @@ import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
-import { fmtFechaCorta, useJSON } from './ui';
+import { fmtFechaCorta, useJSON, DosPaneles } from './ui';
 import { abrirTextoAgente } from '../lib/lectura';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
@@ -168,17 +168,16 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_312px] gap-x-8 gap-y-8 items-start">
-
-        {/* ==================== COLUMNA PRINCIPAL ==================== */}
+      <DosPaneles id="bandeja" defIzq={72} izquierda={
+        // LA COLA: lo que espera tu criterio, en orden de urgencia.
         <div className="min-w-0">
 
           {/* KPIs sin caja, separados por hairlines verticales */}
           <div className="grid grid-cols-3 divide-x pb-5" style={HAIR}>
-            <div className="pr-6">
+            <div className="pr-6 pedestal">
               <div className="text-xs" style={LABEL}>Esperan tu criterio</div>
-              <div className="text-2xl font-medium tabular mt-1 cifra-luz" style={{ letterSpacing: '-0.6px' }}>{total}</div>
-              <div className="text-xs mt-1" style={LABEL}>{hoy.length > 0 ? `${hoy.length} con urgencia de hoy` : 'sin urgencias de hoy'}</div>
+              <div className="cifra-heroe tabular mt-1.5 relative">{total}</div>
+              <div className="text-xs mt-2.5" style={LABEL}>{hoy.length > 0 ? `${hoy.length} con urgencia de hoy` : 'sin urgencias de hoy'}</div>
             </div>
             <div className="px-6">
               <div className="text-xs" style={LABEL}>De un clic</div>
@@ -209,10 +208,10 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
           {/* La cola: sin caja — headers de grupo como títulos de sección, hairlines */}
           <div className="border-t" style={HAIR}>
             {total === 0 ? (
-              <div className="py-14 text-center">
-                <Check size={22} className="mx-auto mb-2" style={{ color: '#4ADE80' }} />
-                <p className="text-sm text-[#FAFAFA]">Cola vacía.</p>
-                <p className="text-xs mt-1" style={LABEL}>Si querés mirar una cuenta, está en Cuenta.</p>
+              <div className="premio rounded-2xl px-6 py-10 text-center my-4">
+                <Check size={26} className="mx-auto mb-3 opacity-90" />
+                <p className="text-lg font-medium">Nada espera tu criterio.</p>
+                <p className="text-xs mt-1.5 opacity-75">Lo próximo llega con el análisis de la mañana, o el lunes con el semanal.</p>
               </div>
             ) : (
               <>
@@ -273,9 +272,9 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
 
           <p className="text-[10px] text-center pt-5 opacity-40" style={LABEL}>j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
         </div>
-
-        {/* ==================== RAIL DERECHO ==================== */}
-        <aside className="space-y-7 lg:border-l lg:pl-8 min-w-0" style={HAIR}>
+      } derecha={
+        // EL CONTEXTO: lo que ayuda a decidir sin ser una decisión.
+        <aside className="space-y-7 min-w-0">
 
           {/* Ayer en cada cuenta */}
           <section>
@@ -390,7 +389,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             </section>
           )}
         </aside>
-      </div>
+      } />
     </div>
   );
 }
@@ -423,9 +422,10 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
   return (
     <div onClick={onClick}
       ref={el => { if (activa && el) el.scrollIntoView({ block: 'nearest' }); }}
-      className={`flex items-center gap-3 pl-5 pr-2 py-[7px] rounded-lg cursor-pointer transition-colors ${activa ? 'bg-white/[0.07]' : 'hover:bg-white/[0.04]'}`}
+      className={`grupo-fila relative flex items-center gap-3 pl-5 pr-2 py-[7px] rounded-lg cursor-pointer transition-colors ${activa ? 'bg-white/[0.07]' : ''}`}
       style={activa ? { boxShadow: 'inset 2px 0 0 var(--primary-text)' } : undefined}>
-      <span className="text-[10px] tabular w-[86px] shrink-0 truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }} title={cuenta}>{cuenta}</span>
+      <span className="fila-viva absolute inset-0 rounded-lg pointer-events-none" aria-hidden="true" />
+      <span className="relative text-[10px] tabular w-[86px] shrink-0 truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }} title={cuenta}>{cuenta}</span>
       <div className="flex-1 min-w-0">
         <div className="text-[13px] text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] truncate opacity-80" style={{ color: '#ADADAD' }}>{sub}</div>}

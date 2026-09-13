@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Check, Cpu, SlidersHorizontal } from 'lucide-react';
-import { fetchJSON, fmtFechaCorta } from './ui';
+import { fetchJSON, fmtFechaCorta, DosPaneles } from './ui';
 import { useCuentas } from '../lib/useCuentas';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable } from '../types';
@@ -177,8 +177,8 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_260px] gap-x-8 gap-y-6 items-start">
-        {/* LA LISTA: agrupada por estado, filas densas de dos líneas. */}
+      <DosPaneles id="accionables" defIzq={76} izquierda={
+        // LA LISTA: agrupada por estado, filas densas de dos líneas.
         <div className="min-w-0">
           {filtrados.length === 0 ? (
             <div className="py-16 text-center">
@@ -240,8 +240,9 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
           ))}
         </div>
 
-        {/* EL RAIL: lo que no cabe en una fila y sí cambia una decisión. */}
-        <aside className="space-y-6 xl:border-l xl:pl-7 min-w-0" style={{ borderColor: 'var(--border)' }}>
+      } derecha={
+        // EL RAIL: lo que no cabe en una fila y sí cambia una decisión.
+        <aside className="space-y-6 min-w-0">
           <section>
             <div className="text-xs mb-2.5" style={LABEL}>Dónde está el trabajo</div>
             <div className="space-y-1">
@@ -280,7 +281,7 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
             </p>
           </section>
         </aside>
-      </div>
+      } />
     </div>
   );
 }

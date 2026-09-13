@@ -12,8 +12,11 @@
  *    gráfico): un número provisional que parece final es el bug más caro.
  *  - La moneda sale de la cuenta, nunca de un mapa cableado.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+// La v4 de la librería expone Group/Panel/Separator. `Panel` se renombra:
+// acá `Panel` ya es la celda del Tablero.
+import { Group, Panel as PanelRP, Separator } from 'react-resizable-panels';
 import { Calendar, ChevronDown } from 'lucide-react';
 import {
   ResponsiveContainer, ComposedChart, Area, Line, Bar, XAxis, YAxis,
@@ -128,10 +131,60 @@ export function Panel({ col = 6, filas, alto, titulo, nota, derecha, hero, sinCa
   const clases = `${COL[col] || 'lg:col-span-6'} ${filas ? FILA[filas] || '' : ''} min-w-0`;
   if (sinCaja) return <section className={clases}>{cuerpo}</section>;
   return (
-    <section className={`${clases} tarjeta-pulse ${hero ? 'tarjeta-hero' : ''} p-4 md:p-5`}
+    <section className={`${clases} tarjeta-pulse ${hero ? 'tarjeta-hero borde-vivo' : ''} p-4 md:p-5`}
       style={{ borderRadius: 'var(--r-tarjeta)' }}>
       {cuerpo}
     </section>
+  );
+}
+
+/**
+ * DOS PANELES REDIMENSIONABLES · el ancho lo decide el operador.
+ * En una app de una sola persona la proporción entre la lista y su contexto no
+ * la sabe el diseñador: la sabe quien la usa todos los días. Se arrastra una
+ * vez y queda (autoSaveId persiste en localStorage al SOLTAR, no en cada frame
+ * del puntero: guardar por frame es escribir cientos de veces por arrastre).
+ * En móvil no hay dos columnas ni puntero: se apilan y el handle no existe.
+ */
+export function DosPaneles({ id, izquierda, derecha, defIzq = 74, minIzq = 42, minDer = 15 }: {
+  id: string; izquierda: React.ReactNode; derecha: React.ReactNode;
+  defIzq?: number; minIzq?: number; minDer?: number;
+}) {
+  const CLAVE = `ns.paneles.${id}`;
+  const [ancho, setAncho] = useState(() => (typeof window === 'undefined' ? 1280 : window.innerWidth));
+  useEffect(() => {
+    const r = () => setAncho(window.innerWidth);
+    window.addEventListener('resize', r);
+    return () => window.removeEventListener('resize', r);
+  }, []);
+  // El layout guardado se lee UNA vez al montar; si está corrupto se ignora y
+  // vale el default, nunca se rompe la vista por una preferencia vieja.
+  const guardado = useMemo<number[] | undefined>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLAVE) || 'null');
+      return Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number') ? v : undefined;
+    } catch { return undefined; }
+  }, [CLAVE]);
+
+  if (ancho < 1024) return <div className="space-y-8">{izquierda}{derecha}</div>;
+  return (
+    <Group orientation="horizontal" className="items-start"
+      defaultLayout={guardado || [defIzq, 100 - defIzq]}
+      // onLayoutChanged dispara al SOLTAR; onLayoutChange lo hace por frame del
+      // puntero y está deprecado en la librería justamente por eso.
+      onLayoutChanged={(l) => { try { localStorage.setItem(CLAVE, JSON.stringify(l)); } catch { /* modo privado */ } }}
+    >
+      <PanelRP minSize={minIzq} className="min-w-0">{izquierda}</PanelRP>
+      <Separator className="group/handle relative w-6 shrink-0 self-stretch flex items-center justify-center cursor-col-resize">
+        {/* El hairline de siempre; al pasar el mouse se enciende para avisar
+            que se puede mover. */}
+        <span className="w-px h-full transition-colors group-hover/handle:bg-[var(--primary-text)]"
+          style={{ backgroundColor: 'var(--border)' }} />
+        <span className="absolute h-9 w-[3px] rounded-full opacity-0 group-hover/handle:opacity-100 transition-opacity"
+          style={{ backgroundColor: 'var(--primary-text)' }} />
+      </Separator>
+      <PanelRP minSize={minDer} className="min-w-0">{derecha}</PanelRP>
+    </Group>
   );
 }
 
@@ -160,7 +213,7 @@ export function Tarjeta({ children, attention, sinPadding, hero, className = '' 
 }) {
   return (
     <div
-      className={`tarjeta-pulse ${hero ? 'tarjeta-hero' : ''} ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
+      className={`tarjeta-pulse ${hero ? 'tarjeta-hero borde-vivo' : ''} ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
       style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-panel)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
     >
       {children}

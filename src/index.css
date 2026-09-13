@@ -509,3 +509,79 @@ button:active, [role="button"]:active { transform: scale(0.97); }
     radial-gradient(circle, rgba(34, 211, 238, 0.10) 0%, transparent 52%);
   filter: blur(22px);
 }
+
+/* ── CARÁCTER · lo que separa "correcto" de "tuyo" ──────────────────
+   Todo lo de abajo respeta las anclas (azul dueño del acento, un solo
+   protagonista por vista, datos sobre sólido) y sube la apuesta donde
+   el lenguaje lo permite: la cifra que manda, el borde de la tarjeta
+   nivel 1, y el premio cuando no queda nada que decidir. */
+
+/* La cifra protagonista, en grande de verdad. El label queda chico a
+   propósito: el contraste de escala ES la jerarquía. */
+.cifra-heroe {
+  font-size: clamp(40px, 5vw, 62px);
+  line-height: 0.92;
+  font-weight: 500;
+  letter-spacing: -2.5px;
+  background: linear-gradient(150deg, #FFFFFF 22%, #9BC8FF 78%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Pedestal de anillos detrás de la cifra que manda (la referencia del
+   video "wrapped"). Quietos: el movimiento permanente distrae. */
+.pedestal { position: relative; }
+.pedestal::before,
+.pedestal::after {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  translate: 0 -50%;
+  border-radius: 50%;
+  border: 1px solid rgba(77, 157, 255, 0.13);
+  pointer-events: none;
+}
+.pedestal::before { width: 150px; height: 150px; }
+.pedestal::after { width: 240px; height: 240px; border-color: rgba(77, 157, 255, 0.07); }
+
+/* Borde-gradiente para la tarjeta de nivel 1: el truco de mask-composite
+   —dos capas, una recortada— da un hairline que se enciende de un lado.
+   Solo en la tarjeta hero: repetido sería papel tapiz. */
+.borde-vivo { position: relative; }
+.borde-vivo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, rgba(77,157,255,0.55), rgba(34,211,238,0.22) 38%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* La fila que se enciende desde el borde al pasar el mouse: el acento
+   entra por la izquierda, donde está el punto de prioridad. */
+.fila-viva {
+  background-image: linear-gradient(90deg, rgba(77,157,255,0.10), transparent 42%);
+  background-size: 100% 100%;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease);
+}
+.grupo-fila:hover .fila-viva { opacity: 1; }
+
+/* EL PREMIO: cuando no queda nada que decidir, la pantalla lo celebra
+   con color pleno (la tarjeta menta del video). Es el único lugar de la
+   app donde un bloque entero se pinta: el vacío de la cola es la única
+   buena noticia que un operador quiere ver. */
+.premio {
+  background: linear-gradient(150deg, #1E8F6E, #146B54 70%);
+  color: #EAFFF7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 24px 60px -28px rgba(30, 143, 110, 0.75);
+}

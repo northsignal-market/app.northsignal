@@ -39,6 +39,7 @@
     "p-queue": "^9.3.3",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-resizable-panels": "^4.12.4",
     "recharts": "^3.10.1",
     "vite": "^6.2.3",
     "zod": "^4.5.4",
