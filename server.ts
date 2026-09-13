@@ -1565,7 +1565,14 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
   // pestaña desaparecía sin rastro. Si la tabla todavía no existe, estos
   // endpoints lo DICEN en vez de fallar en silencio.
   const FALTA_TABLA = 'La tabla anuncios_generados todavía no existe: el historial no se está guardando.';
-  const sinTabla = (e: any) => e && (e.code === '42P01' || /does not exist/i.test(e.message || ''));
+  // PostgREST no devuelve 42P01: contesta "Could not find the table ... in the
+  // schema cache". Con el detector corto, el endpoint tiraba 500, el front caía
+  // a su fallback y la pantalla decía "todavía nada" — un error disfrazado de
+  // vacío legítimo, que es exactamente el modo de falla que este sistema caza.
+  const sinTabla = (e: any) => {
+    const m = `${e?.message || ''} ${e?.details || ''}`;
+    return !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache|could not find the table/i.test(m));
+  };
 
   app.get("/api/rsa/historial", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
