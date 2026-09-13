@@ -298,7 +298,11 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
       {/* El diagnóstico es un TABLERO, no una pila: cada bloque declara cuánto
           ocupa y los que se leen juntos comparten fila. Los separadores de
-          pregunta cruzan las 12 columnas. */}
+          pregunta cruzan las 12 columnas.
+          OJO AL AGREGAR UN BLOQUE: en un grid de 12, un hijo SIN col-span ocupa
+          UNA columna, no doce. El bloque de decisiones estructurales quedó a
+          85px de ancho y el texto se partía letra por letra. Todo hijo directo
+          de este grid DEBE declarar su lg:col-span. */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       {/* P4b · El diagnóstico se recorre por PREGUNTA, no por origen del dato
           (informe 14 §4: agrupar por origen es el organigrama disfrazado):
@@ -372,7 +376,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         ];
         const activas = decs.filter(([, t]) => zona(t) !== 'no');
         return (
-          <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: activas.length ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+          <div className="lg:col-span-12 p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: activas.length ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">
                 {activas.length === 0 ? 'Estructura: sin decisiones que proponer' : `${activas.length} decisión${activas.length > 1 ? 'es' : ''} estructural${activas.length > 1 ? 'es' : ''} en evaluación`}
