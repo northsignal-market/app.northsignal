@@ -3552,6 +3552,44 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     });
   });
 
+  // La evidencia del término DENTRO del drawer (informe 15): la mini-serie
+  // diaria del texto EXACTO en su alcance. Se busca como keyword y, si no hay
+  // filas, como término de búsqueda — la capa vuelve rotulada, nunca mezclada.
+  // ilike sin comodines = igualdad sin distinguir mayúsculas; jamás fuzzy:
+  // acá no se adivinan nombres de entidades.
+  app.get("/api/evidencia-termino", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    const texto = ((req.query.texto as string) || '').trim();
+    const campana = ((req.query.campana as string) || '').trim();
+    const grupo = ((req.query.grupo as string) || '').trim();
+    if (!client || !texto) return res.status(400).json({ error: 'client y texto requeridos' });
+    const consulta = async (vista: string, col: string) => {
+      let q = supabase!.from(vista).select(`date, cost, clicks, conversions, madurez`)
+        .eq('account', client).ilike(col, texto).order('date', { ascending: true }).limit(120);
+      if (campana) q = q.eq('campaign', campana);
+      if (grupo) q = q.eq('ad_group', grupo);
+      const { data } = await q;
+      return data || [];
+    };
+    let capa: string | null = 'keyword';
+    let filas = await consulta('v_keywords_daily', 'keyword');
+    if (!filas.length) { capa = 'termino'; filas = await consulta('v_search_terms_daily', 'search_term'); }
+    if (!filas.length) capa = null;
+    // Puede haber más de una fila por día (dos grupos dentro del alcance): se
+    // suma por fecha. El alcance ya lo puso el filtro, no esta suma.
+    const porDia: Record<string, any> = {};
+    for (const f of filas) {
+      const d = porDia[f.date] || { date: f.date, cost: 0, clicks: 0, conversions: 0, madurez: f.madurez };
+      d.cost += Number(f.cost || 0); d.clicks += Number(f.clicks || 0); d.conversions += Number(f.conversions || 0);
+      if (f.madurez === 'provisional') d.madurez = 'provisional';
+      porDia[f.date] = d;
+    }
+    const serie = Object.values(porDia).sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
+    const totales = serie.reduce((s: any, d: any) => ({ cost: s.cost + d.cost, clicks: s.clicks + d.clicks, conversions: s.conversions + d.conversions }), { cost: 0, clicks: 0, conversions: 0 });
+    res.json({ capa, serie, totales, dias: serie.length });
+  });
+
   // Propuestas estrategicas: las apuestas grandes. Andres aprueba, descarta, marca en test o adoptada.
   app.get("/api/propuestas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });

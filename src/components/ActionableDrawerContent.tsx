@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { avisar } from '../lib/useCuentas';
+import { avisar, useCuentas } from '../lib/useCuentas';
+import { useJSON, fmtMoneda, fmtFechaCorta } from './ui';
 import { 
   Check, Cpu, MessageSquare, Send, Clock, 
   ExternalLink, AlertCircle, ShieldAlert,
@@ -394,6 +395,23 @@ export function ActionableDrawerContent({
     const m = action.title.match(/keyword[:\s]+["']?([a-zA-Z0-9\s_-]+)["']?/i) || action.title.match(/palabra[:\s]+["']?([a-zA-Z0-9\s_-]+)["']?/i);
     return m ? m[1].trim() : null;
   }, [action.title]);
+
+  // La evidencia del término, acá adentro (informe 15): la mini-serie diaria
+  // del texto exacto dentro de su alcance. El texto sale de la Accion
+  // estructurada — el título es solo el fallback viejo. En lotes no hay una
+  // evidencia única: para eso está Datos.
+  const { moneda: monedaDe } = useCuentas();
+  const monedaEv = monedaDe(action.client);
+  const evTexto = (accionActual?.objeto?.keywords?.length || 0) > 1 ? null
+    : (accionActual?.objeto?.keyword || possibleKeyword);
+  // Radio de evidencia = radio de la acción: una negativa a nivel campaña se
+  // mira en la campaña entera, no solo en el grupo donde apareció.
+  const evCampana = accionActual?.objeto?.campana || '';
+  const evGrupo = accionActual?.parametros?.nivel === 'campana' ? '' : (accionActual?.objeto?.grupo || '');
+  const { data: evidencia } = useJSON<any>(
+    evTexto ? `/api/evidencia-termino?client=${encodeURIComponent(action.client)}&texto=${encodeURIComponent(evTexto)}${evCampana ? `&campana=${encodeURIComponent(evCampana)}` : ''}${evGrupo ? `&grupo=${encodeURIComponent(evGrupo)}` : ''}` : null,
+    null
+  );
 
   return (
     <div className="space-y-4 text-xs">
@@ -900,8 +918,61 @@ export function ActionableDrawerContent({
         )}
       </div>
 
+      {/* La evidencia embebida: qué hizo este texto, sin salir del drawer.
+          Datos queda para exploración; la métrica de éxito del informe 15 es
+          "mañanas con cero clics de sidebar". */}
+      {evTexto && (
+        <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-semibold text-[#EDEFF3] text-xs uppercase tracking-wider">La evidencia, acá</span>
+            {evidencia?.capa && (
+              <span className="text-[10px] text-[#F5F7FA] opacity-50">
+                “{evTexto}” {evidencia.capa === 'keyword' ? 'como keyword' : 'como término de búsqueda'}{evGrupo ? ` · en ${evGrupo}` : evCampana ? ` · en ${evCampana}` : ''}
+              </span>
+            )}
+          </div>
+          {!evidencia ? (
+            <p className="text-[11px] text-[#F5F7FA] opacity-40">Consultando la capa diaria…</p>
+          ) : !evidencia.capa ? (
+            <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">
+              Sin filas en la capa diaria (~17 días) para “{evTexto}” en este alcance. No es cero: puede haber gastado antes de la ventana — el histórico completo está en Datos.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular text-[#EDEFF3]">
+                <span>{fmtMoneda(evidencia.totales.cost, monedaEv)} <span className="opacity-50">gastó</span></span>
+                <span>{evidencia.totales.clicks} <span className="opacity-50">clics</span></span>
+                <span>{Number(evidencia.totales.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} <span className="opacity-50">conv</span></span>
+                {/* CPA solo con conversiones: con cero, el CPA es null, no un número */}
+                {Number(evidencia.totales.conversions) > 0 && (
+                  <span>{fmtMoneda(evidencia.totales.cost / Number(evidencia.totales.conversions), monedaEv)} <span className="opacity-50">CPA</span></span>
+                )}
+                <span className="opacity-50">en {evidencia.dias} día{evidencia.dias !== 1 ? 's' : ''} con actividad</span>
+              </div>
+              {evidencia.serie.length > 0 && (
+                <table className="w-full text-[11px] tabular">
+                  <tbody>
+                    {evidencia.serie.slice(-8).map((d: any) => (
+                      <tr key={d.date} className={d.madurez === 'provisional' ? 'opacity-50' : ''} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td className="py-1 pr-2 text-[#F5F7FA] opacity-70">{fmtFechaCorta(d.date)}{d.madurez === 'provisional' ? ' ·' : ''}</td>
+                        <td className="py-1 px-2 text-right text-[#EDEFF3]">{fmtMoneda(d.cost, monedaEv)}</td>
+                        <td className="py-1 px-2 text-right text-[#F5F7FA] opacity-80">{d.clicks} clic{d.clicks !== 1 ? 's' : ''}</td>
+                        <td className="py-1 pl-2 text-right">{Number(d.conversions) > 0 ? <span className="text-[#EDEFF3] font-semibold">{Number(d.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} conv</span> : <span className="text-[#F5F7FA] opacity-30">·</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="text-[10px] text-[#F5F7FA] opacity-40">
+                {evidencia.serie.length > 8 ? `Últimos 8 de ${evidencia.serie.length} días con actividad · ` : ''}los días con · siguen madurando · ventana diaria ~17 días.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Navigation Outlets */}
-      <div 
+      <div
         className="p-3.5 rounded-xl space-y-2"
         style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}
       >
