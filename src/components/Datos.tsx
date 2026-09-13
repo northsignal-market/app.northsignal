@@ -565,6 +565,13 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     }
   };
 
+  // Los últimos 3 días maduran (Google atribuye al día del clic). Fecha LOCAL:
+  // toISOString acá correría el corte un día en Buenos Aires.
+  const corteMadurando = useMemo(() => {
+    const d = new Date(Date.now() - 3 * 864e5);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const exportToCSV = async () => {
     if (!selectedClient) return;
     try {
@@ -590,18 +597,25 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
     if (allData.length === 0) { avisar('No hay filas para exportar con los filtros actuales.', 'info'); return; }
       
       const cols = visibleCols.length > 0 ? visibleCols : allCols;
-      const header = cols.map(c => COL_LABELS[c] || c).join(',');
-      const rows = allData.map((row: any) => 
-        cols.map(col => {
-          const val = row[col];
-          if (val === null || val === undefined) return '';
-          if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
-          return val;
-        }).join(',')
-      );
-      
-      const csv = [header, ...rows].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
+      // RFC 4180 (CRLF, comillas) + BOM UTF-8 (Excel con acentos y alemán) +
+      // guardia OWASP: una celda que empieza con = + - @ se ejecuta como fórmula
+      // al abrir el archivo — y un término de búsqueda puede empezar con =.
+      const celda = (val: any) => {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'number') return String(val);
+        let s = String(val);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+        return /[",\n\r]/.test(s) || s.startsWith("'") ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const tieneFecha = cols.includes('date');
+      const header = [...cols.map(c => celda(COL_LABELS[c] || c)), ...(tieneFecha ? ['Madurando'] : [])].join(',');
+      const rows = allData.map((row: any) => [
+        ...cols.map(col => celda(row[col])),
+        ...(tieneFecha ? [String(row.date) > corteMadurando ? 'sí' : ''] : []),
+      ].join(','));
+
+      const csv = [header, ...rows].join('\r\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
       const dl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = dl;
@@ -986,7 +1000,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
         )}
 
         <div className="flex-1 overflow-auto custom-scrollbar relative bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl shadow-sm">
-            {loading ? (
+            {loading && data.length === 0 ? (
               <div className="absolute inset-0 p-4 z-20">
                  {/* Skeleton Loader */}
                  <div className="animate-pulse flex flex-col gap-4">
@@ -1003,8 +1017,10 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                  <p className="text-sm mt-1 text-[#F5F7FA]/70">Ajusta los filtros o cambia de vista.</p>
               </div>
             ) : null}
-            
-            <table className="w-full text-left border-collapse relative min-w-[800px]">
+
+            {/* Con datos previos en pantalla, recargar atenúa en vez de tapar:
+                la tabla vieja sigue legible mientras llega la nueva. */}
+            <table className={`w-full text-left border-collapse relative min-w-[800px] transition-opacity duration-200 ${loading && data.length > 0 ? 'opacity-40 pointer-events-none' : ''}`}>
               <thead className="sticky top-0 z-30 bg-[#1A1F36] border-b border-[#0062CC]/30 shadow-md">
                 <tr>
                   {visibleCols.map((col, idx) => {
@@ -1057,7 +1073,10 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                     >
                       {visibleCols.map((col, idx) => {
                         const val = row[col];
-                        let content = formatValue(col, val, currency);
+                        let content: React.ReactNode = formatValue(col, val, currency);
+                        if (col === 'date' && typeof val === 'string' && val > corteMadurando) {
+                          content = <span title="Este día todavía madura: las conversiones pueden seguir sumándose">{content} <span className="opacity-50">⏳</span></span>;
+                        }
                         let cellClasses = `${py} px-4 tabular tabular-nums text-[13px] whitespace-nowrap ${
                           idx === 0 
                             ? 'sticky left-0 group-hover:bg-[var(--surface-2)] transition-colors z-20 border-r border-white/5 shadow-[4px_0_12px_rgba(0,0,0,0.5)] max-w-[250px] truncate ' + rowBg 
