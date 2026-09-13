@@ -11,8 +11,9 @@ import { Drawer } from './Drawer';
 import {
   PageShell, Seccion, Tarjeta, Collapsible, Chips, Vacio, Stat,
   RangoFechas, rangoPreset, type Rango, hoyLocal,
-  fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON,
+  fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON, useJSON,
 } from './ui';
+import { leerPlan, COLOR_ESTADO, type PlanLectura } from '../lib/lectura';
 
 interface SemanaProps {
   onOpenActionable?: (actionId: string) => void;
@@ -55,6 +56,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [annotationSuccess, setAnnotationSuccess] = useState(false);
 
   useEffect(() => { fetchJSON<any>(`/api/plan?client=${activeClient}`, null).then(d => d && setPlan(d)); }, [activeClient]);
+  // La lectura del plan: los hechos vienen calculados de la base; acá solo frases.
+  const { data: planLecturaData } = useJSON<PlanLectura | null>(`/api/plan-lectura?client=${activeClient}`, null);
+  const lecturaPlan = useMemo(() => leerPlan(planLecturaData, hoyLocal(0)), [planLecturaData]);
   useEffect(() => { fetchJSON<any>(`/api/pulso?client=${activeClient}&days=14`, null).then(d => d && setHallazgosSemana(d.pulsos || [])); }, [activeClient]);
   useEffect(() => { fetchJSON<any>(`/api/conversiones-grupo?client=${activeClient}&days=14`, null).then(d => d && setConvGrupo(d)); }, [activeClient]);
   useEffect(() => { fetchJSON<any>(`/api/hora-dia?client=${activeClient}`, null).then(d => d && setHoraDia(d)); }, [activeClient]);
@@ -223,19 +227,39 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         const dias = plan.pulsos.length;
         return (
           <Tarjeta>
-            <div className="flex items-center justify-between pb-2 mb-3" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div>
+            <div className="pb-2.5 mb-3 space-y-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>
-                <p className="text-[11px] text-[#F5F7FA] opacity-60">{p.contexto}</p>
+                <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular shrink-0">desde {fmtFechaCorta(p.semana)}</span>
               </div>
-              <span className="text-[10px] text-[#F5F7FA] opacity-50 tabular shrink-0">desde {fmtFechaCorta(p.semana)} · {dias} día{dias !== 1 ? 's' : ''} de evidencia</span>
+              {/* Tres renglones fijos: veredicto calculado → guía → progreso.
+                  El texto técnico del agente ya no es el subtítulo: está plegado
+                  abajo, íntegro y rotulado. Los hechos vienen de plan_lectura(). */}
+              {lecturaPlan ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_ESTADO[lecturaPlan.estadoId] }} />
+                    <span className="text-sm font-semibold text-[#FFFFFF]">{lecturaPlan.veredicto}</span>
+                  </div>
+                  {lecturaPlan.guia && (
+                    <p className="text-xs text-[#F5F7FA] opacity-85 leading-relaxed pl-4" style={{ maxWidth: '72ch' }}>
+                      {lecturaPlan.guia}
+                      {lecturaPlan.guiaDelAgente && <span className="ml-1.5 align-middle text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ backgroundColor: 'var(--surface-2)', color: 'var(--text-secondary)' }} title="Texto del plan escrito por el agente, sin resumir">análisis del agente</span>}
+                    </p>
+                  )}
+                  <p className="text-[11px] tabular text-[#F5F7FA] opacity-50 pl-4">{lecturaPlan.progreso}</p>
+                  {lecturaPlan.aviso && <p className="text-[11px] pl-4" style={{ color: 'var(--warn)' }}>{lecturaPlan.aviso}</p>}
+                </>
+              ) : (
+                <p className="text-[11px] text-[#F5F7FA] opacity-50">{dias} día{dias !== 1 ? 's' : ''} de evidencia esta semana.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               {p.indicadores.map((i: any, idx: number) => {
                 const ultimo = i.serie[i.serie.length - 1];
                 const cumpliendo = ultimo?.dias || 0;
                 return (
-                  <div key={idx} className="grid grid-cols-[minmax(140px,1fr)_auto_auto_minmax(200px,2fr)] items-center gap-3 py-1.5 px-2 rounded-lg" style={{ backgroundColor: cumpliendo >= 2 ? 'var(--primary-faint)' : 'var(--surface-2)' }}>
+                  <div key={idx} className="grid grid-cols-[minmax(140px,1fr)_auto_auto_minmax(200px,2fr)] items-center gap-3 py-1.5 px-2 rounded-lg" style={{ backgroundColor: cumpliendo >= 2 ? 'var(--primary-faint)' : 'var(--surface-2)', boxShadow: lecturaPlan?.senalClave === i.nombre ? 'inset 2px 0 0 var(--warn)' : undefined }}>
                     <div className="text-xs text-[#EDEFF3]">
                       <Termino t={nombres[i.nombre] || i.nombre}>{nombres[i.nombre] || i.nombre}</Termino>
                       {i.grupo && <span className="text-[#F5F7FA] opacity-60"> · {i.grupo}</span>}
@@ -268,6 +292,16 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   );
                 })}
               </div>
+            )}
+            {/* El análisis completo del agente: íntegro, plegado, rotulado.
+                details nativo: el buscador del navegador lo encuentra igual. */}
+            {p.contexto && (
+              <details className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                <summary className="cursor-pointer text-[11px] text-[#F5F7FA] opacity-50 hover:opacity-90 transition-opacity select-none">
+                  Análisis del agente · texto libre · {fmtFechaCorta(p.escrito_el || p.semana)}
+                </summary>
+                <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed mt-2 whitespace-pre-wrap" style={{ maxWidth: '70ch' }}>{p.contexto}</p>
+              </details>
             )}
           </Tarjeta>
         );
