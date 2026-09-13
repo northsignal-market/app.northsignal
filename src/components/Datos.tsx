@@ -725,8 +725,8 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   // Con 46 locales y 35.771 terminos, una tabla plana no se puede leer.
   if (esCadena) {
     return (
-      <div className="flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] h-full">
-        <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 shrink-0">
+      <div className="flex flex-col animate-in fade-in duration-500 text-[#F5F7FA] h-full">
+        <header className="h-16 border-b border-[var(--border)] flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center gap-3">
             <Database size={20} className="text-[#4D9DFF]" />
             <div>
@@ -743,7 +743,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   }
 
   return (
-    <div className={`flex flex-col bg-[#1A1F36] animate-in fade-in duration-500 text-[#F5F7FA] ${isFullscreen ? 'fixed inset-0 z-[200]' : 'h-full'}`}>
+    <div className={`flex flex-col animate-in fade-in duration-500 text-[#F5F7FA] ${isFullscreen ? 'fixed inset-0 z-[200]' : 'h-full'}`}>
       {/* El hilo de la cadena: viniste desde un accionable, la vuelta es un clic
           y restaura el drawer. Solo aparece cuando hay origen. */}
       {volverA && (
@@ -753,63 +753,55 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           ← {volverA.etiqueta}
         </button>
       )}
-      <header className="h-16 border-b border-[#0062CC]/20 flex items-center justify-between px-8 bg-[#1A1F36] shrink-0 z-10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Database size={20} className="text-[#4D9DFF]" />
-          <h1 className="text-lg font-medium text-[#EDEFF3] tracking-wide">Datos</h1>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[#F5F7FA]/60 font-medium">Density:</span>
-            <div className="relative">
-              <select aria-label="Density" 
-                value={density}
-                onChange={(e) => setDensity(e.target.value as any)}
-                className="appearance-none bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg pl-3 pr-8 py-1.5 text-sm text-[#EDEFF3] focus:outline-none focus:border-[#0062CC] transition-all cursor-pointer"
-              >
-                <option value="compact" className="bg-[#1A1F36]">Compacta</option>
-                <option value="normal" className="bg-[#1A1F36]">Normal</option>
-                <option value="comfortable" className="bg-[#1A1F36]">Cómoda</option>
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-[#F5F7FA]/60 pointer-events-none" size={14} />
-            </div>
-          </div>
+      {/* Sin título propio: el nav ya dice Datos y el header dice la cuenta.
+          Los controles son de la HERRAMIENTA (densidad, exportar, pantalla
+          completa) y viven compactos a la derecha, en castellano como el resto
+          de la app: acá quedaban "Density" y "PDF Report" sueltos en inglés. */}
+      <header className="h-12 flex items-center justify-end gap-1.5 px-5 md:px-7 shrink-0 z-10" style={{ borderBottom: '1px solid var(--border)' }}>
+        <select aria-label="Densidad de las filas" title="Densidad de las filas"
+          value={density}
+          onChange={(e) => setDensity(e.target.value as any)}
+          className="rounded-lg px-2 py-1 text-[11px] text-[#EDEFF3] focus:outline-none cursor-pointer"
+          style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
+        >
+          <option value="compact">Densidad · compacta</option>
+          <option value="normal">Densidad · normal</option>
+          <option value="comfortable">Densidad · cómoda</option>
+        </select>
 
-          <div className="flex items-center gap-3">
-            <button aria-label="Exportar a PDF" title="Exportar a PDF" 
-              onClick={exportToPDF}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
-            >
-              <FileText size={14} />
-              PDF Report
-            </button>
-            
-            <button aria-label="Exportar a CSV" title="Exportar a CSV" 
-              onClick={exportToCSV}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
-            >
-              <Download size={14} />
-              CSV
-            </button>
+        <button aria-label="Exportar a PDF" title="Exportar la vista a PDF"
+          onClick={exportToPDF}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors hover:bg-white/5"
+          style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
+        >
+          <FileText size={12} /> PDF
+        </button>
 
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors font-medium shadow-sm ${isFullscreen ? 'bg-[#0062CC] text-[#EDEFF3] border-[#0062CC]' : 'bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#EDEFF3] border-[#0062CC]/30'}`}
-            >
-              {isFullscreen ? <X size={14} /> : <Layers size={14} />}
-              {isFullscreen ? 'Contraer' : 'Pantalla Completa'}
-            </button>
-          </div>
-        </div>
+        <button aria-label="Exportar a CSV" title="Exportar la vista a CSV"
+          onClick={exportToCSV}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors hover:bg-white/5"
+          style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
+        >
+          <Download size={12} /> CSV
+        </button>
+
+        <button
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors ${isFullscreen ? 'bg-[#0062CC] text-[#EDEFF3]' : 'hover:bg-white/5'}`}
+          style={isFullscreen ? undefined : { color: '#ADADAD', border: '1px solid var(--border)' }}
+        >
+          {isFullscreen ? <X size={12} /> : <Layers size={12} />}
+          {isFullscreen ? 'Salir' : 'Pantalla completa'}
+        </button>
       </header>
 
-      <div className="flex-1 flex flex-col p-4 overflow-hidden bg-[#1A1F36] relative">
+      <div className="flex-1 flex flex-col px-5 md:px-7 py-4 overflow-hidden relative">
       
         
 
 <div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
-          <div className="flex gap-2 bg-[#1A1F36]/80 p-1 rounded-xl border border-[#0062CC]/20 overflow-x-auto custom-scrollbar shadow-sm">
+          <div className="flex gap-2 p-1 rounded-xl border border-[var(--border)] overflow-x-auto custom-scrollbar shadow-sm">
             {(['Por semana', 'Por día', 'Diagnóstico'] as const).map(grupo => {
               const items = Object.entries(VIEW_CONFIGS).filter(([, cfg]: any) => (cfg.grupo || 'Por semana') === grupo);
               if (!items.length) return null;
@@ -818,7 +810,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                   <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-40 px-1.5 whitespace-nowrap">{grupo}</span>
                   {items.map(([val, config]: any) => (
                     <button key={val} onClick={() => setActiveView(val)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#EDEFF3] hover:bg-[#0062CC]/15'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#EDEFF3] hover:bg-white/5'}`}>
                       {config.label}
                     </button>
                   ))}
@@ -832,14 +824,14 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           <div className="relative z-[60]">
             <button 
               onClick={() => setShowColSelector(!showColSelector)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1A1F36] hover:bg-[#0062CC]/15 text-[#EDEFF3] border border-[#0062CC]/30 text-sm transition-colors font-medium shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--surface-1)] hover:bg-white/5 text-[#EDEFF3] border border-[var(--border-strong)] text-sm transition-colors font-medium shadow-sm"
             >
               <Settings2 size={16} className="text-[#4D9DFF]" />
               Personalizar Columnas
             </button>
             {showColSelector && (
-              <div className="absolute right-0 top-full mt-2 w-64 bg-[#1A1F36] border border-[#0062CC]/30 rounded-xl shadow-2xl z-[100] p-2">
-                 <div className="flex justify-between items-center px-3 py-2 border-b border-[#0062CC]/20 mb-2">
+              <div className="absolute right-0 top-full mt-2 w-64 bg-[var(--surface-1)] border border-[var(--border-strong)] rounded-xl shadow-2xl z-[100] p-2">
+                 <div className="flex justify-between items-center px-3 py-2 border-b border-[var(--border)] mb-2">
                    <span className="text-xs font-semibold text-[#F5F7FA]/70">Mostrar Columnas</span>
                    <button onClick={() => {
                       const defaults = DEFAULT_COLS[activeView] || allCols;
@@ -849,12 +841,12 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                  </div>
                  <div className="max-h-64 overflow-y-auto custom-scrollbar">
                    {allCols.map(c => (
-                     <label key={c} className="flex items-center gap-3 px-3 py-2 hover:bg-[#0062CC]/15 rounded-lg cursor-pointer transition-colors">
+                     <label key={c} className="flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
                        <input 
                          type="checkbox"
                          checked={visibleCols.includes(c)}
                          onChange={() => toggleCol(c)}
-                         className="rounded border-[#0062CC]/30 bg-[#1A1F36] text-[#4D9DFF] focus:ring-0 focus:ring-offset-0"
+                         className="rounded border-[var(--border-strong)] bg-[var(--surface-1)] text-[#4D9DFF] focus:ring-0 focus:ring-offset-0"
                        />
                        <span className="text-sm text-[#EDEFF3]">{COL_LABELS[c] || c}</span>
                      </label>
@@ -942,18 +934,21 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           </div>
         </div>
 
-        {/* El resumen antes del detalle: los totales del filtro actual */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-1 shrink-0">
+        {/* Los totales de lo que está filtrado, sin cajas: celdas separadas por
+            hairlines, como en el resto de la app. Cinco tarjetas idénticas en
+            fila era justo el grid uniforme que el lenguaje prohíbe. */}
+        <div className="grid grid-cols-2 md:grid-cols-5 divide-x [&>*]:px-4 [&>*:first-child]:pl-0 py-2 mb-1 shrink-0" style={{ borderColor: 'var(--border)' }}>
           {[
-            { label: 'Inversión (filtro)', valor: formatValue('cost', totals.cost || 0, currency) },
-            { label: 'Conversiones (filtro)', valor: String(totals.conversions || 0) },
-            { label: 'CPA ponderado', valor: formatValue('cpa', totals.cpa || 0, currency), azul: true },
-            { label: 'CPC promedio', valor: formatValue('avg_cpc', totals.avg_cpc || 0, currency) },
-            { label: 'Restricción principal', valor: totals?.limitacion ? String(totals.limitacion).toUpperCase() : 'N/A', azul: true, title: totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen' },
+            { label: 'Inversión', valor: formatValue('cost', totals.cost || 0, currency), nota: 'en el filtro' },
+            { label: 'Conversiones', valor: String(totals.conversions || 0), nota: 'en el filtro' },
+            { label: 'CPA ponderado', valor: formatValue('cpa', totals.cpa || 0, currency), nota: 'del período' },
+            { label: 'CPC promedio', valor: formatValue('avg_cpc', totals.avg_cpc || 0, currency), nota: 'del período' },
+            { label: 'Restricción principal', valor: totals?.limitacion ? String(totals.limitacion) : '—', nota: totals.limitacion === 'presupuesto' ? 'más plata trae volumen' : totals?.limitacion ? 'más plata NO trae volumen' : 'sin dato en la ventana', title: totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen' },
           ].map((k: any) => (
-            <div key={k.label} className="surface p-2.5" style={{ borderRadius: 'var(--r-panel)' }} title={k.title}>
-              <p className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 mb-0.5">{k.label}</p>
-              <h3 className={`text-sm font-semibold tabular ${k.azul ? 'text-[#4D9DFF]' : 'text-[#EDEFF3]'}`}>{k.valor}</h3>
+            <div key={k.label} className="min-w-0" title={k.title}>
+              <div className="text-[11px] truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>{k.label}</div>
+              <div className="text-lg font-medium tabular text-[#FAFAFA] mt-0.5 truncate" style={{ letterSpacing: '-0.4px' }}>{k.valor}</div>
+              <div className="text-[10px] truncate" style={{ color: '#ADADAD', opacity: 0.75 }}>{k.nota}</div>
             </div>
           ))}
         </div>
@@ -961,7 +956,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         {filters.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4 shrink-0">
             {filters.map((f, i) => (
-              <span key={i} className="flex items-center gap-1.5 bg-[#0062CC]/20 text-[#4D9DFF] text-xs px-2.5 py-1 rounded-lg border border-[#0062CC]/30 font-medium">
+              <span key={i} className="flex items-center gap-1.5 bg-[var(--primary-soft)] text-[#4D9DFF] text-xs px-2.5 py-1 rounded-lg border border-[var(--border-strong)] font-medium">
                 {COL_LABELS[f.col]||f.col} {f.op} "{f.val}"
                 <button onClick={() => removeFilter(i)} className="hover:text-[#EDEFF3]"><X size={12}/></button>
               </span>
@@ -1008,15 +1003,15 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           </div>
         )}
 
-        <div className="flex-1 overflow-auto custom-scrollbar relative bg-[#1A1F36] border border-[#0062CC]/20 rounded-2xl shadow-sm">
+        <div className="flex-1 overflow-auto custom-scrollbar relative bg-[var(--surface-1)] border border-[var(--border)] rounded-2xl shadow-sm">
             {loading && data.length === 0 ? (
               <div className="absolute inset-0 p-4 z-20">
                  {/* Skeleton Loader */}
                  <div className="animate-pulse flex flex-col gap-4">
-                   <div className="h-8 bg-[#0062CC]/10 rounded-md w-full"></div>
-                   <div className="h-8 bg-[#0062CC]/10 rounded-md w-full"></div>
-                   <div className="h-8 bg-[#0062CC]/10 rounded-md w-full"></div>
-                   <div className="h-8 bg-[#0062CC]/10 rounded-md w-full"></div>
+                   <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
+                   <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
+                   <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
+                   <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
                  </div>
               </div>
             ) : data.length === 0 ? (
@@ -1030,7 +1025,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             {/* Con datos previos en pantalla, recargar atenúa en vez de tapar:
                 la tabla vieja sigue legible mientras llega la nueva. */}
             <table className={`w-full text-left border-collapse relative min-w-[800px] transition-opacity duration-200 ${loading && data.length > 0 ? 'opacity-40 pointer-events-none' : ''}`}>
-              <thead className="sticky top-0 z-30 bg-[#1A1F36] border-b border-[#0062CC]/30 shadow-md">
+              <thead className="sticky top-0 z-30 bg-[var(--surface-1)] border-b border-[var(--border-strong)] shadow-md">
                 <tr>
                   {visibleCols.map((col, idx) => {
                     const isSorted = orderBy === col;
@@ -1042,8 +1037,8 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                       onDragStart={(e) => handleDragStart(e, col)}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, col)}
-                      className={`group ${draggedCol === col ? 'opacity-50' : ''} ${idx === 0 ? 'sticky left-0 z-50 bg-[#1A1F36] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.5)]' : ''} py-3 px-4 text-xs font-semibold text-[#F5F7FA] opacity-80 uppercase tracking-wider cursor-pointer hover:bg-white/5 transition-colors border-b border-white/10 ${
-                          idx === 0 ? 'sticky left-0 bg-[#1A1F36] z-40 border-r border-white/5 max-w-[250px] truncate shadow-[4px_0_12px_rgba(0,0,0,0.5)]' : ''
+                      className={`group ${draggedCol === col ? 'opacity-50' : ''} ${idx === 0 ? 'sticky left-0 z-50 bg-[var(--surface-1)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.5)]' : ''} py-3 px-4 text-xs font-semibold text-[#F5F7FA] opacity-80 uppercase tracking-wider cursor-pointer hover:bg-white/5 transition-colors border-b border-white/10 ${
+                          idx === 0 ? 'sticky left-0 bg-[var(--surface-1)] z-40 border-r border-white/5 max-w-[250px] truncate shadow-[4px_0_12px_rgba(0,0,0,0.5)]' : ''
                         }`} 
                       >
                         <div className={`flex items-center gap-2 ${idx > 0 ? 'justify-end' : ''}`}>
@@ -1067,7 +1062,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
               </thead>
               <tbody className="divide-y divide-white/5">
                 {data.map((row, i) => {
-                  const rowBg = i % 2 === 0 ? 'bg-[#1A1F36]' : 'bg-[var(--surface-1)]';
+                  const rowBg = i % 2 === 0 ? 'bg-[var(--surface-1)]' : 'bg-[var(--surface-1)]';
                   const py = density === 'compact' ? 'py-1.5' : density === 'comfortable' ? 'py-4' : 'py-3';
                   return (
                     <tr 
@@ -1106,7 +1101,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                         let title = '';
 
                         if (col === 'quality_score' && val !== null) {
-                          if (val <= 4) { cellBg = 'bg-[#0062CC]/10 text-[#4D9DFF]'; }
+                          if (val <= 4) { cellBg = 'bg-[var(--primary-faint)] text-[#4D9DFF]'; }
                           else if (val <= 6) { cellBg = 'bg-[var(--primary-faint)]/10 text-[#F5F7FA]'; }
                           else { cellBg = 'bg-[var(--surface-2)]/10 text-[#EDEFF3]'; }
                         }
@@ -1121,7 +1116,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                         }
                         
                         if (col === 'lost_is_rank' && val > 40) {
-                          cellBg = 'bg-[#0062CC]/10 text-[#4D9DFF]';
+                          cellBg = 'bg-[var(--primary-faint)] text-[#4D9DFF]';
                           title = 'subir presupuesto NO resuelve esto';
                         }
                         
@@ -1187,7 +1182,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             <button 
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#4D9DFF] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-[var(--primary-faint)] hover:bg-[var(--primary-soft)] text-[#4D9DFF] border border-[var(--border-strong)] text-sm disabled:opacity-50 disabled:hover:bg-[var(--primary-faint)] font-medium transition-colors"
             >
               Anterior
             </button>
@@ -1197,7 +1192,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             <button 
               onClick={() => setPage(p => p + 1)}
               disabled={page * limit >= totalCount}
-              className="px-3 py-1.5 rounded-lg bg-[#0062CC]/10 hover:bg-[#0062CC]/20 text-[#4D9DFF] border border-[#0062CC]/30 text-sm disabled:opacity-50 disabled:hover:bg-[#0062CC]/10 font-medium transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-[var(--primary-faint)] hover:bg-[var(--primary-soft)] text-[#4D9DFF] border border-[var(--border-strong)] text-sm disabled:opacity-50 disabled:hover:bg-[var(--primary-faint)] font-medium transition-colors"
             >
               Siguiente
             </button>
@@ -1219,7 +1214,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         )}
 
         {(totals as any).dataIntegrity && ((totals as any).dataIntegrity.diff_adgroup > 0 || (totals as any).dataIntegrity.diff_keyword > 0) && (
-           <div className="mb-6 p-4 rounded-xl bg-[#0062CC]/10 border border-[#0062CC]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
+           <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)] border border-[var(--border-strong)] flex items-start justify-between gap-3 shrink-0 shadow-sm">
              <div className="flex items-start gap-3">
                 <AlertCircle className="text-[#4D9DFF] shrink-0 mt-0.5" size={18} />
                 <p className="text-sm font-medium text-[#4D9DFF]">
@@ -1234,9 +1229,9 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         
       <div className="mt-4 space-y-3">
         {burnRate && (
-          <div className="mb-6 p-5 rounded-xl bg-[#1A1F36] border border-[#0062CC]/20 flex items-center justify-between gap-4 shrink-0 shadow-sm">
+          <div className="mb-6 p-5 rounded-xl bg-[var(--surface-1)] border border-[var(--border)] flex items-center justify-between gap-4 shrink-0 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[#0062CC]/10 border-[#0062CC]/30 text-[#4D9DFF]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#EDEFF3]'}`}>
+              <div className={`p-2 rounded-lg border ${burnRate.status === 'over' ? 'bg-[var(--primary-faint)] border-[var(--border-strong)] text-[#4D9DFF]' : burnRate.status === 'under' ? 'bg-[var(--primary-faint)]/10 border-[var(--border-strong)]/30 text-[#F5F7FA]' : 'bg-[var(--surface-2)]/10 border-[#FFFFFF]/30 text-[#EDEFF3]'}`}>
                  <TrendingUp size={20} />
               </div>
               <div>
@@ -1251,7 +1246,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                   {formatValue('gasto', burnRate.projectedTotal, monedaDe(selectedClient))}
                 </p>
               </div>
-              <div className="w-px h-10 bg-[#0062CC]/20"></div>
+              <div className="w-px h-10 bg-[var(--primary-soft)]"></div>
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
                 <p className="text-lg font-bold tabular text-[#EDEFF3]">

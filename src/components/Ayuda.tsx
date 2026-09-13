@@ -1,15 +1,25 @@
 /**
- * Ayuda flotante: un botón abajo a la derecha con dos cosas.
+ * Ayuda flotante: preguntar y reportar, en UNA pastilla discreta.
  *  - Preguntar: el asistente, que sabe la app y consulta los datos.
  *  - Reportar: un ticket para Claude, con la página y la cuenta ya cargadas.
- * Mismo estilo que el resto: superficies de la paleta, sin tarjetas nuevas.
+ *
+ * Antes eran DOS círculos apilados compitiendo con el contenido: dos botones
+ * flotantes para dos cosas que se eligen dentro del mismo panel es ruido en la
+ * esquina de todas las pantallas. Ahora es una pastilla que se corre del paso,
+ * y el panel usa el vidrio del chrome como el resto del marco.
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Bug, X, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 type Msg = { role: 'user' | 'assistant'; content: string };
-const NOMBRES: Record<string, string> = { bandeja: 'Bandeja', cuenta: 'Cuenta', datos: 'Datos', herramientas: 'Herramientas', sistema: 'Sistema' };
+const NOMBRES: Record<string, string> = { bandeja: 'Bandeja', cuenta: 'Cuenta', datos: 'Datos', herramientas: 'Anuncios', sistema: 'Sistema' };
+const LABEL = { color: '#ADADAD', letterSpacing: '0.3px' } as const;
+const CAMPO: React.CSSProperties = {
+  border: '1px solid var(--border-strong)',
+  backgroundColor: 'color-mix(in srgb, var(--navy) 55%, transparent)',
+  borderRadius: 10,
+};
 
 export function Ayuda({ pagina }: { pagina: string }) {
   const { selectedClient } = useAppStore();
@@ -22,6 +32,14 @@ export function Ayuda({ pagina }: { pagina: string }) {
   const [ticketOk, setTicketOk] = useState<number | null>(null);
   const fin = useRef<HTMLDivElement>(null);
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth' }); }, [mensajes, pensando]);
+
+  // Esc cierra: es el gesto que ya usan el drawer y la paleta.
+  useEffect(() => {
+    if (!abierto) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(null); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [abierto]);
 
   const preguntar = async () => {
     const q = texto.trim(); if (!q || pensando) return;
@@ -48,68 +66,116 @@ export function Ayuda({ pagina }: { pagina: string }) {
 
   return (
     <>
-      {/* Botones flotantes */}
+      {/* Una pastilla, no dos círculos. Baja opacidad hasta que la mirás. */}
       {!abierto && (
-        <div className="fixed bottom-5 right-5 z-[90] flex flex-col gap-2">
-          <button onClick={() => setAbierto('chat')} title="Preguntar sobre la app o las cuentas" className="w-11 h-11 rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform" style={{ backgroundColor: 'var(--primary)', color: '#FFFFFF' }}><MessageCircle size={18} /></button>
-          <button onClick={() => { setAbierto('ticket'); setTicketOk(null); }} title="Algo no cuadra: reportarlo" className="w-11 h-11 rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border-strong)', color: '#F5F7FA' }}><Bug size={16} /></button>
-        </div>
+        <button
+          onClick={() => setAbierto('chat')}
+          title="Preguntar o reportar algo"
+          className="fixed bottom-4 right-4 z-[90] hidden sm:flex items-center gap-2 pl-3 pr-3.5 py-2 rounded-full text-[11px] text-[#EDEFF3] opacity-70 hover:opacity-100 transition-all hover:-translate-y-px glass-dense"
+          style={{ boxShadow: '0 10px 30px -12px rgba(0,0,0,0.8)' }}
+        >
+          <MessageCircle size={13} style={{ color: 'var(--primary-text)' }} />
+          Preguntar
+        </button>
+      )}
+      {/* En el teléfono la pastilla chocaría con la barra de navegación: círculo. */}
+      {!abierto && (
+        <button onClick={() => setAbierto('chat')} aria-label="Preguntar o reportar algo"
+          className="fixed bottom-16 right-4 z-[90] sm:hidden w-11 h-11 rounded-full flex items-center justify-center glass-dense"
+          style={{ boxShadow: '0 10px 30px -12px rgba(0,0,0,0.8)' }}>
+          <MessageCircle size={17} style={{ color: 'var(--primary-text)' }} />
+        </button>
       )}
 
-      {/* Panel */}
       {abierto && (
-        <div className="fixed bottom-5 right-5 z-[90] w-[380px] max-w-[calc(100vw-40px)] rounded-2xl flex flex-col shadow-2xl" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border-strong)', maxHeight: '70vh' }}>
-          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-            <div className="flex gap-1">
-              <button onClick={() => setAbierto('chat')} className={`px-2.5 py-1 rounded-md text-xs ${abierto === 'chat' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Preguntar</button>
-              <button onClick={() => { setAbierto('ticket'); setTicketOk(null); }} className={`px-2.5 py-1 rounded-md text-xs ${abierto === 'ticket' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>Reportar</button>
+        <div className="fixed bottom-4 right-4 z-[90] w-[390px] max-w-[calc(100vw-32px)] rounded-2xl flex flex-col glass"
+          style={{ borderRadius: 16, maxHeight: '72vh', boxShadow: '0 28px 70px -20px rgba(0,0,0,0.85)' }}>
+          <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+              {[
+                { id: 'chat' as const, label: 'Preguntar' },
+                { id: 'ticket' as const, label: 'Reportar' },
+              ].map(t => (
+                <button key={t.id} onClick={() => { setAbierto(t.id); if (t.id === 'ticket') setTicketOk(null); }}
+                  className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${abierto === t.id ? 'bg-white/10 text-[#FAFAFA]' : 'hover:text-[#FAFAFA]'}`}
+                  style={abierto === t.id ? undefined : LABEL}>
+                  {t.label}
+                </button>
+              ))}
             </div>
-            <button onClick={() => setAbierto(null)} className="text-[#F5F7FA] opacity-60 hover:opacity-100"><X size={16} /></button>
+            <button onClick={() => setAbierto(null)} aria-label="Cerrar" title="Cerrar · Esc"
+              className="p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-white/5" style={{ color: '#ADADAD' }}><X size={14} /></button>
           </div>
 
           {abierto === 'chat' ? (
             <>
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 min-h-[200px]">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 min-h-[190px]">
                 {mensajes.length === 0 && (
-                  <div className="text-xs text-[#F5F7FA] opacity-60 leading-relaxed space-y-2">
-                    <p>Preguntame dónde está algo, qué significa un término, o cómo va una cuenta. Consulto los datos reales; no invento números.</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {['¿Cómo va ' + (selectedClient || 'la cuenta') + '?', '¿Qué es cuota perdida por ranking?', '¿Dónde apruebo el reporte al cliente?', '¿Qué hago con lo que espera confirmación?', '¿Qué dice el plan de esta semana?'].map(q => (
-                        <button key={q} onClick={() => setTexto(q)} className="px-2 py-1 rounded-md text-[11px] text-[#F5F7FA]" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>{q}</button>
+                  <div className="space-y-2.5">
+                    <p className="text-[11px] leading-relaxed" style={LABEL}>
+                      Preguntame dónde está algo, qué significa un término, o cómo va una cuenta.
+                      Consulto los datos reales; no invento números.
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {['¿Cómo va ' + (selectedClient || 'la cuenta') + '?', '¿Qué es cuota perdida por ranking?', '¿Qué dice el plan de esta semana?'].map(q => (
+                        <button key={q} onClick={() => setTexto(q)} className="px-2 py-1 rounded-md text-[10px] text-[#F5F7FA] hover:bg-white/5 transition-colors"
+                          style={{ border: '1px solid var(--border)' }}>{q}</button>
                       ))}
                     </div>
                   </div>
                 )}
                 {mensajes.map((m, i) => (
-                  <div key={i} className={`text-xs leading-relaxed whitespace-pre-wrap rounded-lg px-3 py-2 ${m.role === 'user' ? 'ml-8 text-[#EDEFF3]' : 'mr-4 text-[#F5F7FA]'}`} style={{ backgroundColor: m.role === 'user' ? 'var(--primary-faint)' : 'var(--surface-2)' }}>{m.content}</div>
+                  <div key={i} className={`text-[12px] leading-relaxed whitespace-pre-wrap rounded-xl px-3 py-2 ${m.role === 'user' ? 'ml-8 text-[#EDEFF3]' : 'mr-4 text-[#F5F7FA]'}`}
+                    style={{ backgroundColor: m.role === 'user' ? 'var(--primary-faint)' : 'var(--surface-2)' }}>{m.content}</div>
                 ))}
-                {pensando && <div className="mr-4 rounded-lg px-3 py-2 text-xs text-[#F5F7FA] opacity-60 flex items-center gap-2" style={{ backgroundColor: 'var(--surface-2)' }}><Loader2 size={12} className="animate-spin" /> Consultando…</div>}
+                {pensando && (
+                  <div className="mr-4 rounded-xl px-3 py-2 text-[11px] flex items-center gap-2" style={{ backgroundColor: 'var(--surface-2)', ...LABEL }}>
+                    <Loader2 size={11} className="animate-spin" /> Consultando los datos…
+                  </div>
+                )}
                 <div ref={fin} />
               </div>
-              <div className="flex gap-2 p-3" style={{ borderTop: '1px solid var(--border)' }}>
-                <input aria-label="Texto" value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => e.key === 'Enter' && preguntar()} placeholder="Escribí tu pregunta…" className="flex-1 bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#EDEFF3] focus:outline-none focus:border-[#0062CC]" />
-                <button aria-label="Enviar la pregunta" title="Enviar la pregunta" onClick={preguntar} disabled={!texto.trim() || pensando} className="px-3 rounded-lg bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40"><Send size={14} /></button>
+              <div className="flex gap-2 p-2.5" style={{ borderTop: '1px solid var(--border)' }}>
+                <input aria-label="Tu pregunta" value={texto} onChange={e => setTexto(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && preguntar()} placeholder="Escribí tu pregunta…"
+                  className="flex-1 px-3 py-1.5 text-[12px] text-[#EDEFF3] placeholder-[#F5F7FA]/30 focus:outline-none" style={CAMPO} />
+                <button aria-label="Enviar la pregunta" title="Enviar" onClick={preguntar} disabled={!texto.trim() || pensando}
+                  className="px-3 rounded-lg bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40" style={{ borderRadius: 10 }}><Send size={13} /></button>
               </div>
             </>
           ) : (
-            <div className="p-3 space-y-2">
+            <div className="p-3 space-y-2.5">
               {ticketOk ? (
-                <div className="text-xs text-[#F5F7FA] leading-relaxed py-4 text-center">
+                <div className="text-[12px] leading-relaxed py-5 text-center" style={{ color: '#F5F7FA' }}>
                   <div className="text-[#EDEFF3] font-medium mb-1">Ticket #{ticketOk} guardado.</div>
-                  Claude lo lee al empezar la próxima sesión de trabajo y te responde ahí, o lo resuelve en el siguiente fix.
-                  <button onClick={() => setTicketOk(null)} className="block mx-auto mt-3 text-[11px] text-[#4D9DFF]">Crear otro</button>
+                  Claude lo lee al empezar la próxima sesión y responde ahí, o lo resuelve en el siguiente fix.
+                  <button onClick={() => setTicketOk(null)} className="block mx-auto mt-3 text-[11px]" style={{ color: '#4D9DFF' }}>Reportar otra cosa</button>
                 </div>
               ) : (
                 <>
-                  <p className="text-[11px] text-[#F5F7FA] opacity-60">Estás en <span className="text-[#EDEFF3]">{NOMBRES[pagina] || pagina}</span>{selectedClient ? <> con <span className="text-[#EDEFF3]">{selectedClient}</span></> : ''}. Eso viaja con el ticket.</p>
-                  <div className="flex gap-1">
+                  <p className="text-[11px] leading-relaxed" style={LABEL}>
+                    Estás en <span className="text-[#EDEFF3]">{NOMBRES[pagina] || pagina}</span>
+                    {selectedClient ? <> con <span className="text-[#EDEFF3]">{selectedClient}</span></> : ''}. Eso viaja con el ticket.
+                  </p>
+                  <div className="flex gap-1 flex-wrap">
                     {(['bug', 'dato_incorrecto', 'mejora', 'pregunta'] as const).map(t => (
-                      <button key={t} onClick={() => setTicket(k => ({ ...k, tipo: t }))} className={`px-2 py-1 rounded-md text-[11px] ${ticket.tipo === t ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`} style={ticket.tipo !== t ? { border: '1px solid var(--border)' } : {}}>{t === 'bug' ? 'Algo falla' : t === 'dato_incorrecto' ? 'Un dato está mal' : t === 'mejora' ? 'Idea' : 'Pregunta'}</button>
+                      <button key={t} onClick={() => setTicket(k => ({ ...k, tipo: t }))}
+                        className={`px-2 py-1 rounded-md text-[10px] transition-colors ${ticket.tipo === t ? 'bg-white/10 text-[#FAFAFA]' : 'hover:text-[#FAFAFA]'}`}
+                        style={ticket.tipo === t ? undefined : { ...LABEL, border: '1px solid var(--border)' }}>
+                        {t === 'bug' ? 'Algo falla' : t === 'dato_incorrecto' ? 'Un dato está mal' : t === 'mejora' ? 'Idea' : 'Pregunta'}
+                      </button>
                     ))}
                   </div>
-                  <input aria-label="Ticket" value={ticket.titulo} onChange={e => setTicket(k => ({ ...k, titulo: e.target.value }))} placeholder="Qué pasa, en una línea" className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#EDEFF3] focus:outline-none focus:border-[#0062CC]" />
-                  <textarea aria-label="Ticket" value={ticket.descripcion} onChange={e => setTicket(k => ({ ...k, descripcion: e.target.value }))} rows={4} placeholder="Detalle si querés: qué esperabas ver, qué viste, qué número no cuadra." className="w-full bg-[#1A1F36] border border-[#0062CC]/30 rounded-lg px-3 py-1.5 text-xs text-[#EDEFF3] focus:outline-none focus:border-[#0062CC]" />
-                  <button onClick={enviarTicket} disabled={!ticket.titulo.trim() || enviando} className="w-full py-2 rounded-lg bg-[#0062CC] text-[#EDEFF3] text-xs font-medium disabled:opacity-40">{enviando ? 'Guardando…' : 'Enviar a Claude'}</button>
+                  <input aria-label="Qué pasa" value={ticket.titulo} onChange={e => setTicket(k => ({ ...k, titulo: e.target.value }))}
+                    placeholder="Qué pasa, en una línea"
+                    className="w-full px-3 py-1.5 text-[12px] text-[#EDEFF3] placeholder-[#F5F7FA]/30 focus:outline-none" style={CAMPO} />
+                  <textarea aria-label="Detalle" value={ticket.descripcion} onChange={e => setTicket(k => ({ ...k, descripcion: e.target.value }))} rows={4}
+                    placeholder="Qué esperabas ver, qué viste, qué número no cuadra."
+                    className="w-full px-3 py-1.5 text-[12px] text-[#EDEFF3] placeholder-[#F5F7FA]/30 focus:outline-none leading-relaxed" style={CAMPO} />
+                  <button onClick={enviarTicket} disabled={!ticket.titulo.trim() || enviando}
+                    className="w-full py-2 rounded-lg bg-[#0062CC] text-[#EDEFF3] text-[12px] font-medium disabled:opacity-40" style={{ borderRadius: 10 }}>
+                    {enviando ? 'Guardando…' : 'Enviar a Claude'}
+                  </button>
                 </>
               )}
             </div>

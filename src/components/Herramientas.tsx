@@ -7,46 +7,25 @@ export function Herramientas() {
   const [activeTool, setActiveTool] = useState<'rsa' | 'playbook'>('rsa');
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div>
-          <h1 className="text-xl font-bold text-[#EDEFF3]">
-            Herramientas & Automatizaciones
-          </h1>
-          <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
-            Escribir anuncios desde lo que la gente busca, y la guía de cómo operar el sistema
-          </p>
-        </div>
-
-        <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <button
-            onClick={() => setActiveTool('rsa')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-              activeTool === 'rsa' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
-            }`}
-          >
-            <Sparkles size={13} />
-            <span>RSA Factory</span>
+    <div className="h-full flex flex-col">
+      {/* Una sola fila de chrome: dos pestañas, sin título que repita lo que ya
+          dice el menú. El contenido manda desde el primer píxel. */}
+      <div className="px-5 md:px-7 shrink-0 flex gap-0.5 -mb-px" style={{ borderBottom: '1px solid var(--border)' }}>
+        {[
+          { id: 'rsa' as const, label: 'Escribir anuncios', icono: <Sparkles size={12} /> },
+          { id: 'playbook' as const, label: 'Guía de operación', icono: <Sliders size={12} /> },
+        ].map(t => (
+          <button key={t.id} onClick={() => setActiveTool(t.id)}
+            className={`px-3.5 py-2.5 text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeTool === t.id ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}`}
+            style={{ borderBottom: activeTool === t.id ? '2px solid var(--primary)' : '2px solid transparent' }}>
+            {t.icono}{t.label}
           </button>
-          <button
-            onClick={() => setActiveTool('playbook')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-              activeTool === 'playbook' ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70 hover:opacity-100'
-            }`}
-          >
-            <Sliders size={13} />
-            <span>Guía de operación</span>
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Tool Content */}
-      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-0)' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
         {activeTool === 'rsa' ? <RSAFactory /> : <OptimizationsHub />}
       </div>
-
     </div>
   );
 }

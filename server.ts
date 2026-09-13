@@ -1560,6 +1560,57 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
     res.json({ success: true, data: data || [] });
   });
 
+  // Historial de lo que el generador escribió. Un anuncio generado que vive
+  // solo en la pantalla no se puede auditar ni aprender de él: al cerrar la
+  // pestaña desaparecía sin rastro. Si la tabla todavía no existe, estos
+  // endpoints lo DICEN en vez de fallar en silencio.
+  const FALTA_TABLA = 'La tabla anuncios_generados todavía no existe: el historial no se está guardando.';
+  const sinTabla = (e: any) => e && (e.code === '42P01' || /does not exist/i.test(e.message || ''));
+
+  app.get("/api/rsa/historial", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const client = req.query.client as string;
+    let q = supabase.from('anuncios_generados').select('*').order('generado_el', { ascending: false }).limit(30);
+    if (client) q = q.eq('account', client);
+    const { data, error } = await q;
+    if (error) {
+      if (sinTabla(error)) return res.json({ historial: [], disponible: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ historial: data || [], disponible: true });
+  });
+
+  app.post("/api/rsa/historial", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { account, campaign, ad_group, titulos, descripciones, diagnostico } = req.body || {};
+    if (!account || !campaign || !ad_group || !Array.isArray(titulos)) {
+      return res.status(400).json({ error: 'Faltan datos del anuncio generado.' });
+    }
+    const { data, error } = await supabase.from('anuncios_generados')
+      .insert({ account, campaign, ad_group, titulos, descripciones: descripciones || [], diagnostico: diagnostico || null })
+      .select('id').maybeSingle();
+    if (error) {
+      if (sinTabla(error)) return res.json({ guardado: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ guardado: true, id: data?.id });
+  });
+
+  app.post("/api/rsa/historial/:id/estado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { estado, nota } = req.body || {};
+    if (!['borrador', 'copiado', 'publicado', 'descartado'].includes(estado)) {
+      return res.status(400).json({ error: 'estado inválido' });
+    }
+    const { error } = await supabase.from('anuncios_generados')
+      .update({ estado, ...(nota !== undefined ? { nota } : {}) }).eq('id', req.params.id);
+    if (error) {
+      if (sinTabla(error)) return res.json({ ok: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ ok: true });
+  });
+
   app.post("/api/generate-rsa", async (req, res) => {
     try {
       const { client, campaign, adGroup } = req.body as { client: string; campaign: string; adGroup: string };
