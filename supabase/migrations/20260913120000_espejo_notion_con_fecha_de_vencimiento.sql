@@ -31,15 +31,23 @@
 
 insert into relaciones_verdad
   (familia, nombre, que_afirma, sql_izquierda, sql_derecha, dominio_valido,
-   tolerancia_rel, por_que_existe, activa, creada_el, ambito, mutante_sql)
+   tolerancia_rel, por_que_existe, activa, creada_el, ambito, mutante_sql,
+   mutante_resultado)
 values (
-  'frescura',
+  -- La familia sale del CHECK de la tabla, que admite cuatro y ninguna se llama
+  -- "frescura": conservacion, monotonia, equivalencia, invariante_dominio. Y ya
+  -- hay precedente exacto — api_reconcilia_a_diario afirma "cada cuenta
+  -- reconcilio en las ultimas 26 horas" contando filas frescas contra el total
+  -- esperado, que es la misma forma que esta, y vive en invariante_dominio.
+  -- Agrandar el CHECK para una sola fila fragmentaria la taxonomia con la que
+  -- v_incidentes agrupa por clase.
+  'invariante_dominio',
   'espejo_notion_al_dia',
   'Todas las filas del espejo de Notion se refrescaron hace menos de 8 dias. Si alguna quedo vieja, la comparacion Notion vs Supabase no esta comparando el Notion de hoy.',
   $i$select count(*)::numeric from notion_espejo_cuentas where sincronizado > now() - interval '8 days'$i$,
   $d$select count(*)::numeric from notion_espejo_cuentas$d$,
   $v$select exists (select 1 from notion_espejo_cuentas)$v$,
-  0.001,
+  0,   -- Como api_reconcilia_a_diario: se cuentan filas, no se miden magnitudes.
   'Cero filas en v_notion_vs_supabase significa "coinciden" y significa tambien "el espejo esta congelado": el mismo vacio para dos estados opuestos. El espejo se lleno el 8/9/2026 y ninguna tarea lo vuelve a tocar, asi que la comparacion informa coincidencia con datos que envejecen solos. Esta relacion le pone vencimiento a ese silencio: pasados los 8 dias la izquierda deja de igualar a la derecha y el incidente aparece en v_para_actuar con nombre propio, en vez de seguir leyendose como salud.',
   true,
   current_date,
@@ -48,6 +56,10 @@ values (
   update notion_espejo_cuentas set sincronizado = now() - interval '30 days' where account = '360';
   -- izquierda pasa a 3, derecha sigue en 4: la relacion TIENE que romperse aca.
   select * from v_relaciones_violadas where nombre = 'espejo_notion_al_dia';
-rollback;$m$
+rollback;$m$,
+  -- 'sin_probar' y no NULL: el mutante esta escrito pero nadie lo corrio todavia,
+  -- y un control que no demostro que puede fallar no cuenta. Decirlo con el valor
+  -- del enum es mas honesto que dejar el campo vacio, que se lee como olvido.
+  'sin_probar'
 )
 on conflict (nombre) do nothing;
