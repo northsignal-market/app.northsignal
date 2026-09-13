@@ -183,7 +183,11 @@ export function Sistema() {
   const irASeccion = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    // Salto instantáneo a propósito: la página mide decenas de miles de píxeles
+    // y Chrome cancela el smooth ante cualquier relayout en el camino — el clic
+    // parecía no hacer nada. El contexto tras el salto lo da el header pegajoso
+    // del grupo, no el viaje (informe 14: jump links que saltan, sin scrolljacking).
+    el.scrollIntoView();
     // replaceState y no location.hash: el salto interno no apila historial
     // (atrás debe salir de Sistema, no desandar el índice).
     window.history.replaceState(window.history.state, '', '#' + id);
