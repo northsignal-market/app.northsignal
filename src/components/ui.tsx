@@ -13,6 +13,7 @@
  *  - La moneda sale de la cuenta, nunca de un mapa cableado.
  */
 import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Calendar, ChevronDown } from 'lucide-react';
 import {
   ResponsiveContainer, ComposedChart, Area, Line, Bar, XAxis, YAxis,
@@ -184,6 +185,20 @@ export async function fetchJSON<T>(url: string, fallback: T): Promise<T> {
     if (!r.ok || !r.headers.get('content-type')?.includes('application/json')) return fallback;
     return await r.json();
   } catch { return fallback; }
+}
+
+/** fetchJSON como hook con caché compartida: dedupe entre componentes que piden
+ *  la misma URL, revalidación al volver a la pestaña, y refetchInterval opcional.
+ *  Misma semántica de fallback — el que consume nunca ve un error, ve "vacío".
+ *  La queryKey ES la URL: una URL, un dato, una entrada de caché. */
+export function useJSON<T>(url: string | null, fallback: T, opts?: { refetchMs?: number }): { data: T; refetch: () => void } {
+  const q = useQuery({
+    queryKey: ['json', url],
+    queryFn: () => fetchJSON<T>(url as string, fallback),
+    enabled: url != null,
+    refetchInterval: opts?.refetchMs,
+  });
+  return { data: (q.data ?? fallback) as T, refetch: q.refetch };
 }
 
 // ================================================================

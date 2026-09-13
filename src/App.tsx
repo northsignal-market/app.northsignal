@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useJSON } from './components/ui';
 import { LimiteDeError } from './components/LimiteDeError';
 import { GlobalToast } from './components/GlobalToast';
 import { TerminoProvider } from './components/Termino';
 import { Ayuda } from './components/Ayuda';
 import { Bandeja } from './components/Bandeja';
-import { Cuenta, type SegmentoCuenta } from './components/Cuenta';
+import { type SegmentoCuenta } from './components/Cuenta';
 import { Campana, type Novedad } from './components/Campana';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
-import { Accionables } from './components/Accionables';
-import { Semana } from './components/Semana';
-import { Briefs } from './components/Briefs';
-import { Datos } from './components/Datos';
-import { Clientes } from './components/Clientes';
-import { Herramientas } from './components/Herramientas';
-import { Sistema } from './components/Sistema';
 import { CommandPalette } from './components/CommandPalette';
+
+// Los tabs pesados cargan al entrar por primera vez: la Bandeja (el home) llega
+// antes. El chunk queda cacheado, así que el costo se paga una sola vez.
+const Cuenta = React.lazy(() => import('./components/Cuenta').then(m => ({ default: m.Cuenta })));
+const Datos = React.lazy(() => import('./components/Datos').then(m => ({ default: m.Datos })));
+const Herramientas = React.lazy(() => import('./components/Herramientas').then(m => ({ default: m.Herramientas })));
+const Sistema = React.lazy(() => import('./components/Sistema').then(m => ({ default: m.Sistema })));
 import { Drawer } from './components/Drawer';
 import { ActionableDrawerContent } from './components/ActionableDrawerContent';
 import { useAppStore } from './store/useAppStore';
@@ -58,25 +60,21 @@ function App() {
     setActiveTab(tab);
   };
   const [datosInicial, setDatosInicial] = useState<{ search?: string; view?: string }>({});
-  const [salud, setSalud] = useState<{ ok: boolean; pend: number; texto: string } | null>(null);
-  useEffect(() => {
-    const cargar = () => fetch('/api/briefing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((b: any) => {
-      if (!b) return;
-      const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
-      setSalud({ ok: b.datos_al_dia !== false, pend, texto: b.datos_al_dia === false ? 'Datos con problema' : pend > 0 ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : 'Datos al día · nada pendiente' });
-    }).catch(() => {});
-    cargar(); const t = setInterval(cargar, 5 * 60 * 1000); return () => clearInterval(t);
-  }, []);
+  // Estado de servidor por TanStack Query: el briefing revalida al volver a la
+  // pestaña y cada 5 min de fondo; la salud del header se DERIVA, no se copia.
+  const qc = useQueryClient();
+  const { data: briefingApp } = useJSON<any>('/api/briefing', null, { refetchMs: 300_000 });
+  const salud = React.useMemo(() => {
+    const b = briefingApp;
+    if (!b) return null;
+    const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
+    return { ok: b.datos_al_dia !== false, pend, texto: b.datos_al_dia === false ? 'Datos con problema' : pend > 0 ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : 'Datos al día · nada pendiente' };
+  }, [briefingApp]);
   const [urlBriefId, setUrlBriefId] = useState<string | undefined>(undefined);
   // Banda de aviso cuando NO estás en producción. Sin esto es imposible saber a
   // simple vista si lo que estás mirando escribe en la cuenta real o no.
-  const [bandaEntorno, setBandaEntorno] = useState<{ color: string; texto: string } | null>(null);
-  useEffect(() => {
-    fetch('/api/entorno', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setBandaEntorno(d?.banda || null))
-      .catch(() => {});
-  }, []);
+  const { data: entornoData } = useJSON<any>('/api/entorno', null);
+  const bandaEntorno: { color: string; texto: string } | null = entornoData?.banda || null;
   
   const { 
     fetchData, isAuthenticated, authChecked, 
@@ -86,11 +84,11 @@ function App() {
   } = useAppStore();
 
   // Cuentas desde la base, no cableadas: sumar un cliente es una fila en `cuentas`.
-  const [cuentas, setCuentas] = useState<any[]>([]);
-  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setCuentas(Array.isArray(d) ? d : [])).catch(() => {}); }, []);
   // Sin respaldo cableado. Si el endpoint falla, la lista queda VACÍA y se avisa,
   // en vez de mostrar tres cuentas de las cuatro: una lista incompleta que se ve
   // completa es peor que una vacía, porque nadie sospecha que falta algo.
+  const { data: cuentasRaw } = useJSON<any[]>('/api/cuentas', []);
+  const cuentas = Array.isArray(cuentasRaw) ? cuentasRaw : [];
   const clients = cuentas.map(c => c.account);
   const monedaDe = (acc: string) => cuentas.find(c => c.account === acc)?.moneda
     || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
@@ -137,6 +135,10 @@ function App() {
   useEffect(() => {
     if (authChecked && isAuthenticated) {
       fetchData();
+      // Las queries disparadas antes del login devolvieron el fallback (401):
+      // al entrar, todo se revalida. Antes el header podía quedar vacío hasta
+      // el próximo intervalo de 5 minutos.
+      qc.invalidateQueries();
     }
   }, [fetchData, isAuthenticated, authChecked]);
 
@@ -283,6 +285,7 @@ function App() {
 
         {/* Main View Area */}
         <main className="flex-1 overflow-y-auto relative custom-scrollbar">
+          <React.Suspense fallback={<div className="p-8 text-xs text-[#F5F7FA] opacity-40">Cargando…</div>}>
           {/* Cada pantalla con su propio límite: si una falla, las demás siguen. */}
           {activeTab === 'bandeja' && (
             <LimiteDeError nombre="Bandeja">
@@ -309,6 +312,7 @@ function App() {
           {activeTab === 'sistema' && (
             <LimiteDeError nombre="Sistema"><Sistema /></LimiteDeError>
           )}
+          </React.Suspense>
         </main>
       </div>
 

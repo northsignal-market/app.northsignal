@@ -11,6 +11,7 @@ import { useCuentas } from '../lib/useCuentas';
  * cuenta, y qué pasó después de tus cambios.
  */
 import React, { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Check, Zap, FileText, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { nivelPulso } from '../lib/humano';
@@ -18,48 +19,40 @@ import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
-import { fmtFechaCorta } from './ui';
+import { fmtFechaCorta, useJSON } from './ui';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
 
 export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const { actionables, setSelectedClient } = useAppStore();
-  const [briefing, setBriefing] = useState<any>(null);
-  const [alertas, setAlertas] = useState<any[]>([]);
-  const [pulsos, setPulsos] = useState<any[]>([]);
-  const [ciclo, setCiclo] = useState<any>(null);
-  const [propuestas, setPropuestas] = useState<any[]>([]);
-  const [bloqueados, setBloqueados] = useState<Record<string, string>>({});
-  const [novedades, setNovedades] = useState<any[]>([]);
   const [abierto, setAbierto] = useState<Record<string, boolean>>({ ayer: false, despues: false, novs: false });
   // Cursor de teclado sobre la cola: j/k mueven, Enter abre, 1 dispara la acción
   // rápida del ítem señalado (si tiene). El mouse no se entera.
   const [cur, setCur] = useState(-1);
-  // Desglose por lo que cuesta decidir cada cosa. "23 cosas esperan tu criterio" no
-  // dice si son 23 clics o 23 investigaciones, y esa diferencia es la que decide
-  // si abrís la app o la cerrás.
-  const [orden, setOrden] = useState<any>(null);
-  // Lo que los agentes respondieron a lo que les preguntaste. Sin esto, un agente
-  // responde y nadie lo lee: el círculo no cierra.
-  const [notas, setNotas] = useState<any>(null);
-  useEffect(() => {
-    fetch('/api/orden-del-dia', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null).then(d => d && setOrden(d)).catch(() => {});
-    fetch('/api/notas-agentes', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null).then(d => d && setNotas(d)).catch(() => {});
-  }, []);
   const [filtroCuenta, setFiltroCuenta] = useState<string | null>(null);
 
-  const cargar = () => {
-    fetch('/api/briefing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setBriefing(d)).catch(() => {});
-    fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/pulso?days=2', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPulsos(d.pulsos || [])).catch(() => {});
-    fetch('/api/ciclo', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCiclo(d)).catch(() => {});
-    fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setNovedades(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/relaciones-abiertas', { credentials: 'include' }).then(r => r.ok ? r.json() : {}).then(d => setBloqueados(d || {})).catch(() => {});
-    fetch('/api/propuestas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setPropuestas(Array.isArray(d) ? d : [])).catch(() => {});
-  };
-  useEffect(() => { cargar(); const t = setInterval(cargar, 3 * 60 * 1000); return () => clearInterval(t); }, []);
+  // Estado de servidor por TanStack Query: caché compartida, dedupe, revalida al
+  // volver a la pestaña, y cada 3 min de fondo (la cadencia que ya tenía el
+  // setInterval — pero ahora sin carreras ni datos zombis entre montajes).
+  const R = 180_000;
+  const qc = useQueryClient();
+  const cargar = () => { qc.invalidateQueries({ queryKey: ['json'] }); };
+  const { data: briefing } = useJSON<any>('/api/briefing', null, { refetchMs: R });
+  const { data: alertasRaw } = useJSON<any[]>('/api/alertas', [], { refetchMs: R });
+  const { data: pulsoRaw } = useJSON<any>('/api/pulso?days=2', null, { refetchMs: R });
+  const { data: ciclo } = useJSON<any>('/api/ciclo', null, { refetchMs: R });
+  const { data: novedadesRaw } = useJSON<any[]>('/api/novedades', [], { refetchMs: R });
+  const { data: bloqueadosRaw } = useJSON<Record<string, string>>('/api/relaciones-abiertas', {}, { refetchMs: R });
+  const { data: propuestasRaw } = useJSON<any[]>('/api/propuestas', [], { refetchMs: R });
+  // Desglose por lo que cuesta decidir cada cosa, y lo que los agentes
+  // respondieron a lo que les preguntaste: sin eso el círculo no cierra.
+  const { data: orden } = useJSON<any>('/api/orden-del-dia', null);
+  const { data: notas } = useJSON<any>('/api/notas-agentes', null);
+  const alertas = Array.isArray(alertasRaw) ? alertasRaw : [];
+  const pulsos = pulsoRaw?.pulsos || [];
+  const novedades = Array.isArray(novedadesRaw) ? novedadesRaw : [];
+  const bloqueados = bloqueadosRaw || {};
+  const propuestas = Array.isArray(propuestasRaw) ? propuestasRaw : [];
 
   const resolverAlerta = async (id: number) => { await fetch(`/api/alertas/${id}/resolver`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargar(); };
 
