@@ -2,9 +2,13 @@ import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
 import { PageShell, fetchJSON, fmtFechaCorta } from './ui';
+import { useAppStore } from '../store/useAppStore';
+import { NOTION_STATES } from '../types';
 
 export function Sistema() {
   const { nombres: nombresCuentas } = useCuentas();
+  const { actionables } = useAppStore();
+  const [latidos, setLatidos] = useState<any[]>([]);
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
   const [tamano, setTamano] = useState<any[]>([]);
@@ -39,6 +43,7 @@ export function Sistema() {
     fetchJSON<any>('/api/aprendizaje', null).then(d => d && setAprendizaje(d));
     fetchJSON<any[]>('/api/salud-sistema', []).then(d => d.length && setTamano(d));
     fetchJSON<any>('/api/salud', null).then(d => d && setSaludSistema(d));
+    fetchJSON<any[]>('/api/latidos', []).then(d => setLatidos(Array.isArray(d) ? d : []));
     fetchJSON<any>('/api/respaldo', null).then(d => {
       if (d) setRespaldo(d);
       else setRespaldoError('No se pudo consultar el respaldo.');
@@ -298,6 +303,17 @@ export function Sistema() {
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Lo que aprobaste para que el sistema ejecute</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+            {(() => {
+              // Salud del propio control: si de N decisiones no rechazaste ninguna,
+              // no hay humano en el circuito — hay un botón lento.
+              const decididos = actionables.filter(a => a.status === NOTION_STATES.HECHO || a.status === NOTION_STATES.DESCARTADO);
+              const rechazados = decididos.filter(a => a.status === NOTION_STATES.DESCARTADO).length;
+              return decididos.length >= 10 && rechazados === 0 ? (
+                <p className="text-[11px] mt-1.5" style={{ color: 'var(--warn)' }}>
+                  De los últimos {decididos.length} accionables decididos rechazaste 0. Si todo pasa, el control no está controlando: mirá si estás aprobando por inercia.
+                </p>
+              ) : null;
+            })()}
           </div>
           {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
             <div className="space-y-1">
@@ -423,6 +439,29 @@ export function Sistema() {
       {/* TAB 1: SALUD DE DATOS */}
       {enGrupo('salud') && (
         <div className="space-y-4">
+          {/* Agentes, cada uno contra SU cadencia. El latido dice que el proceso
+              corrió; "en silencio" es el estado más peligroso porque no grita —
+              por eso los silencios vienen primero y el marco se tiñe. */}
+          {latidos.length > 0 && (
+            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: latidos.some((l: any) => l.en_silencio) ? '1px solid rgba(249,112,102,0.4)' : '1px solid var(--border)' }}>
+              <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <h2 className="text-[15px] font-medium text-[#EDEFF3]">Agentes</h2>
+                <p className="text-xs text-[#F5F7FA] opacity-60">Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.</p>
+              </div>
+              <div className="space-y-0.5">
+                {latidos.map((l: any) => (
+                  <div key={l.tarea} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: l.en_silencio ? 'var(--bad-faint)' : 'var(--surface-2)' }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.en_silencio ? 'var(--bad)' : '#4ADE80' }} />
+                    <span className={`w-52 shrink-0 truncate ${l.en_silencio ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA]'}`}>{String(l.tarea).replace(/_/g, ' ')}</span>
+                    <span className="tabular text-[#F5F7FA] opacity-70 shrink-0 w-44">{l.horas_sin_ok != null ? `hace ${l.horas_sin_ok} h` : 'nunca corrió'} · tol. {l.tolerancia_horas} h</span>
+                    <span className="flex-1 text-[11px] text-[#F5F7FA] opacity-60 truncate" title={l.ultimo_error || ''}>{l.en_silencio ? (l.ultimo_error || 'sin error registrado: dejó de correr en silencio') : ''}</span>
+                    <span className="text-[10px] tabular text-[#F5F7FA] opacity-40 shrink-0">{l.corridas_ok} ok{l.corridas_falla > 0 ? ` · ${l.corridas_falla} fallas` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Veredicto del sistema. Reune las 32 verificaciones, las tareas caidas y
               la cuarentena. Antes esto solo se veia consultando SQL a mano. */}
           {saludSistema && (

@@ -3420,6 +3420,15 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     res.json(data);
   });
 
+  // Latido por agente contra SU cadencia. El latido mide que el proceso corrió;
+  // los silencios van primero porque son el estado que no grita solo.
+  app.get("/api/latidos", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { data, error } = await supabase.rpc('latidos_estado');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
   app.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
 
 

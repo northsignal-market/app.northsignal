@@ -4801,6 +4801,12 @@ Reporte completo: ${url}`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
+  app2.get("/api/latidos", async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data, error } = await supabase.rpc("latidos_estado");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
   app2.get("/api/cuentas", async (_req, res) => res.json(await cuentasActivas()));
   app2.get("/api/cadena/:nivel", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
