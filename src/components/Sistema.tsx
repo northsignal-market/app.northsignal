@@ -1,14 +1,10 @@
 import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, Check, AlertCircle, Clock, ShieldCheck, 
-  RefreshCw, History, Send, Settings2, Sliders, Database, Save 
-} from 'lucide-react';
-import { useAppStore } from '../store/useAppStore';
+import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
+import { PageShell, fetchJSON, fmtFechaCorta } from './ui';
 
 export function Sistema() {
   const { nombres: nombresCuentas } = useCuentas();
-  const { selectedClient } = useAppStore();
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
   const [tamano, setTamano] = useState<any[]>([]);
@@ -40,13 +36,13 @@ export function Sistema() {
   };
 
   useEffect(() => {
-    fetch('/api/aprendizaje', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setAprendizaje(d)).catch(() => {});
-    fetch('/api/salud-sistema', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setTamano(d)).catch(() => {});
-    fetch('/api/salud', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setSaludSistema(d)).catch(() => {});
-    fetch('/api/respaldo', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-      .then(d => setRespaldo(d))
-      .catch(e => setRespaldoError('No se pudo consultar el respaldo: ' + (e?.message || 'error')));
+    fetchJSON<any>('/api/aprendizaje', null).then(d => d && setAprendizaje(d));
+    fetchJSON<any[]>('/api/salud-sistema', []).then(d => d.length && setTamano(d));
+    fetchJSON<any>('/api/salud', null).then(d => d && setSaludSistema(d));
+    fetchJSON<any>('/api/respaldo', null).then(d => {
+      if (d) setRespaldo(d);
+      else setRespaldoError('No se pudo consultar el respaldo.');
+    });
   }, []);
   const [loading, setLoading] = useState(false);
 
@@ -56,31 +52,30 @@ export function Sistema() {
     { id: 'salud', label: 'Salud', tabs: ['salud', 'integridad', 'tamano'], ayuda: 'Si los datos están al día y cuadran' },
     { id: 'aprendizaje', label: 'Aprendizaje', tabs: ['scorecard', 'aprendizaje', 'coherencia'], ayuda: 'Qué tan bien analiza el sistema y cómo se corrige' },
     { id: 'automatizacion', label: 'Automatización', tabs: ['alertas', 'ejecuciones', 'cambios'], ayuda: 'Alertas, qué puede hacer el sistema solo, ejecuciones, cambios de configuración' },
-    { id: 'soporte', label: 'Soporte', tabs: ['tickets', 'bitacora', 'ajustes'], ayuda: 'Tickets para Claude, tu bitácora, ajustes' },
+    { id: 'soporte', label: 'Soporte', tabs: ['tickets', 'bitacora'], ayuda: 'Tickets para Claude y tu bitácora' },
   ];
   const [grupo, setGrupo] = useState<string>('salud');
   const enGrupo = (tab: string) => (GRUPOS.find(g => g.id === grupo)?.tabs || []).includes(tab);
-  const [activeTab, setActiveTab] = useState<'salud' | 'integridad' | 'scorecard' | 'aprendizaje' | 'tamano' | 'cambios' | 'bitacora' | 'ajustes' | 'alertas' | 'tickets' | 'coherencia' | 'ejecuciones'>('salud');
   const [ejecuciones, setEjecuciones] = useState<any[]>([]);
   const [reconciliaciones, setReconciliaciones] = useState<any[]>([]);
   const [aprendido, setAprendido] = useState<any>(null);
   const [politicas, setPoliticas] = useState<{ politicas: any[]; general: boolean }>({ politicas: [], general: false });
-  const cargarPoliticas = () => fetch('/api/politicas', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setPoliticas(d)).catch(() => {});
+  const cargarPoliticas = () => fetchJSON<any>('/api/politicas', null).then(d => d && setPoliticas(d));
   const guardarPolitica = async (tipo: string, cambios: any) => { await fetch(`/api/politicas/${tipo}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cambios) }); cargarPoliticas(); };
   const guardarGeneral = async (activa: boolean) => { if (activa && !confirm('Con esto encendido, el sistema ejecuta en Google Ads las negativas y pausas que cumplan las reglas de abajo, sin preguntarte. ¿Seguro?')) return; await fetch('/api/politicas/general', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activa }) }); cargarPoliticas(); };
   const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   useEffect(() => {
-    fetch('/api/alertas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setAlertas(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/tickets', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setTickets(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/coherencia', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setCoherencia(d)).catch(() => {});
+    fetchJSON<any[]>('/api/alertas', []).then(d => setAlertas(Array.isArray(d) ? d : []));
+    fetchJSON<any[]>('/api/tickets', []).then(d => setTickets(Array.isArray(d) ? d : []));
+    fetchJSON<any>('/api/coherencia', null).then(d => d && setCoherencia(d));
     cargarPoliticas();
-    fetch('/api/aprendido', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setAprendido(d)).catch(() => {});
-    fetch('/api/acciones-aprobadas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setEjecuciones(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/reconciliaciones', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(d => setReconciliaciones(Array.isArray(d) ? d : [])).catch(() => {});
+    fetchJSON<any>('/api/aprendido', null).then(d => setAprendido(d));
+    fetchJSON<any[]>('/api/acciones-aprobadas', []).then(d => setEjecuciones(Array.isArray(d) ? d : []));
+    fetchJSON<any[]>('/api/reconciliaciones', []).then(d => setReconciliaciones(Array.isArray(d) ? d : []));
   }, [grupo]);
-  const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setActiveTab(t => t); const r = await fetch('/api/alertas', { credentials: 'include' }); if (r.ok) setAlertas(await r.json()); };
+  const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setAlertas(await fetchJSON<any[]>('/api/alertas', [])); };
 
   // Operator log form state
   const [logAccount, setLogAccount] = useState('360');
@@ -98,18 +93,9 @@ export function Sistema() {
 
   const fetchHealth = async () => {
     setLoading(true);
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch('/api/health/system', { credentials: 'include', headers });
-      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return;
-      const data = await res.json();
-      setHealthData(data);
-    } catch(err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    const data = await fetchJSON<any>('/api/health/system', null);
+    if (data) setHealthData(data);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -169,28 +155,20 @@ export function Sistema() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div>
-          <h1 className="text-xl font-bold text-[#FFFFFF]">
-            Sistema & Auditoría Técnica
-          </h1>
-          <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
-            ¿Está funcionando? Diagnóstico de salud, integridad, calidad de corridas y bitácora de cambios
-          </p>
-        </div>
-
+    <PageShell
+      titulo="Sistema"
+      subtitulo="¿Está funcionando? Salud, integridad, calidad de corridas, automatización y bitácora"
+      derecha={
         <button aria-label="Actualizar" title="Actualizar"
           onClick={fetchHealth}
-          className="px-3 py-1.5 rounded text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1.5 transition-colors shrink-0"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#FFFFFF] hover:bg-white/10 flex items-center gap-1.5 transition-colors shrink-0"
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-1)' }}
         >
           <RefreshCw size={13} className={loading ? 'animate-spin text-[#0062CC]' : ''} />
-          <span>Actualizar Estado</span>
+          <span>Actualizar</span>
         </button>
-      </div>
+      }
+    >
 
       {/* Cuatro grupos */}
       <div className="flex gap-1 flex-wrap pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -217,7 +195,7 @@ export function Sistema() {
               <div className="space-y-1.5">
                 {aprendido.lecciones.map((l: any) => (
                   <div key={l.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: l.tipo === 'error' ? '2px solid var(--primary)' : '2px solid transparent' }}>
-                    <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{l.tipo}</span><span>{l.account || 'general'} · {l.fecha}</span><span className="ml-auto tabular">confianza {Math.round(l.confianza * 100)}%{l.veces_confirmada > 1 ? ` · vista ${l.veces_confirmada} veces` : ''}</span></div>
+                    <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{l.tipo}</span><span>{l.account || 'general'} · {fmtFechaCorta(l.fecha)}</span><span className="ml-auto tabular">confianza {Math.round(l.confianza * 100)}%{l.veces_confirmada > 1 ? ` · vista ${l.veces_confirmada} veces` : ''}</span></div>
                     <div className="text-xs text-[#FFFFFF] mt-0.5">{l.leccion}</div>
                     <div className="text-[11px] text-[#F5F7FA] opacity-60 mt-0.5">{l.contexto} → {l.decision} → {l.resultado}</div>
                   </div>
@@ -233,7 +211,7 @@ export function Sistema() {
             <div className="space-y-1.5">
               {aprendido.conocimiento.map((k: any) => (
                 <div key={k.id} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{k.tema}</span><span>{k.fecha}</span>{k.vigente_hasta && <span>· hasta {k.vigente_hasta}</span>}<span className="ml-auto">{(k.aplica_a || []).join(', ')} · {String(k.fuente_tipo).replace(/_/g, ' ')}{k.verificado ? ' · verificado' : ''}</span></div>
+                  <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50"><span className="uppercase tracking-wider">{k.tema}</span><span>{fmtFechaCorta(k.fecha)}</span>{k.vigente_hasta && <span>· hasta {fmtFechaCorta(k.vigente_hasta)}</span>}<span className="ml-auto">{(k.aplica_a || []).join(', ')} · {String(k.fuente_tipo).replace(/_/g, ' ')}{k.verificado ? ' · verificado' : ''}</span></div>
                   <div className="text-xs text-[#FFFFFF] mt-0.5">{k.titulo}</div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-70 mt-0.5">{k.resumen}</div>
                   {k.accion_derivada && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-50">Qué hacer:</span> {k.accion_derivada}</div>}
@@ -281,6 +259,61 @@ export function Sistema() {
       )}
 
 
+      {/* TAB: ALERTAS — lo urgente, arriba de todo en Automatización */}
+      {enGrupo('alertas') && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Alertas</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
+          </div>
+          {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
+            <div className="space-y-1.5">
+              {alertas.map((a: any) => (
+                <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : a.nivel === 'semana' ? '2px solid var(--border-strong)' : '2px solid transparent' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
+                        <span className="text-[10px] text-[#F5F7FA] opacity-40">{a.account || 'Sistema'} · {a.origen}</span>
+                      </div>
+                      <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{a.titulo}</div>
+                      {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
+                      {a.accion && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
+                    </div>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#FFFFFF]">Resuelta</button>
+                      <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) accionAlerta(a.id, 'silenciar', { dias: 7, por_que: pq }); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: EJECUCIONES */}
+      {enGrupo('ejecuciones') && (
+        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
+            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
+          </div>
+          {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
+            <div className="space-y-1">
+              {ejecuciones.map((e: any) => (
+                <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(e.aprobada_el)} {String(e.aprobada_el).slice(11, 16)}</span>
+                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
+                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
+                  {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TAB: POLÍTICAS DE EJECUCIÓN AUTOMÁTICA */}
       {enGrupo('ejecuciones') && (
         <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: politicas.general ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
@@ -323,28 +356,6 @@ export function Sistema() {
         </div>
       )}
 
-      {/* TAB: EJECUCIONES */}
-      {enGrupo('ejecuciones') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Lo que aprobaste para que el sistema ejecute</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Negativas, pausas, concordancia, y también presupuesto, objetivo y estrategia de puja (siempre con el valor anterior guardado para revertir). Un script de Google Ads las lee cada hora. En simulación escribe qué haría; en real lo aplica y marca Hecho.</p>
-          </div>
-          {ejecuciones.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Ninguna todavía. Aparecen cuando aprobás una acción desde el accionable: negativas, pausas, concordancia, presupuesto o puja.</p> : (
-            <div className="space-y-1">
-              {ejecuciones.map((e: any) => (
-                <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(e.aprobada_el).slice(5, 16).replace('T', ' ')}</span>
-                  <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#FFFFFF]' : e.estado === 'fallida' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
-                  <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#FFFFFF]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
-                  {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* TAB: COHERENCIA */}
       {enGrupo('coherencia') && (
         <div className="space-y-4">
@@ -372,7 +383,7 @@ export function Sistema() {
               <div className="space-y-1">
                 {coherencia.reconciliaciones.map((r: any) => (
                   <div key={r.id} className="flex items-start gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(r.corrida).slice(5, 16).replace('T', ' ')}</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                     <span className="text-[10px] uppercase tracking-wider shrink-0 w-24 text-[#F5F7FA] opacity-70">{r.accion.replace('_', ' ')}</span>
                     <span className="text-[#F5F7FA] opacity-80 flex-1">{r.account ? <span className="text-[#FFFFFF]">{r.account} · </span> : ''}{r.detalle}</span>
                     <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#0062CC]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
@@ -381,39 +392,6 @@ export function Sistema() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* TAB: ALERTAS */}
-      {enGrupo('alertas') && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            <h2 className="text-[15px] font-medium text-[#FFFFFF]">Alertas</h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
-          </div>
-          {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
-            <div className="space-y-1.5">
-              {alertas.map((a: any) => (
-                <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : a.nivel === 'semana' ? '2px solid var(--border-strong)' : '2px solid transparent' }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
-                        <span className="text-[10px] text-[#F5F7FA] opacity-40">{a.account || 'Sistema'} · {a.origen}</span>
-                      </div>
-                      <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{a.titulo}</div>
-                      {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
-                      {a.accion && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
-                    </div>
-                    <div className="flex flex-col gap-1 shrink-0">
-                      <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#FFFFFF]">Resuelta</button>
-                      <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) accionAlerta(a.id, 'silenciar', { dias: 7, por_que: pq }); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -429,7 +407,7 @@ export function Sistema() {
               {tickets.map((t: any) => (
                 <div key={t.id} className={`p-3 rounded-lg ${t.estado === 'resuelto' ? 'opacity-60' : ''}`} style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center gap-2 text-[10px] text-[#F5F7FA] opacity-50">
-                    <span className="tabular">#{t.id}</span><span>{String(t.creado).slice(0, 16).replace('T', ' ')}</span><span>{t.pagina}{t.cuenta ? ` · ${t.cuenta}` : ''}</span>
+                    <span className="tabular">#{t.id}</span><span>{fmtFechaCorta(t.creado)} {String(t.creado).slice(11, 16)}</span><span>{t.pagina}{t.cuenta ? ` · ${t.cuenta}` : ''}</span>
                     <span className={`ml-auto uppercase tracking-wider ${t.estado === 'abierto' ? 'text-[#0062CC]' : ''}`}>{t.estado.replace('_', ' ')}</span>
                   </div>
                   <div className="text-xs text-[#FFFFFF] font-medium mt-0.5">{t.titulo}</div>
@@ -625,7 +603,7 @@ export function Sistema() {
               <div className="space-y-1">
                 {reconciliaciones.slice(0, 8).map((r: any) => (
                   <div key={r.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{String(r.corrida).slice(5, 16).replace('T', ' ')}</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                     <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#FFFFFF]' : 'text-[#0062CC]'}`}>{r.veredicto}</span>
                     <span className="text-[#F5F7FA] flex-1">{r.account} · {r.capa} · {r.filas_comparadas} comparadas{r.filas_corregidas ? `, ${r.filas_corregidas} corregidas` : ''}{r.filas_insertadas ? `, ${r.filas_insertadas} insertadas` : ''}</span>
                     {r.detalle && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[280px] truncate" title={r.detalle}>{r.detalle}</span>}
@@ -912,7 +890,7 @@ export function Sistema() {
                         <tr key={i.notion_id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
                           <td className="py-2 px-2 font-bold text-[#FFFFFF]">{i.account}</td>
                           <td className="py-2 px-2 text-[#F5F7FA] max-w-[280px] truncate" title={i.titulo}>{i.titulo}</td>
-                          <td className="py-2 px-2 tabular text-[#F5F7FA] opacity-70">{i.ejecutado_el}</td>
+                          <td className="py-2 px-2 tabular text-[#F5F7FA] opacity-70">{fmtFechaCorta(i.ejecutado_el)}</td>
                           <td className="py-2 px-2 text-[#F5F7FA] opacity-70">{m || '—'}</td>
                           <td className="py-2 px-2 tabular text-right text-[#F5F7FA]">{ad}</td>
                           <td className={`py-2 px-2 tabular text-right ${ok ? 'text-[#FFFFFF] font-semibold' : mal ? 'text-[#0062CC] font-semibold' : 'text-[#F5F7FA] opacity-70'}`}>{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${i.variacion_pct}%` : '—'}</td>
@@ -937,7 +915,7 @@ export function Sistema() {
                 <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)' }}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-[#FFFFFF] uppercase">{p.account} · {p.tipo}</span>
-                    <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{p.veces} veces · {p.primera_vez} → {p.ultima_vez}</span>
+                    <span className="text-[11px] text-[#F5F7FA] opacity-60 tabular">{p.veces} veces · {fmtFechaCorta(p.primera_vez)} → {fmtFechaCorta(p.ultima_vez)}</span>
                   </div>
                   <p className="text-sm text-[#F5F7FA]">{p.leccion_mas_reciente}</p>
                   {p.regla && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Regla: {p.regla}</p>}
@@ -959,7 +937,7 @@ export function Sistema() {
                   <div key={r.id} className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-[#FFFFFF] uppercase">{r.account}</span>
-                      <span className="text-[#F5F7FA] opacity-60 tabular">{r.run_date}</span>
+                      <span className="text-[#F5F7FA] opacity-60 tabular">{fmtFechaCorta(r.run_date)}</span>
                       <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide" style={{ backgroundColor: r.tipo === 'acierto' ? 'var(--surface-1)' : 'var(--primary-faint)', color: '#F5F7FA' }}>{r.tipo.replace(/_/g, ' ')}</span>
                       {r.aplicada && <span className="text-[10px] text-[#F5F7FA] opacity-50">· aplicada</span>}
                     </div>
@@ -1005,45 +983,6 @@ export function Sistema() {
         </div>
       )}
 
-      {enGrupo('ajustes') && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <h2 className="text-[15px] font-medium text-[#FFFFFF] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-            Ajustes & Conectores
-          </h2>
-          <div className="space-y-3 text-xs">
-            <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-              <div>
-                <div className="font-semibold text-[#FFFFFF]">Base de datos</div>
-                <div className="text-[11px] text-[#F5F7FA] opacity-60">Conexión activa a vistas consolidadas</div>
-              </div>
-              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">
-                Conectado
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-              <div>
-                <div className="font-semibold text-[#FFFFFF]">Notion</div>
-                <div className="text-[11px] text-[#F5F7FA] opacity-60">Sincronización de accionables, briefs y bitácora</div>
-              </div>
-              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">
-                Sincronizado
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-              <div>
-                <div className="font-semibold text-[#FFFFFF]">Gemini (segunda opinión)</div>
-                <div className="text-[11px] text-[#F5F7FA] opacity-60">Auditoría de segunda opinión y detección de controversias</div>
-              </div>
-              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-white/10 text-[#FFFFFF]">
-                Activo
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
+    </PageShell>
   );
 }

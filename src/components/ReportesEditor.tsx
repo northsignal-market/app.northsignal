@@ -8,11 +8,13 @@
  * distinto de enviar. Y enviar NO significa mandarlo al cliente: te lo manda a vos,
  * con el PDF y el texto listo para reenviar. Vos decidís cuándo sale.
  */
-import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, RefreshCw, Check, Send, Eye, History, Copy, ExternalLink, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RefreshCw, Check, Send, Eye, History, Copy, ExternalLink, Trash2 } from 'lucide-react';
+import { useCuentas } from '../lib/useCuentas';
+import { fmtMoneda, fmtFechaCorta } from './ui';
 
 type Bloque = { etiqueta: string; texto?: string; vinetas?: string[] };
-interface Props { activeClient: string; fmtMoney: (v: any) => string }
+interface Props { activeClient: string }
 
 const ESTADOS: Record<string, { label: string; ayuda: string }> = {
   borrador: { label: 'Borrador', ayuda: 'Lo escribió el sistema. Leelo, editá lo que quieras, regenerá secciones.' },
@@ -22,7 +24,9 @@ const ESTADOS: Record<string, { label: string; ayuda: string }> = {
   descartado: { label: 'Descartado', ayuda: '' },
 };
 
-export function ReportesEditor({ activeClient, fmtMoney }: Props) {
+export function ReportesEditor({ activeClient }: Props) {
+  const { moneda: monedaDe } = useCuentas();
+  const fmtMoney = (v: any) => fmtMoneda(v == null ? null : Number(v), monedaDe(activeClient));
   const [reportes, setReportes] = useState<any[]>([]);
   const [sel, setSel] = useState<any>(null);
   const [bloques, setBloques] = useState<Bloque[]>([]);
@@ -39,7 +43,8 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
   const abrir = (r: any) => { setSel(r); setBloques(Array.isArray(r.bloques) && r.bloques.length ? r.bloques : []); setSucio(false); setPreview(false); setVerVersiones(false); fetch(`/api/reportes/${r.id}/versiones`, { credentials: 'include' }).then(x => x.ok ? x.json() : []).then(setVersiones).catch(() => {}); };
   const avisar = (m: string) => { setAviso(m); setTimeout(() => setAviso(null), 4000); };
 
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  // Fecha local, no toISOString(): en UTC-3 a la noche el ISO ya es "mañana".
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const lunes = (d: Date) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
   const preset = (q: string) => { const hoy = new Date(), l = lunes(hoy); const D = (n: number) => { const x = new Date(l); x.setDate(x.getDate() + n); return x; };
     if (q === 'semana') setForm({ desde: iso(D(-7)), hasta: iso(D(-1)) }); if (q === 'dos') setForm({ desde: iso(D(-14)), hasta: iso(D(-1)) });
@@ -83,8 +88,8 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
           {reportes.length === 0 && <p className="text-xs text-[#F5F7FA] opacity-50 italic">Ningún reporte todavía para {activeClient}.</p>}
           {reportes.map(r => (
             <button key={r.id} onClick={() => abrir(r)} className="w-full text-left px-3 py-2 rounded-lg" style={{ backgroundColor: sel?.id === r.id ? 'var(--primary-faint)' : 'var(--surface-2)', border: sel?.id === r.id ? '1px solid rgba(0,98,204,0.4)' : '1px solid transparent' }}>
-              <div className="flex items-center justify-between"><span className="text-xs text-[#FFFFFF] tabular">{r.periodo_desde} → {r.periodo_hasta}</span><span className={`text-[10px] uppercase tracking-wider ${r.estado === 'borrador' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-50'}`}>{ESTADOS[r.estado]?.label || r.estado}</span></div>
-              <div className="text-[10px] text-[#F5F7FA] opacity-50">{r.tipo} · {r.idioma} · v{r.version || 1}{r.visto_el ? ' · visto por el cliente' : ''}{r.enviado_el ? ` · enviado ${String(r.enviado_el).slice(0, 10)}` : ''}</div>
+              <div className="flex items-center justify-between"><span className="text-xs text-[#FFFFFF] tabular">{fmtFechaCorta(r.periodo_desde)} → {fmtFechaCorta(r.periodo_hasta)}</span><span className={`text-[10px] uppercase tracking-wider ${r.estado === 'borrador' ? 'text-[#0062CC]' : 'text-[#F5F7FA] opacity-50'}`}>{ESTADOS[r.estado]?.label || r.estado}</span></div>
+              <div className="text-[10px] text-[#F5F7FA] opacity-50">{r.tipo} · {r.idioma} · v{r.version || 1}{r.visto_el ? ' · visto por el cliente' : ''}{r.enviado_el ? ` · enviado ${fmtFechaCorta(r.enviado_el)}` : ''}</div>
             </button>
           ))}
         </div>
@@ -123,7 +128,7 @@ export function ReportesEditor({ activeClient, fmtMoney }: Props) {
                 {versiones.length === 0 ? <span className="text-[11px] text-[#F5F7FA] opacity-50">Sin versiones todavía.</span> : versiones.map(v => (
                   <div key={v.id} className="flex items-center gap-3 text-[11px]">
                     <span className="tabular text-[#FFFFFF] w-8">v{v.version}</span>
-                    <span className="text-[#F5F7FA] opacity-50 tabular w-28">{String(v.fecha).slice(5, 16).replace('T', ' ')}</span>
+                    <span className="text-[#F5F7FA] opacity-50 tabular w-28">{fmtFechaCorta(v.fecha)} {String(v.fecha).slice(11, 16)}</span>
                     <span className="text-[#F5F7FA] opacity-70">{v.autor === 'andres' ? 'vos' : v.autor}</span>
                     <span className="text-[#F5F7FA] opacity-50 flex-1 truncate">{v.motivo}</span>
                     {editable && v.version !== (sel.version || 1) && <button onClick={() => restaurar(v.version)} className="text-[#0062CC]">restaurar</button>}

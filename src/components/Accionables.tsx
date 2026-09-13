@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Search, Check, Cpu, AlertCircle, X, ChevronDown, ChevronUp,
-  ArrowUpDown, Filter, Sparkles
-} from 'lucide-react';
+import { Search, Check, Cpu, ArrowUpDown, Filter, X } from 'lucide-react';
+import { fetchJSON } from './ui';
+import { useCuentas } from '../lib/useCuentas';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
@@ -21,10 +20,10 @@ export function Accionables({
   const { actionables, updateActionableStatus } = useAppStore();
 
   const [search, setSearch] = useState('');
-  const [cuentasApi, setCuentasApi] = useState<any[]>([]);
-  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasApi(Array.isArray(x) ? x : [])).catch(() => {}); }, []);
+  // Las cuentas salen del hook central, no de un fetch propio con fallback inventado.
+  const { nombres: cuentasNombres } = useCuentas();
   const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
-  useEffect(() => { fetch('/api/novedades', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then((d: any[]) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))).catch(() => {}); }, []);
+  useEffect(() => { fetchJSON<any[]>('/api/novedades', []).then((d) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))); }, []);
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
   // El filtro SIGUE al selector del header. Antes initialClient solo se leía al
   // montar: si cambiabas de cuenta arriba con esta pestaña ya abierta, la lista
@@ -161,7 +160,7 @@ export function Accionables({
           style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)' }}
         >
           <option value="all" className="bg-[#1A1F36]">Todos los Clientes</option>
-          {(cuentasApi.length ? cuentasApi.map((c: any) => c.account) : ['KAREDO']).map((a: string) => <option key={a} value={a} className="bg-[#1A1F36]">{a}</option>)}
+          {cuentasNombres.map((a: string) => <option key={a} value={a} className="bg-[#1A1F36]">{a}</option>)}
         </select>
 
         {/* Status */}

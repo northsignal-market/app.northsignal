@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Sliders, Cpu } from 'lucide-react';
+import { Sparkles, Sliders } from 'lucide-react';
 import { RSAFactory } from './RSAFactory';
 import { OptimizationsHub } from './OptimizationsHub';
 

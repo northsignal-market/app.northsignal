@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCuentaActiva } from '../lib/useCuentas';
-import { 
-  FileText, ChevronLeft, ChevronRight, Calendar, ArrowRight,
-  ExternalLink, Clock, RefreshCw, Layers, Check
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, ArrowRight, Clock, RefreshCw, Check } from 'lucide-react';
+import { fetchJSON, fmtFechaCorta } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import type { NotionBrief } from '../types';
 
@@ -50,18 +48,8 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
       return;
     }
     setLoadingBlocks(true);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-    fetch(`/api/notion/page/${selectedBrief.id}/blocks`, { credentials: 'include', headers })
-      .then(async res => {
-        if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return { blocks: [] };
-        return res.json();
-      })
+    fetchJSON<any>(`/api/notion/page/${selectedBrief.id}/blocks`, { blocks: [] })
       .then(data => setBriefBlocks(data?.blocks || []))
-      .catch(err => {
-        console.warn('Failed to load blocks:', err);
-        setBriefBlocks([]);
-      })
       .finally(() => setLoadingBlocks(false));
   }, [selectedBrief?.id]);
 
@@ -194,7 +182,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                   </span>
                   <span className="text-xs text-[#F5F7FA] opacity-70 tabular flex items-center gap-1">
                     <Calendar size={12} />
-                    {selectedBrief.date || (selectedBrief as any).semana || (selectedBrief as any).week || (selectedBrief as any).created_at?.slice(0, 10) || 'Semana activa'}
+                    {selectedBrief.date || (selectedBrief as any).semana || (selectedBrief as any).week || ((selectedBrief as any).created_at ? fmtFechaCorta((selectedBrief as any).created_at) : 'Semana activa')}
                   </span>
                   {provisionalDays > 0 && (
                     <span className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] opacity-75" style={{ border: '1px solid var(--border-strong)' }}>

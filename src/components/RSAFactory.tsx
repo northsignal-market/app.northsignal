@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Layers, Loader2, AlertCircle, FileText, MapPin, Copy, Check } from 'lucide-react';
+import { fmtMoneda } from './ui';
 
 /**
  * RSA FACTORY · rediseñado el 8 de septiembre de 2026
@@ -85,7 +86,7 @@ export function RSAFactory() {
   };
 
   const esLanding = (o: Oportunidad) => o.que_hacer.startsWith('NO ES EL ANUNCIO');
-  const plata = (n: number, m: string) => `${Math.round(n).toLocaleString('es-CL')} ${m}`;
+  const plata = (n: number, m: string) => fmtMoneda(Math.round(n), m);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 h-full">

@@ -1,10 +1,8 @@
-import { useCuentaActiva, useCuentas, avisar } from '../lib/useCuentas';
+import { useCuentaActiva, useCuentas } from '../lib/useCuentas';
+import { fmtMoneda, fmtFechaCorta, fetchJSON } from './ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
-import { 
-  Building, DollarSign, Calendar, Clock, AlertCircle, 
-  Lightbulb, HelpCircle, ArrowRight, ExternalLink, ShieldCheck, Target, TrendingUp, Layers, Save
-} from 'lucide-react';
+import { Clock, Lightbulb, HelpCircle, ArrowRight, ExternalLink, Target, TrendingUp, Layers, Save } from 'lucide-react';
 import { ReportesEditor } from './ReportesEditor';
 import { useAppStore } from '../store/useAppStore';
 import type { NotionClientInfo, Actionable } from '../types';
@@ -30,7 +28,6 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const [escalera, setEscalera] = useState<any>({ etapas: [], recomendada: null });
   const [docMaestro, setDocMaestro] = useState<{ markdown: string; secciones: any[] } | null>(null);
   const [estrategia, setEstrategia] = useState<any>({ decisiones: [], cpa_marginal: [] });
-  const [reportes, setReportes] = useState<any[]>([]);
   const [limitada, setLimitada] = useState<any>(null);
   const [propuestas, setPropuestas] = useState<any[]>([]);
   const [aprendido, setAprendido] = useState<any>(null);
@@ -58,55 +55,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   };
   const editarEjecucion = async (p: any) => { const r = prompt('Qué se hizo realmente en Google Ads (esto es lo que el sistema evalúa):', p.ejecucion_real || ''); if (r === null) return; await fetch(`/api/propuestas/${p.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ejecucion_real: r }) }); cargarPropuestas(); };
   useEffect(() => { fetch(`/api/limitada?client=${activeClient}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setLimitada(d)).catch(() => {}); }, [activeClient]);
-  const [reporteAbierto, setReporteAbierto] = useState<any>(null);
-  const [editandoReporte, setEditandoReporte] = useState(false);
-  const [textoReporte, setTextoReporte] = useState({ resumen_ejecutivo: '', que_cambiamos: '', que_sigue: '' });
-  const [trabajandoReporte, setTrabajandoReporte] = useState<string | null>(null);
-  const [generandoDesde, setGenerandoDesde] = useState(false);
-  const [formGenerar, setFormGenerar] = useState({ desde: '', hasta: '' });
-  const [origenReporte, setOrigenReporte] = useState<string | null>(null);
-  const lunesDe = (d: Date) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const preset = (que: 'semana_cerrada' | 'dos_semanas' | 'mes_pasado' | 'ultimos_7') => {
-    const hoy = new Date(); const lun = lunesDe(hoy);
-    if (que === 'semana_cerrada') { const d = new Date(lun); d.setDate(d.getDate() - 7); const h = new Date(lun); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
-    if (que === 'dos_semanas') { const d = new Date(lun); d.setDate(d.getDate() - 14); const h = new Date(lun); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
-    if (que === 'mes_pasado') { const d = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1); const h = new Date(hoy.getFullYear(), hoy.getMonth(), 0); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
-    if (que === 'ultimos_7') { const d = new Date(hoy); d.setDate(d.getDate() - 7); const h = new Date(hoy); h.setDate(h.getDate() - 1); setFormGenerar({ desde: iso(d), hasta: iso(h) }); }
-  };
-
-  const cargarReportes = () => {
-    fetch(`/api/reportes?client=${activeClient}`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : []).then(d => setReportes(Array.isArray(d) ? d : [])).catch(() => {});
-  };
-  useEffect(() => { cargarReportes(); }, [activeClient]);
-
-  const accionReporte = async (id: number, accion: 'pdf' | 'aprobar' | 'descartar') => {
-    setTrabajandoReporte(`${id}-${accion}`);
-    try {
-      if (accion === 'pdf') { window.open(`/api/reportes/${id}/pdf?download=1`, '_blank'); await fetch(`/api/reportes/${id}/pdf`, { method: 'POST', credentials: 'include' }); }
-      else await fetch(`/api/reportes/${id}/${accion}`, { method: 'POST', credentials: 'include' });
-      cargarReportes();
-      if (accion !== 'pdf') setReporteAbierto(null);
-    } finally { setTrabajandoReporte(null); }
-  };
-  const guardarTextoReporte = async () => {
-    if (!reporteAbierto) return;
-    setTrabajandoReporte('guardar');
-    try {
-      const r = await fetch(`/api/reportes/${reporteAbierto.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(textoReporte) });
-      if (r.ok) { const d = await r.json(); setReporteAbierto(d); setEditandoReporte(false); cargarReportes(); }
-    } finally { setTrabajandoReporte(null); }
-  };
-  const generarReporte = async () => {
-    setTrabajandoReporte('generar');
-    try {
-      const r = await fetch('/api/reportes/generar', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: activeClient, desde: formGenerar.desde, hasta: formGenerar.hasta }) });
-      const d = await r.json();
-      if (!r.ok) avisar(d.error || 'Ocurrió un error', 'error'); else { setGenerandoDesde(false); setOrigenReporte(d.origen); cargarReportes(); }
-    } finally { setTrabajandoReporte(null); }
-  };
+  // La UI de reportes vive completa en ReportesEditor; acá no queda estado propio.
   useEffect(() => {
     fetch(`/api/estrategia?client=${activeClient}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(d => d && setEstrategia(d)).catch(() => {});
@@ -205,12 +154,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
   // La moneda sale de la cuenta, no de un condicional: Fresh Monkee se mostraba
   // en pesos chilenos porque el ternario solo distinguia Karedo del resto.
-  const fmtMoney = (v: any) => {
-    if (v == null) return '—';
-    const mon = monedaDe(activeClient);
-    const loc = mon === 'EUR' ? 'de-DE' : mon === 'USD' ? 'en-US' : 'es-CL';
-    return new Intl.NumberFormat(loc, { style: 'currency', currency: mon, maximumFractionDigits: mon === 'CLP' ? 0 : 2 }).format(Number(v));
-  };
+  const fmtMoney = (v: any) => fmtMoneda(v == null ? null : Number(v), monedaDe(activeClient));
 
   useEffect(() => {
     setLoading(true);
@@ -265,24 +209,22 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const [lecciones, setLecciones] = useState<any[]>([]);
   useEffect(() => {
     let vivo = true;
-    import('./ui').then(({ fetchJSON }) =>
-      fetchJSON<any>('/api/aprendido', null).then(d => {
-        if (!vivo || !d?.lecciones) return;
-        setLecciones(d.lecciones.filter((l: any) => !l.account || l.account === activeClient));
-      })
-    );
+    fetchJSON<any>('/api/aprendido', null).then(d => {
+      if (!vivo || !d?.lecciones) return;
+      setLecciones(d.lecciones.filter((l: any) => !l.account || l.account === activeClient));
+    });
     return () => { vivo = false; };
   }, [activeClient]);
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      
+    <div className="max-w-[1320px] mx-auto px-5 md:px-8 py-6 space-y-6">
+
       {zona === 'todo' && (<>
       {/* Account Selector & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
           <h1 className="text-xl font-bold text-[#FFFFFF]">
-            Clientes & Memoria de Cuenta
+            Cuenta · memoria y diagnóstico
           </h1>
           <p className="text-xs text-[#F5F7FA] opacity-70 mt-0.5">
             ¿Qué sé de esta cuenta? Contexto operativo, aprendizajes acumulados e hipótesis
@@ -582,7 +524,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       </>)}
       {ver('reportes') && (<>
       {/* Reportes al cliente v2 */}
-      <ReportesEditor activeClient={activeClient} fmtMoney={fmtMoney} />
+      <ReportesEditor activeClient={activeClient} />
       </>)}
       {ver('diagnostico') && (<>
       {/* Accionables Abiertos de esta cuenta */}
@@ -815,7 +757,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               <div key={sec.seccion} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: editandoSeccion === sec.seccion ? '1px solid var(--primary)' : '1px solid transparent' }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-[#FFFFFF] uppercase tracking-wider">{sec.seccion}</span>
-                  <span className="text-[11px] text-[#F5F7FA] opacity-50 tabular">v{sec.version} · {new Date(sec.editado_el).toLocaleDateString('es-CL')} · {sec.editado_por}</span>
+                  <span className="text-[11px] text-[#F5F7FA] opacity-50 tabular">v{sec.version} · {fmtFechaCorta(sec.editado_el)} · {sec.editado_por}</span>
                 </div>
                 {editandoSeccion === sec.seccion ? (
                   <div className="space-y-2">

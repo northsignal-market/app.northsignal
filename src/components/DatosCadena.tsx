@@ -16,6 +16,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Layers, MapPin, Megaphone, Hash, Search, ArrowLeft, Sparkles } from 'lucide-react';
+import { fmtMoneda, fmtNum } from './ui';
 
 type Nivel = 'objetivos' | 'locales' | 'campanas' | 'grupos' | 'keywords' | 'terminos' | 'transversal';
 interface Props { account: string; moneda: string }
@@ -41,9 +42,9 @@ export function DatosCadena({ account, moneda }: Props) {
   const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' = 'num') => {
     if (v === null || v === undefined) return '—';
     const n = Number(v);
-    if (tipo === 'moneda') return new Intl.NumberFormat('es-CL', { style: 'currency', currency: moneda, maximumFractionDigits: moneda === 'CLP' ? 0 : 2 }).format(n);
+    if (tipo === 'moneda') return fmtMoneda(n, moneda);
     if (tipo === 'pct') return n.toFixed(2) + '%';
-    return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 1 }).format(n);
+    return fmtNum(n);
   };
 
   const cargar = async (n: Nivel, c: typeof ctx) => {
