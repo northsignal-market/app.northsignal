@@ -141,7 +141,7 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional,
         <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 pt-0.5">{label}</span>
         {d != null && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] tabular font-medium shrink-0"
-            style={{ border: '1px solid var(--border-strong)', color: bueno ? 'var(--text-secondary)' : '#E8A13C' }}>
+            style={{ border: '1px solid var(--border-strong)', color: bueno ? '#4ADE80' : 'var(--bad)' }}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {d >= 0 ? <path d="M3 17 9 11 13 15 21 7 M15 7h6v6" /> : <path d="M3 7 9 13 13 9 21 17 M15 17h6v-6" />}
             </svg>
@@ -172,8 +172,8 @@ function Sparkline({ datos }: { datos: (number | null)[] }) {
   const W = 56, H = 16;
   const pts = vals.map((v, i) => v == null ? null : `${(i / (vals.length - 1)) * W},${H - 1.5 - ((v - min) / rango) * (H - 3)}`).filter(Boolean).join(' ');
   return (
-    <svg width={W} height={H} className="shrink-0 opacity-70" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke="var(--primary-text)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
+    <svg width={W} height={H} className="shrink-0 opacity-60" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke="rgba(245,247,250,0.75)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
