@@ -119,33 +119,43 @@ export function Tarjeta({ children, attention, sinPadding, className = '' }: {
 
 /** Grilla de tarjetas de cifras. */
 export function StatGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>;
+  return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{children}</div>;
 }
 
-/** Cifra con etiqueta, delta opcional, nota y sparkline. La cifra es de las
- *  pocas cosas en blanco puro: protagonista por contraste, no por tamaño. */
+/** Cifra con etiqueta, delta como badge con flecha, nota y sparkline.
+ *  Lenguaje visual de las section cards de shadcn (dashboard-01, MIT), portado
+ *  a nuestros tokens: label apagado arriba, badge outline con tendencia a la
+ *  derecha, cifra 2xl en blanco puro, degradado sutil hacia arriba. */
 export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional, spark }: {
   label: string; valor: React.ReactNode; delta?: number | null; deltaBuenoSiBaja?: boolean; nota?: string; provisional?: boolean; spark?: (number | null)[];
 }) {
   const d = delta == null || isNaN(Number(delta)) ? null : Number(delta);
   const bueno = d == null ? null : (deltaBuenoSiBaja ? d < 0 : d > 0);
   return (
-    <div className="surface p-3.5" style={{ borderRadius: 'var(--r-panel)' }}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{label}</span>
-        {provisional && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }} title="Los días recientes maduran: este número todavía se mueve">madurando</span>}
-      </div>
-      <div className="flex items-end justify-between gap-2">
-        <div className="text-xl text-[#FFFFFF] tabular mt-1 leading-tight">{valor}</div>
-        {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
-      </div>
-      <div className="flex items-baseline gap-2 mt-0.5 min-h-[14px]">
+    <div className="p-4" style={{
+      borderRadius: 'var(--r-panel)',
+      border: '1px solid var(--border)',
+      background: 'linear-gradient(to top, var(--primary-faint), var(--surface-1))',
+    }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50 pt-0.5">{label}</span>
         {d != null && (
-          <span className="text-[11px] tabular" style={{ color: bueno ? 'var(--text-secondary)' : '#E8A13C' }}>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] tabular font-medium shrink-0"
+            style={{ border: '1px solid var(--border-strong)', color: bueno ? 'var(--text-secondary)' : '#E8A13C' }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {d >= 0 ? <path d="M3 17 9 11 13 15 21 7 M15 7h6v6" /> : <path d="M3 7 9 13 13 9 21 17 M15 17h6v-6" />}
+            </svg>
             {d > 0 ? '+' : ''}{fmtNum(d, Math.abs(d) < 10 ? 1 : 0)}%
           </span>
         )}
-        {nota && <span className="text-[10px] text-[#F5F7FA] opacity-40 truncate">{nota}</span>}
+      </div>
+      <div className="flex items-end justify-between gap-2 mt-1.5">
+        <div className="text-2xl font-semibold text-[#FFFFFF] tabular leading-none">{valor}</div>
+        {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
+      </div>
+      <div className="flex items-baseline gap-1.5 mt-2 min-h-[14px]">
+        {nota && <span className="text-[10px] text-[#F5F7FA] opacity-45 truncate">{nota}</span>}
+        {provisional && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }} title="Los días recientes maduran: este número todavía se mueve">madurando</span>}
       </div>
     </div>
   );
