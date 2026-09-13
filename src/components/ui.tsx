@@ -397,7 +397,7 @@ export function GraficoSerie({ datos, series, moneda = 'CLP', provisionalDesde, 
           {conDerecho && <YAxis yAxisId="der" orientation="right" tickFormatter={(v: number) => series.find(s => s.ejeDerecho)?.formato === 'moneda' ? fmtMonedaCorta(v, moneda) : fmtNum(v)} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} width={44} />}
           <Tooltip
             cursor={{ stroke: 'var(--border-strong)' }}
-            contentStyle={{ background: 'var(--glass-tint-dense)', border: '1px solid var(--glass-border)', borderRadius: 10, backdropFilter: 'blur(12px)', fontSize: 11, color: '#F5F7FA' }}
+            contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 11, color: '#F5F7FA' }}
             labelFormatter={(l: any) => {
               const esProv = primeraProvisional && String(l) >= String(primeraProvisional);
               return fmtFechaCorta(String(l)) + (esProv ? ' · madurando' : '');

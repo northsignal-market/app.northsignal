@@ -126,38 +126,27 @@ h4, h5, h6 { font-weight: 500; }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
+/* El Liquid Glass se retiró (13/9, pedido explícito + referencia noir): las
+   clases quedan como superficies SÓLIDAS con hairline para que el shell
+   (header, sidebar, paleta, tooltips) cambie entero sin tocar componentes.
+   Nada de blur, specular ni sombras internas: jerarquía por líneas y tipografía. */
 .glass-dense {
-  background: linear-gradient(180deg, var(--glass-tint-dense), var(--glass-tint));
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 1px var(--glass-specular), inset 0 -8px 20px var(--glass-inner), var(--glass-shadow);
-  contain: paint;
+  background: color-mix(in oklab, var(--navy) 97%, #000000);
+  border: 1px solid var(--border);
 }
 
 .glass {
-  background: linear-gradient(180deg, var(--glass-tint), color-mix(in oklab, var(--navy) 62%, transparent));
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: inset 0 1px 1px var(--glass-specular), var(--glass-shadow);
-  contain: paint;
   transition: border-color var(--dur-base) var(--ease);
 }
-.glass:hover { border-color: var(--glass-border-hover); }
+.glass:hover { border-color: var(--border-strong); }
 
 .glass-light {
-  background: var(--glass-tint-light);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  contain: paint;
-}
-
-@supports (backdrop-filter: url(#glass-refract)) {
-  .glass, .glass-dense { backdrop-filter: url(#glass-refract) blur(18px) saturate(130%); }
 }
 
 .surface { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-card); }

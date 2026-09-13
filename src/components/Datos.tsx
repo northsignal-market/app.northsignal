@@ -986,7 +986,7 @@ export function Datos({ initialSearch, initialView }: { initialSearch?: string; 
                   <YAxis yAxisId="left" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => formatValue('gasto', v, currency)} width={70} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => formatValue('cpa', v, currency)} width={64} />
                   <RechartsTooltip
-                    contentStyle={{ background: 'var(--glass-tint-dense)', border: '1px solid var(--glass-border)', borderRadius: 10, backdropFilter: 'blur(12px)', fontSize: 11, color: '#F5F7FA' }}
+                    contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 11, color: '#F5F7FA' }}
                     labelStyle={{ color: '#FFFFFF', fontWeight: 600 }}
                     formatter={(val: any, name: any) => [formatValue(name === 'CPA' ? 'cpa' : 'gasto', Number(val) || 0, currency), name]}
                     labelFormatter={v => `Semana del ${formatDatePretty(String(v))}`}

@@ -153,7 +153,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
   const ejeMoneda = (v: number) => fmtMonedaCorta(v, M);
   const ejeFecha = (str: string) => fmtFechaCorta(str);
-  const tooltipStyle = { background: 'var(--glass-tint-dense)', border: '1px solid var(--glass-border)', borderRadius: 10, backdropFilter: 'blur(12px)', fontSize: 11, color: '#F5F7FA' } as const;
+  const tooltipStyle = { background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 11, color: '#F5F7FA' } as const;
   const tooltipMoneda = (v: any, nombre: any) => {
     if (v == null) return ['—', nombre];
     if (/gasto|cpa|cpc/i.test(String(nombre))) return [fmtMoneda(Number(v), M), nombre];
