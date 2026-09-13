@@ -212,9 +212,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
               { label: 'Clics', valor: fmtNum(kpis.clics), delta: kpis.dClics, baja: false, spark: kpis.sparkClics },
               { label: 'CPC', valor: fmtMoneda(kpis.cpc, M), delta: kpis.dCpc, baja: true, spark: kpis.sparkCpc },
             ])
-          ).map(k => (
+          ).map((k, idx) => (
             <React.Fragment key={k.label}>
-              <Stat label={k.label} valor={k.valor} delta={k.delta} deltaBuenoSiBaja={k.baja}
+              <Stat heroe={idx === 0} label={k.label} valor={k.valor} delta={k.delta} deltaBuenoSiBaja={k.baja}
                 nota={k.delta != null ? `vs ${kpis.dias}d previos` : `${kpis.dias} días`} provisional={kpis.provisional} spark={k.spark} />
             </React.Fragment>
           ))}
@@ -226,7 +226,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
         const p = plan.plan;
         const dias = plan.pulsos.length;
         return (
-          <Tarjeta>
+          <Tarjeta hero>
             <div className="pb-2.5 mb-3 space-y-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-[13px] font-medium text-[#EDEFF3]"><Termino t="Plan semanal">Plan de la semana</Termino></h2>

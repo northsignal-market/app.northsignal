@@ -183,7 +183,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             </div>
             <div className="px-6">
               <div className="text-xs" style={LABEL}>De un clic</div>
-              <div className="text-2xl font-medium tabular mt-1 cifra-luz" style={{ letterSpacing: '-0.6px' }}>{listosOrd.length}</div>
+              <div className="text-2xl font-medium tabular mt-1 text-[#FAFAFA]" style={{ letterSpacing: '-0.6px' }}>{listosOrd.length}</div>
               <div className="text-xs mt-1" style={LABEL}>{listosOrd.length > 0 ? 'las más rentables por minuto' : 'ninguna lista para ejecutar'}</div>
             </div>
             <div className="pl-6">
@@ -307,7 +307,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 {notas.respuestas.slice(0, 2).map((r: any) => (
                   <div key={r.id}>
                     <div className="text-[11px] truncate" style={LABEL}>{r.cuenta} · {r.pregunta}</div>
-                    <p className="text-[13px] text-[#FAFAFA] leading-relaxed line-clamp-3 mt-0.5" title={r.respuesta}>{r.respuesta}</p>
+                    <p className="text-[13px] text-[#EDEFF3] leading-relaxed line-clamp-3 mt-0.5" title={r.respuesta}>{r.respuesta}</p>
                     <div className="text-[10px] mt-0.5 opacity-70" style={LABEL}>{r.respondio} · {fmtFechaCorta(r.cuando)}</div>
                   </div>
                 ))}
@@ -319,7 +319,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                     {notas.respuestas.slice(2).map((r: any) => (
                       <div key={r.id}>
                         <div className="text-[11px] truncate" style={LABEL}>{r.cuenta} · {r.pregunta}</div>
-                        <p className="text-[13px] text-[#FAFAFA] leading-relaxed mt-0.5">{r.respuesta}</p>
+                        <p className="text-[13px] text-[#EDEFF3] leading-relaxed mt-0.5">{r.respuesta}</p>
                         <div className="text-[10px] mt-0.5 opacity-70" style={LABEL}>{r.respondio} · {fmtFechaCorta(r.cuando)}</div>
                       </div>
                     ))}
@@ -427,7 +427,7 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
       style={activa ? { boxShadow: 'inset 2px 0 0 var(--primary-text)' } : undefined}>
       <span className="text-[10px] tabular w-24 shrink-0 truncate" style={{ color: '#ADADAD', letterSpacing: '0.3px' }} title={cuenta}>{cuenta}</span>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] text-[#FAFAFA] truncate">{titulo}</div>
+        <div className="text-[13px] text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] truncate opacity-80" style={{ color: '#ADADAD' }}>{sub}</div>}
       </div>
       {accion || <ChevronRight size={13} className="shrink-0 opacity-30" style={{ color: '#ADADAD' }} />}

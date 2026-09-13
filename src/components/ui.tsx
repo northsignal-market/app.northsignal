@@ -103,13 +103,14 @@ export function Seccion({ titulo, descripcion, derecha, children }: {
   );
 }
 
-/** Tarjeta estándar. attention: borde izquierdo azul para lo que pide acción. */
-export function Tarjeta({ children, attention, sinPadding, className = '' }: {
-  children: React.ReactNode; attention?: boolean; sinPadding?: boolean; className?: string;
+/** Tarjeta estándar. attention: borde izquierdo azul para lo que pide acción.
+ *  hero: top-highlight luminoso — UNA (máx dos) por vista. */
+export function Tarjeta({ children, attention, sinPadding, hero, className = '' }: {
+  children: React.ReactNode; attention?: boolean; sinPadding?: boolean; hero?: boolean; className?: string;
 }) {
   return (
     <div
-      className={`tarjeta-pulse ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
+      className={`tarjeta-pulse ${hero ? 'tarjeta-hero' : ''} ${sinPadding ? '' : 'p-4 md:p-5'} ${className}`}
       style={{ ['--r' as any]: '16px', ['--p' as any]: '16px', borderRadius: 'var(--r-panel)', ...(attention ? { borderLeft: '2px solid var(--primary)' } : {}) }}
     >
       {children}
@@ -132,8 +133,11 @@ export function StatGrid({ children, cols = 4 }: { children: React.ReactNode; co
 /** Cifra con etiqueta, delta con flecha, nota y sparkline. Celda limpia:
  *  label 12px gris sentence case, cifra 24px/500, sin fondo ni borde propio.
  *  Tipos medidos de la referencia (13/9). */
-export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional, spark }: {
+export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional, spark, heroe }: {
   label: string; valor: React.ReactNode; delta?: number | null; deltaBuenoSiBaja?: boolean; nota?: string; provisional?: boolean; spark?: (number | null)[];
+  /** UNA cifra-héroe por vista lleva el gradiente de luz y el glow de su
+   *  sparkline; el resto va plano. La firma se protege no repitiéndola. */
+  heroe?: boolean;
 }) {
   const d = delta == null || isNaN(Number(delta)) ? null : Number(delta);
   const bueno = d == null ? null : (deltaBuenoSiBaja ? d < 0 : d > 0);
@@ -151,8 +155,8 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional,
         )}
       </div>
       <div className="flex items-end justify-between gap-2 mt-1">
-        <div className="text-2xl font-medium tabular leading-none cifra-luz" style={{ letterSpacing: '-0.6px' }}>{valor}</div>
-        {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} />}
+        <div className={`text-2xl font-medium tabular leading-none ${heroe ? 'cifra-luz' : 'text-[#FAFAFA]'}`} style={{ letterSpacing: '-0.6px' }}>{valor}</div>
+        {spark && spark.filter(v => v != null).length >= 3 && <Sparkline datos={spark} glow={heroe} />}
       </div>
       <div className="flex items-baseline gap-1.5 mt-1.5 min-h-[14px]">
         {nota && <span className="text-[11px] truncate" style={{ color: '#ADADAD', opacity: 0.85 }}>{nota}</span>}
@@ -164,7 +168,7 @@ export function Stat({ label, valor, delta, deltaBuenoSiBaja, nota, provisional,
 
 /** Sparkline mínima: la forma de la serie, nada más. SVG a mano — recharts para
  *  56×16 píxeles es pagar un contenedor responsivo que acá no hace falta. */
-function Sparkline({ datos }: { datos: (number | null)[] }) {
+function Sparkline({ datos, glow }: { datos: (number | null)[]; glow?: boolean }) {
   const vals = datos.map(v => (v == null || isNaN(Number(v)) ? null : Number(v)));
   const presentes = vals.filter((v): v is number => v != null);
   if (presentes.length < 3) return null;
@@ -173,8 +177,8 @@ function Sparkline({ datos }: { datos: (number | null)[] }) {
   const W = 56, H = 16;
   const pts = vals.map((v, i) => v == null ? null : `${(i / (vals.length - 1)) * W},${H - 1.5 - ((v - min) / rango) * (H - 3)}`).filter(Boolean).join(' ');
   return (
-    <svg width={W} height={H} className="shrink-0" aria-hidden="true" style={{ filter: 'drop-shadow(0 0 3px rgba(34,211,238,0.55))' }}>
-      <polyline points={pts} fill="none" stroke="var(--acc-cyan)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" strokeOpacity="0.85" />
+    <svg width={W} height={H} className="shrink-0" aria-hidden="true" style={glow ? { filter: 'drop-shadow(0 0 3px rgba(34,211,238,0.55))' } : undefined}>
+      <polyline points={pts} fill="none" stroke={glow ? 'var(--acc-cyan)' : 'rgba(245,247,250,0.55)'} strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" strokeOpacity="0.85" />
     </svg>
   );
 }

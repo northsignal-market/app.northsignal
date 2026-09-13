@@ -135,7 +135,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.09);
   transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-slow) var(--ease);
 }
-.tarjeta-pulse::before {
+/* El top-highlight es la firma: SOLO tarjetas de nivel 1 (una o dos por vista,
+   via .tarjeta-hero). Repetirlo en todas lo convierte en papel tapiz. */
+.tarjeta-hero::before {
   content: '';
   position: absolute;
   top: -1px; left: 8%; right: 8%;

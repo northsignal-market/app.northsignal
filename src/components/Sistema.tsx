@@ -443,7 +443,7 @@ export function Sistema() {
               corrió; "en silencio" es el estado más peligroso porque no grita —
               por eso los silencios vienen primero y el marco se tiñe. */}
           {latidos.length > 0 && (
-            <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: latidos.some((l: any) => l.en_silencio) ? '1px solid rgba(249,112,102,0.4)' : '1px solid var(--border)' }}>
+            <div className="tarjeta-pulse tarjeta-hero p-5 rounded-xl space-y-3" style={{ border: latidos.some((l: any) => l.en_silencio) ? '1px solid rgba(249,112,102,0.4)' : '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Agentes</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.">Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.</p>
