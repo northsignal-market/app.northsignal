@@ -87,8 +87,11 @@ function tipoAutoDesde(a) {
       return p.nivel === "campana" ? "negativa_campana" : p.nivel === "lista" ? null : "negativa_grupo";
     case "quitar_negativa":
       return a.objeto.keyword ? "quitar_negativa" : null;
+    // Suelta o en lote: el servidor resuelve cada keyword contra la base y omite
+    // las que no existen activas. Un resabio defensivo anulaba el boton justo
+    // para los lotes, que son la mayoria de las pausas reales.
     case "pausar_keyword":
-      return !a.objeto.keywords?.length ? "pausar_keyword" : null;
+      return a.objeto.keyword || a.objeto.keywords?.length ? "pausar_keyword" : null;
     case "reactivar_keyword":
       return a.objeto.keyword ? "reactivar_keyword" : null;
     case "pausar_anuncio":
@@ -4394,6 +4397,19 @@ Reporte completo: ${url}`;
     const { data } = await supabase.rpc("resolver_keyword", { p_account: account, p_keyword: kw, p_pista: pista || "" });
     return data && data.campana ? data : null;
   }
+  async function resolverCampana(account, nombre) {
+    if (!supabase) return { ok: false, error: "Supabase no configurado" };
+    const limpio = String(nombre).trim();
+    const { data: exacta } = await supabase.from("campaign").select("campaign, channel").eq("account", account).eq("campaign", limpio).order("week_start", { ascending: false }).limit(1);
+    if (exacta?.length) return { ok: true, campana: exacta[0].campaign, channel: exacta[0].channel || null };
+    const { data: parecidas } = await supabase.from("campaign").select("campaign, channel").eq("account", account).ilike("campaign", `%${limpio}%`).order("week_start", { ascending: false }).limit(24);
+    const unicas = [...new Map((parecidas || []).map((c) => [c.campaign, c])).values()];
+    if (unicas.length === 1) return { ok: true, campana: unicas[0].campaign, channel: unicas[0].channel || null };
+    return {
+      ok: false,
+      error: unicas.length ? `"${limpio}" matchea ${unicas.length} campa\xF1as en ${account}: ${unicas.slice(0, 5).map((c) => c.campaign).join(" \xB7 ")}${unicas.length > 5 ? "\u2026" : ""}. El accionable tiene que traer el nombre exacto.` : `No encontr\xE9 la campa\xF1a "${limpio}" en ${account}. El nombre se resuelve contra la base, no se adivina.`
+    };
+  }
   async function aplicarPoliticaAuto(account, notionId, titulo, entidad, origen, confianza, comoHacerlo) {
     if (!supabase) return null;
     const { detectarTipoAuto: detectarTipoAuto2, extraerKeyword: extraerKeyword2, concordanciaDestino: concordanciaDestino2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
@@ -4430,11 +4446,12 @@ Reporte completo: ${url}`;
       }
       return null;
     }
+    const { data: avisosPol } = await supabase.rpc("prevuelo_avisos", { p_notion_id: notionId });
     await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : "simular", aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
         await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
-        await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POL\xCDTICA ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Cumple la regla de ejecuci\xF3n autom\xE1tica para ${tipo.replace("_", " ")} (${modo}). El script lo aplica en la pr\xF3xima hora. Si no quer\xEDas esto, desactiv\xE1 la pol\xEDtica en Sistema \u203A Automatizaci\xF3n.` } }] });
+        await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POL\xCDTICA ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Cumple la regla de ejecuci\xF3n autom\xE1tica para ${tipo.replace("_", " ")} (${modo}). El script lo aplica en la pr\xF3xima hora. Si no quer\xEDas esto, desactiv\xE1 la pol\xEDtica en Sistema \u203A Automatizaci\xF3n.${Array.isArray(avisosPol) && avisosPol.length ? ` Avisos (no bloquean): ${avisosPol.join(" | ")}`.slice(0, 700) : ""}` } }] });
       } catch {
       }
     }
@@ -4469,14 +4486,70 @@ Reporte completo: ${url}`;
     const { data: bloqueo, error: errPrevuelo } = await supabase.rpc("prevuelo", { p_notion_id: req.params.id });
     if (errPrevuelo) return res.status(500).json({ error: `El pre-vuelo fall\xF3 y no se encola sin \xE9l: ${errPrevuelo.message}` });
     if (bloqueo) return res.status(409).json({ error: `No se puede ejecutar todav\xEDa: ${bloqueo}`, conflicto: true });
+    const { data: avisosPv } = await supabase.rpc("prevuelo_avisos", { p_notion_id: req.params.id });
+    const avisos = Array.isArray(avisosPv) ? avisosPv : [];
+    {
+      const { data: previa } = await supabase.from("acciones_aprobadas").select("id, estado, modo, aprobada_el").eq("notion_id", req.params.id).in("estado", ["pendiente", "ejecutada"]).is("revertida_el", null).order("aprobada_el", { ascending: false }).limit(1).maybeSingle();
+      if (previa) return res.status(409).json({ error: `Este accionable ya tiene una acci\xF3n ${previa.estado === "pendiente" ? "encolada (el ejecutor la aplica dentro de la hora)" : "ejecutada"} en modo ${previa.modo}. Est\xE1 en Sistema \u203A Ejecuciones. Si hace falta repetirla, primero revert\xED o descart\xE1 la anterior.`, duplicado: true });
+    }
     {
       const viejos = { negativa_grupo: "agregar_negativa", negativa_campana: "agregar_negativa" };
       const verboReal = viejos[tipo] || tipo;
-      const { data: cap } = await supabase.from("capacidades_ejecucion").select("ejecutable, por_que_no, riesgo, requiere").eq("verbo", verboReal).maybeSingle();
+      const { data: cap } = await supabase.from("capacidades_ejecucion").select("ejecutable, por_que_no, riesgo, requiere").eq("verbo", verboReal).eq("plataforma", "google").maybeSingle();
       if (!cap) return res.status(400).json({ error: `Verbo desconocido: ${tipo}. Los v\xE1lidos est\xE1n en capacidades_ejecucion.` });
       if (!cap.ejecutable) return res.status(400).json({ error: `Esto no lo puede hacer un script: ${cap.por_que_no}`, manual: true, por_que: cap.por_que_no });
     }
     if (tipo === "cambiar_concordancia" && !match_type_destino) return res.status(400).json({ error: "No pude leer la concordancia destino del t\xEDtulo. Ejecutalo a mano." });
+    const VERBOS_DE_CAMPANA = /* @__PURE__ */ new Set(["pausar_campana", "reactivar_campana", "cambiar_presupuesto", "cambiar_objetivo_puja", "cambiar_estrategia_puja", "aplicar_etiqueta", "pausar_grupo"]);
+    if (VERBOS_DE_CAMPANA.has(tipo)) {
+      if (!account || !campana) return res.status(400).json({ error: "Faltan account y campa\xF1a: la acci\xF3n estructurada tiene que traer objeto.campana." });
+      const rc = await resolverCampana(account, campana);
+      if ("error" in rc) return res.status(422).json({ error: rc.error });
+      const canal = String(rc.channel || "").toUpperCase();
+      if (canal === "DEMAND_GEN") {
+        return res.status(422).json({ error: `${rc.campana} es Demand Gen: Google Ads Scripts no la expone y el ejecutor no puede tocarla. Este cambio va a mano en Google Ads o por la API.`, manual: true });
+      }
+      if (canal === "PERFORMANCE_MAX" && tipo === "pausar_grupo") {
+        return res.status(422).json({ error: `${rc.campana} es Performance Max: no tiene grupos de anuncios editables. Sobre PMax se puede pausar/reactivar la campa\xF1a, cambiar presupuesto, puja o etiqueta.`, manual: true });
+      }
+      const p2 = body.parametros || {};
+      if (["cambiar_presupuesto", "cambiar_objetivo_puja"].includes(tipo) && p2.valor_actual == null) {
+        return res.status(422).json({ error: `${tipo} sin valor_actual: sin el valor anterior el cambio no se puede revertir. Esper\xE1 a que la tarea del lunes lo reformule con el valor de hoy.` });
+      }
+      let grpResuelto = null;
+      if (tipo === "pausar_grupo") {
+        if (!grupo) return res.status(400).json({ error: "pausar_grupo sin grupo en la acci\xF3n estructurada." });
+        const { data: gs } = await supabase.from("adgroup").select("ad_group").eq("account", account).eq("campaign", rc.campana).ilike("ad_group", `%${grupo}%`).order("week_start", { ascending: false }).limit(10);
+        const nombres = [...new Set((gs || []).map((g) => g.ad_group))];
+        const exacto = nombres.find((n) => n === grupo) || (nombres.length === 1 ? nombres[0] : null);
+        if (!exacto) return res.status(422).json({ error: `No encontr\xE9 el grupo "${grupo}" en ${rc.campana}${nombres.length ? `. Parecidos: ${nombres.slice(0, 5).join(" \xB7 ")}` : ""}. El nombre se resuelve contra la base, no se adivina.` });
+        grpResuelto = exacto;
+      }
+      const afueraC = puedeEscribirAfuera();
+      const { data: filaC, error: errC } = await supabase.from("acciones_aprobadas").insert({
+        account,
+        notion_id: req.params.id,
+        tipo,
+        campana: rc.campana,
+        grupo: grpResuelto,
+        nivel: p2.nivel || null,
+        estrategia_destino: p2.estrategia_destino || null,
+        valor_actual: p2.valor_actual ?? null,
+        valor_nuevo: p2.valor_nuevo ?? null,
+        etiqueta: p2.etiqueta || null,
+        modo: afueraC.permitido && modo === "ejecutar" ? "ejecutar" : "simular"
+      }).select().single();
+      if (errC) return res.status(500).json({ error: errC.message });
+      const detalleC = tipo === "cambiar_presupuesto" || tipo === "cambiar_objetivo_puja" || tipo === "cambiar_cpc_keyword" ? ` (${p2.valor_actual} \u2192 ${p2.valor_nuevo ?? "sin objetivo"})` : tipo === "cambiar_estrategia_puja" ? ` (\u2192 ${p2.estrategia_destino})` : tipo === "aplicar_etiqueta" ? ` (${p2.etiqueta})` : "";
+      if (notion) {
+        try {
+          await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: "En curso" } } } });
+          await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica: ${tipo.replace(/_/g, " ")} en ${rc.campana}${detalleC} (${modo === "ejecutar" ? "real" : "simulaci\xF3n"}). El valor anterior queda guardado para revertir. El script ejecutor lo aplica en la pr\xF3xima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(" | ")}`.slice(0, 900) : ""}` } }] });
+        } catch {
+        }
+      }
+      return res.json({ ...filaC, avisos });
+    }
     if (!account || !keyword && !ad_id) return res.status(400).json({ error: "Faltan account y keyword o ad_id" });
     let camp = campana, grp = grupo, mt = match_type;
     let loteResuelto;
@@ -4549,11 +4622,11 @@ Reporte completo: ${url}`;
     if (notion) {
       try {
         await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: "En curso" } } } });
-        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica (${modo === "ejecutar" ? "real" : "simulaci\xF3n"}). El script ejecutor lo aplica en la pr\xF3xima hora.` } }] });
+        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica (${modo === "ejecutar" ? "real" : "simulaci\xF3n"}). El script ejecutor lo aplica en la pr\xF3xima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(" | ")}`.slice(0, 900) : ""}` } }] });
       } catch {
       }
     }
-    res.json(data);
+    res.json({ ...data, avisos });
   });
   app2.get("/api/acciones-aprobadas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -4629,8 +4702,11 @@ Reporte completo: ${url}`;
       supabase.from("v_accionable_relaciones").select("*").or(`a.eq.${id},b.eq.${id}`).eq("resuelta", false),
       supabase.from("accionables_espejo").select("version, accion, accion_valida, accion_error, hash").eq("notion_id", id).maybeSingle()
     ]);
-    const { data: bloqueo } = await supabase.rpc("prevuelo", { p_notion_id: id });
-    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null });
+    const [{ data: bloqueo }, { data: avisosCtx }] = await Promise.all([
+      supabase.rpc("prevuelo", { p_notion_id: id }),
+      supabase.rpc("prevuelo_avisos", { p_notion_id: id })
+    ]);
+    res.json({ versiones: v.data || [], relaciones: rel.data || [], actual: esp.data, bloqueo: bloqueo || null, avisos: avisosCtx || [] });
   });
   app2.post("/api/relaciones/:id/resolver", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -4974,6 +5050,190 @@ Reporte completo: ${url}`;
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
+  });
+  app2.all("/api/cron/reconciliar-api", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!gadsDisponible()) return res.status(503).json({ error: "Faltan credenciales GADS_* en el entorno" });
+    const t0 = Date.now();
+    const TOPE_CORRECCIONES = 400;
+    const TOL_CONV = 5e-3;
+    const tolGasto = (v) => Math.max(0.02, Math.abs(v) * 2e-3);
+    const f = (d) => d.toISOString().slice(0, 10);
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    const cuentas = (await cuentasActivas()).filter((c) => c.cid && (!soloCuenta || c.account === soloCuenta));
+    const resumen = [];
+    const registrar = async (r) => {
+      resumen.push(r);
+      try {
+        await supabase.from("reconciliaciones_api").insert(r);
+      } catch (e) {
+        console.error("[reconciliar] no pude registrar: " + e.message);
+      }
+    };
+    for (const cta of cuentas) {
+      try {
+        const hasta = /* @__PURE__ */ new Date();
+        hasta.setDate(hasta.getDate() - 1);
+        const desde = new Date(hasta);
+        desde.setDate(desde.getDate() - 13);
+        const api = await gadsSearch(cta.cid, `SELECT segments.date, campaign.name, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${f(desde)}' AND '${f(hasta)}' AND campaign.status != 'REMOVED'`);
+        const verdad = /* @__PURE__ */ new Map();
+        for (const r of api) verdad.set(`${r.segments?.date}\xA7${r.campaign?.name}`, { cost: +(Number(r.metrics?.costMicros || 0) / 1e6).toFixed(2), conv: +Number(r.metrics?.conversions || 0).toFixed(2) });
+        const { data: base } = await supabase.from("campaign_daily").select("date, campaign, cost, conversions").eq("account", cta.account).gte("date", f(desde)).lte("date", f(hasta));
+        if (!base?.length) {
+          await registrar({ account: cta.account, capa: "diaria", filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: verdad.size, veredicto: "sin_base", detalle: "campaign_daily no tiene la ventana: eso es extracci\xF3n, no reconciliaci\xF3n." });
+        } else {
+          let comparadas = 0, corregidas = 0, faltantes = 0, maxG = 0, maxC = 0;
+          for (const b of base) {
+            const v = verdad.get(`${b.date}\xA7${b.campaign}`);
+            if (!v) continue;
+            comparadas++;
+            const dG = Math.abs(Number(b.cost) - v.cost), dC = Math.abs(Number(b.conversions) - v.conv);
+            maxG = Math.max(maxG, dG);
+            maxC = Math.max(maxC, dC);
+            if (dG > tolGasto(v.cost) || dC > TOL_CONV) {
+              if (++corregidas > TOPE_CORRECCIONES) break;
+              await supabase.from("campaign_daily").update({
+                cost: v.cost,
+                conversions: v.conv,
+                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : 0
+              }).eq("account", cta.account).eq("date", b.date).eq("campaign", b.campaign);
+            }
+          }
+          for (const [k, v] of verdad) {
+            if (v.cost > 0 && !base.some((b) => `${b.date}\xA7${b.campaign}` === k)) faltantes++;
+          }
+          await registrar({
+            account: cta.account,
+            capa: "diaria",
+            filas_comparadas: comparadas,
+            filas_corregidas: Math.min(corregidas, TOPE_CORRECCIONES),
+            filas_insertadas: 0,
+            faltantes_en_base: faltantes,
+            max_divergencia_gasto: +maxG.toFixed(2),
+            max_divergencia_conv: +maxC.toFixed(2),
+            veredicto: corregidas > TOPE_CORRECCIONES ? "excedio_tope" : corregidas ? "corregido" : "limpio",
+            detalle: corregidas > TOPE_CORRECCIONES ? `Se fren\xF3 en ${TOPE_CORRECCIONES}: una divergencia tan masiva es un bug, no maduraci\xF3n. Revisar antes de seguir.` : faltantes ? `${faltantes} d\xEDa-campa\xF1a con gasto en la API que la base no tiene (el script las trae en su corrida; si persiste, migrar esa tabla a extracci\xF3n por API).` : null
+          });
+        }
+      } catch (e) {
+        await registrar({ account: cta.account, capa: "diaria", filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: 0, veredicto: "error", detalle: String(e.message).slice(0, 400) });
+      }
+      try {
+        const hoy = /* @__PURE__ */ new Date();
+        const dow = (hoy.getUTCDay() + 6) % 7;
+        const lunesActual = new Date(hoy);
+        lunesActual.setUTCDate(hoy.getUTCDate() - dow);
+        const semanas = [];
+        for (let i = 1; i <= 4; i++) {
+          const d = new Date(lunesActual);
+          d.setUTCDate(lunesActual.getUTCDate() - 7 * i);
+          semanas.push(f(d));
+        }
+        let compS = 0, corrS = 0, compA = 0, corrA = 0, insA = 0, cerosA = 0, maxCs = 0;
+        let moneda = cta.currency || null;
+        if (!moneda) {
+          const { data: mon } = await supabase.from("conversion_actions").select("currency").eq("account", cta.account).not("currency", "is", null).limit(1);
+          moneda = mon?.[0]?.currency || null;
+        }
+        for (const w of semanas) {
+          const wf = /* @__PURE__ */ new Date(w + "T12:00:00Z");
+          wf.setUTCDate(wf.getUTCDate() + 6);
+          const wEnd = f(wf);
+          const { data: baseC } = await supabase.from("campaign").select("campaign, cost, clicks, conversions, all_conversions, conv_value").eq("account", cta.account).eq("week_start", w);
+          if (!baseC?.length) continue;
+          const apiC = await gadsSearch(cta.cid, `SELECT campaign.name, metrics.conversions, metrics.all_conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          for (const b of baseC) {
+            const v = apiC.find((r) => r.campaign?.name === b.campaign);
+            if (!v) continue;
+            compS++;
+            const cv = +Number(v.metrics?.conversions || 0).toFixed(2), acv = +Number(v.metrics?.allConversions || 0).toFixed(2), val = +Number(v.metrics?.conversionsValue || 0).toFixed(2);
+            maxCs = Math.max(maxCs, Math.abs(Number(b.conversions) - cv));
+            if (Math.abs(Number(b.conversions) - cv) > TOL_CONV || Math.abs(Number(b.all_conversions) - acv) > TOL_CONV || Math.abs(Number(b.conv_value) - val) > tolGasto(val)) {
+              corrS++;
+              const cost = Number(b.cost) || 0, clicks = Number(b.clicks) || 0;
+              await supabase.from("campaign").update({
+                conversions: cv,
+                all_conversions: acv,
+                conv_value: val,
+                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : 0,
+                conv_rate: clicks > 0 ? +(cv / clicks * 100).toFixed(2) : 0,
+                // porcentaje: la convención de la tabla
+                roas: cost > 0 ? +(val / cost).toFixed(2) : 0
+              }).eq("account", cta.account).eq("week_start", w).eq("campaign", b.campaign);
+            }
+          }
+          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          const va = /* @__PURE__ */ new Map();
+          for (const r of apiA) {
+            if (!r.campaign?.name || !r.segments?.conversionActionName) continue;
+            va.set(`${r.campaign.name}\xA7${r.segments.conversionActionName}`, {
+              cat: r.segments?.conversionActionCategory || "DEFAULT",
+              cv: +Number(r.metrics?.conversions || 0).toFixed(2),
+              acv: +Number(r.metrics?.allConversions || 0).toFixed(2),
+              val: +Number(r.metrics?.conversionsValue || 0).toFixed(2),
+              aval: +Number(r.metrics?.allConversionsValue || 0).toFixed(2)
+            });
+          }
+          const { data: baseA } = await supabase.from("conversion_actions").select("campaign, conversion_action, conversions, all_conversions, conv_value, all_conv_value").eq("account", cta.account).eq("week_start", w);
+          const enBase = new Set((baseA || []).map((b) => `${b.campaign}\xA7${b.conversion_action}`));
+          for (const b of baseA || []) {
+            const v = va.get(`${b.campaign}\xA7${b.conversion_action}`);
+            compA++;
+            if (!v) {
+              if (Number(b.conversions) || Number(b.all_conversions) || Number(b.conv_value) || Number(b.all_conv_value)) {
+                corrA++;
+                cerosA++;
+                await supabase.from("conversion_actions").update({ conversions: 0, all_conversions: 0, conv_value: 0, all_conv_value: 0 }).eq("account", cta.account).eq("week_start", w).eq("campaign", b.campaign).eq("conversion_action", b.conversion_action);
+              }
+              continue;
+            }
+            if (Math.abs(Number(b.conversions) - v.cv) > TOL_CONV || Math.abs(Number(b.all_conversions) - v.acv) > TOL_CONV || Math.abs(Number(b.conv_value) - v.val) > tolGasto(v.val) || Math.abs(Number(b.all_conv_value) - v.aval) > tolGasto(v.aval)) {
+              corrA++;
+              await supabase.from("conversion_actions").update({ conversions: v.cv, all_conversions: v.acv, conv_value: v.val, all_conv_value: v.aval }).eq("account", cta.account).eq("week_start", w).eq("campaign", b.campaign).eq("conversion_action", b.conversion_action);
+            }
+          }
+          for (const [key, v] of va) {
+            if (enBase.has(key)) continue;
+            insA++;
+            const sep = key.indexOf("\xA7");
+            await supabase.from("conversion_actions").insert({
+              week_start: w,
+              week_end: wEnd,
+              account: cta.account,
+              campaign: key.slice(0, sep),
+              conversion_action: key.slice(sep + 1),
+              category: v.cat,
+              currency: moneda,
+              conversions: v.cv,
+              all_conversions: v.acv,
+              conv_value: v.val,
+              all_conv_value: v.aval,
+              run_ts: "reconciliacion-api"
+            });
+          }
+        }
+        await registrar({
+          account: cta.account,
+          capa: "semanal",
+          filas_comparadas: compS + compA,
+          filas_corregidas: corrS + corrA,
+          filas_insertadas: insA,
+          faltantes_en_base: 0,
+          max_divergencia_conv: +maxCs.toFixed(2),
+          veredicto: corrS + corrA ? "corregido" : "limpio",
+          detalle: corrS || corrA || insA ? `campaign: ${corrS} corregidas \xB7 acciones: ${corrA} corregidas (${cerosA} a cero), ${insA} insertadas` : null
+        });
+      } catch (e) {
+        await registrar({ account: cta.account, capa: "semanal", filas_comparadas: 0, filas_corregidas: 0, filas_insertadas: 0, faltantes_en_base: 0, veredicto: "error", detalle: String(e.message).slice(0, 400) });
+      }
+    }
+    res.json({ ok: true, ms: Date.now() - t0, resumen });
+  });
+  app2.get("/api/reconciliaciones", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { data } = await supabase.from("reconciliaciones_api").select("*").order("corrida", { ascending: false }).limit(40);
+    res.json(data || []);
   });
   app2.all("/api/cron/pulso-diario", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

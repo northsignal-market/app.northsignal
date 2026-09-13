@@ -15,6 +15,7 @@ export function CommandPalette({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [sel, setSel] = useState(0);
   const setSelectedClient = useAppStore(state => state.setSelectedClient);
   const actionables = useAppStore(state => state.actionables);
   const notionBriefs = useAppStore(state => state.notionBriefs);
@@ -43,7 +44,7 @@ export function CommandPalette({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) { setQuery(''); return; }
+    if (!isOpen) { setQuery(''); setSel(0); return; }
     // El temporizador se limpia al cerrar: si no, queda pendiente e intenta enfocar
     // un campo que ya no está montado. React avisa por consola y en el peor caso
     // el foco salta a otro lado 50 ms después de cerrar.
@@ -118,8 +119,11 @@ export function CommandPalette({
     });
   }
 
+  // Índice seleccionado, siempre dentro de la lista actual (la lista cambia con cada tecla).
+  const selIdx = results.length ? Math.min(sel, results.length - 1) : -1;
+
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] px-4"
       style={{ backgroundColor: 'rgba(15, 20, 36, 0.75)' }}
       onClick={() => setIsOpen(false)}
@@ -139,7 +143,12 @@ export function CommandPalette({
             placeholder="Buscar página, cliente, o accionable..."
             className="w-full bg-transparent border-none text-[#FFFFFF] px-3 focus:outline-none text-sm placeholder-[#F5F7FA]/40"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={e => { setQuery(e.target.value); setSel(0); }}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(0, s - 1)); }
+              if (e.key === 'Enter' && selIdx >= 0) { e.preventDefault(); results[selIdx].onSelect(); }
+            }}
           />
           <button 
             onClick={() => setIsOpen(false)} 
@@ -156,11 +165,12 @@ export function CommandPalette({
             </div>
           ) : (
             results.map((r, i) => (
-              <button 
+              <button
                 key={i}
+                ref={el => { if (i === selIdx && el) el.scrollIntoView({ block: 'nearest' }); }}
                 onClick={r.onSelect}
-                className="w-full text-left px-3.5 py-2.5 rounded-xl transition-colors flex items-center justify-between group hover:bg-white/5"
-                style={{ backgroundColor: 'transparent' }}
+                onMouseMove={() => { if (i !== sel) setSel(i); }}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl transition-colors flex items-center justify-between group ${i === selIdx ? 'bg-white/10' : 'hover:bg-white/5'}`}
               >
                 <div className="min-w-0 pr-2">
                   <span className="text-[10px] font-bold text-[#0062CC] uppercase tracking-wider block mb-0.5">
@@ -170,7 +180,7 @@ export function CommandPalette({
                     {r.title}
                   </span>
                 </div>
-                <ChevronRight size={14} className="text-[#F5F7FA] opacity-40 group-hover:text-[#FFFFFF] shrink-0" />
+                <ChevronRight size={14} className={`shrink-0 ${i === selIdx ? 'text-[#FFFFFF]' : 'text-[#F5F7FA] opacity-40 group-hover:text-[#FFFFFF]'}`} />
               </button>
             ))
           )}
