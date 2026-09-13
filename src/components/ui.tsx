@@ -275,9 +275,13 @@ export function Pista({ children, titulo = 'Cómo leer esto' }: { children: Reac
       <button type="button" aria-label={titulo}
         className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-45 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
         style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>i</button>
+      {/* `position: absolute` va en el style y no solo en la clase: .glass-dense
+          declara `position: relative` en index.css y le gana a la utilidad de
+          Tailwind. Con el globo en flujo, sus 280px empujaban el título a otro
+          renglón y lo truncaban — el bug se veía como un problema de layout. */}
       <span role="tooltip"
-        className="pointer-events-none absolute left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
-        style={{ color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
+        className="pointer-events-none left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
+        style={{ position: 'absolute', color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
         {children}
       </span>
     </span>
@@ -306,7 +310,7 @@ export function RielTramo({ titulo, derecha, children }: { titulo: React.ReactNo
   return (
     <div className="py-3.5 first:pt-0 last:pb-0">
       <div className="flex items-baseline justify-between gap-2 mb-2">
-        <h3 className="text-[11px] uppercase tracking-[0.08em]" style={{ color: '#ADADAD' }}>{titulo}</h3>
+        <h3 className="text-[11px] uppercase tracking-[0.08em] whitespace-nowrap" style={{ color: '#ADADAD' }}>{titulo}</h3>
         {derecha}
       </div>
       {children}

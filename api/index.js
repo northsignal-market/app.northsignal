@@ -1150,6 +1150,71 @@ async function gadsSearch(cid, gaql, opts = {}) {
   } while (pageToken);
   return filas;
 }
+async function keywordPlannerHistorico(cid, opts) {
+  const customer = cid.replace(/-/g, "");
+  const login = opts.loginCid === null ? "" : (opts.loginCid || LOGIN_CID).replace(/-/g, "");
+  const tok = await accessToken();
+  const lotes = [];
+  for (let i = 0; i < opts.keywords.length; i += 1e3) lotes.push(opts.keywords.slice(i, i + 1e3));
+  const salida = [];
+  for (const lote of lotes) {
+    const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${customer}:generateKeywordHistoricalMetrics`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tok}`,
+        "developer-token": DEV_TOKEN,
+        ...login ? { "login-customer-id": login } : {},
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        keywords: lote,
+        ...opts.geoTargets?.length ? { geoTargetConstants: opts.geoTargets.slice(0, 10) } : {},
+        ...opts.idioma ? { language: opts.idioma } : {},
+        keywordPlanNetwork: "GOOGLE_SEARCH",
+        historicalMetricsOptions: { includeAverageCpc: true }
+      })
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      const det = j?.error?.details?.[0]?.errors?.[0];
+      throw new Error(`Keyword Planner ${r.status}: ${det?.message || j?.error?.message || "error desconocido"}`);
+    }
+    for (const res of j.results || []) {
+      const m = res.keywordMetrics || {};
+      for (const v of m.monthlySearchVolumes || []) {
+        salida.push({
+          keyword: res.text || res.searchQuery || "",
+          mes: mesISO(v.year, v.month),
+          busquedas: Number(v.monthlySearches || 0),
+          competencia: m.competition || null,
+          competenciaIndice: m.competitionIndex != null ? Number(m.competitionIndex) : null,
+          pujaBaja: m.lowTopOfPageBidMicros != null ? Number(m.lowTopOfPageBidMicros) / 1e6 : null,
+          pujaAlta: m.highTopOfPageBidMicros != null ? Number(m.highTopOfPageBidMicros) / 1e6 : null
+        });
+      }
+    }
+    if (lotes.length > 1) await new Promise((s2) => setTimeout(s2, 1100));
+  }
+  return salida;
+}
+function mesISO(year, month) {
+  const MESES = {
+    JANUARY: 1,
+    FEBRUARY: 2,
+    MARCH: 3,
+    APRIL: 4,
+    MAY: 5,
+    JUNE: 6,
+    JULY: 7,
+    AUGUST: 8,
+    SEPTEMBER: 9,
+    OCTOBER: 10,
+    NOVEMBER: 11,
+    DECEMBER: 12
+  };
+  const m = MESES[String(month).toUpperCase()] || 1;
+  return `${year}-${String(m).padStart(2, "0")}-01`;
+}
 function consultasGaql(desde, hasta) {
   const M = "metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.conversions_value";
   const RANGO = `segments.date BETWEEN '${desde}' AND '${hasta}'`;
@@ -2982,6 +3047,49 @@ Nota: ${resolutionNote || ""}`;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true, data: data || [] });
   });
+  const FALTA_TABLA = "La tabla anuncios_generados todav\xEDa no existe: el historial no se est\xE1 guardando.";
+  const sinTabla = (e) => {
+    const m = `${e?.message || ""} ${e?.details || ""}`;
+    return !!e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache|could not find the table/i.test(m));
+  };
+  app2.get("/api/rsa/historial", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    let q = supabase.from("anuncios_generados").select("*").order("generado_el", { ascending: false }).limit(30);
+    if (client) q = q.eq("account", client);
+    const { data, error } = await q;
+    if (error) {
+      if (sinTabla(error)) return res.json({ historial: [], disponible: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ historial: data || [], disponible: true });
+  });
+  app2.post("/api/rsa/historial", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { account, campaign, ad_group, titulos, descripciones, diagnostico } = req.body || {};
+    if (!account || !campaign || !ad_group || !Array.isArray(titulos)) {
+      return res.status(400).json({ error: "Faltan datos del anuncio generado." });
+    }
+    const { data, error } = await supabase.from("anuncios_generados").insert({ account, campaign, ad_group, titulos, descripciones: descripciones || [], diagnostico: diagnostico || null }).select("id").maybeSingle();
+    if (error) {
+      if (sinTabla(error)) return res.json({ guardado: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ guardado: true, id: data?.id });
+  });
+  app2.post("/api/rsa/historial/:id/estado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { estado, nota } = req.body || {};
+    if (!["borrador", "copiado", "publicado", "descartado"].includes(estado)) {
+      return res.status(400).json({ error: "estado inv\xE1lido" });
+    }
+    const { error } = await supabase.from("anuncios_generados").update({ estado, ...nota !== void 0 ? { nota } : {} }).eq("id", req.params.id);
+    if (error) {
+      if (sinTabla(error)) return res.json({ ok: false, aviso: FALTA_TABLA });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ ok: true });
+  });
   app2.post("/api/generate-rsa", async (req, res) => {
     try {
       const { client, campaign, adGroup } = req.body;
@@ -3609,7 +3717,14 @@ ${extra}` : system,
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     try {
       const r = await runAnomalyWorker();
-      res.json({ ok: true, ran_at: (/* @__PURE__ */ new Date()).toISOString(), ...r });
+      let presion = null;
+      try {
+        const { data } = await supabase.rpc("alertar_presion_competitiva");
+        presion = data;
+      } catch (e) {
+        presion = { error: String(e?.message || e).slice(0, 120) };
+      }
+      res.json({ ok: true, ran_at: (/* @__PURE__ */ new Date()).toISOString(), presion_competitiva: presion, ...r });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -4850,6 +4965,93 @@ Reporte completo: ${url}`;
     ]);
     res.json({ calibracion: cal.data || [], global: calg.data, impactos: imp.data || [], tasa_acierto: tasa.data || [], predicciones: pred.data || [] });
   });
+  app2.get("/api/locales-ranking", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "Client required" });
+    const { data, error } = await supabase.from("v_location_ranking_bayes").select("*").eq("account", client).order("grupo_par").order("cpa_ajustado");
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ locales: data || [] });
+  });
+  app2.get("/api/is-semana", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "Client required" });
+    const [{ data: sem }, { data: ult }] = await Promise.all([
+      supabase.from("v_tendencia_semanal").select("week_start, impr_share_promedio, perdido_presupuesto, perdido_ranking").eq("account", client).order("week_start", { ascending: true }),
+      supabase.from("v_campaign_analisis").select("week_start").eq("account", client).order("week_start", { ascending: false }).limit(1)
+    ]);
+    const semana = ult?.[0]?.week_start || null;
+    let campanas = [];
+    if (semana) {
+      const { data } = await supabase.from("v_campaign_analisis").select("campaign, cost, impr_share, lost_is_budget, lost_is_rank").eq("account", client).eq("week_start", semana).order("cost", { ascending: false }).limit(12);
+      campanas = data || [];
+    }
+    res.json({ semana, campanas, semanas: sem || [] });
+  });
+  app2.get("/api/pacing", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "Client required" });
+    const hoy = /* @__PURE__ */ new Date();
+    const y = hoy.getFullYear(), m = hoy.getMonth();
+    const inicioMes = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+    const ayer = new Date(hoy.getTime() - 864e5).toISOString().slice(0, 10);
+    const diasMes = new Date(y, m + 1, 0).getDate();
+    const [{ data: targetRows }, { data: dias }] = await Promise.all([
+      supabase.from("account_targets").select("presupuesto_mes_maximo").eq("account", client).limit(1),
+      supabase.from("campaign_daily").select("date, cost").eq("account", client).gte("date", inicioMes).lte("date", ayer)
+    ]);
+    const presupuesto = targetRows?.[0]?.presupuesto_mes_maximo != null ? Number(targetRows[0].presupuesto_mes_maximo) : null;
+    const gasto = (dias || []).reduce((s2, d) => s2 + Number(d.cost || 0), 0);
+    const minDia = (dias || []).reduce((mn, d) => !mn || d.date < mn ? d.date : mn, null);
+    const parcial = hoy.getDate() > 1 && (!minDia || minDia > inicioMes);
+    const diaCerrado = Math.max(0, hoy.getDate() - 1);
+    res.json({
+      presupuesto,
+      gasto_mes: Math.round(gasto * 100) / 100,
+      dia_cerrado: diaCerrado,
+      dias_mes: diasMes,
+      esperado_pct: presupuesto ? Math.round(diaCerrado / diasMes * 100) : null,
+      consumido_pct: presupuesto && presupuesto > 0 ? Math.round(gasto / presupuesto * 100) : null,
+      parcial,
+      aviso: parcial ? `La capa diaria no cubre el mes completo: falta lo anterior al ${minDia || ayer}.` : null
+    });
+  });
+  app2.get("/api/evidencia-termino", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    const texto = (req.query.texto || "").trim();
+    const campana = (req.query.campana || "").trim();
+    const grupo = (req.query.grupo || "").trim();
+    if (!client || !texto) return res.status(400).json({ error: "client y texto requeridos" });
+    const consulta = async (vista, col) => {
+      let q = supabase.from(vista).select(`date, cost, clicks, conversions, madurez`).eq("account", client).ilike(col, texto).order("date", { ascending: true }).limit(120);
+      if (campana) q = q.eq("campaign", campana);
+      if (grupo) q = q.eq("ad_group", grupo);
+      const { data } = await q;
+      return data || [];
+    };
+    let capa = "keyword";
+    let filas = await consulta("v_keywords_daily", "keyword");
+    if (!filas.length) {
+      capa = "termino";
+      filas = await consulta("v_search_terms_daily", "search_term");
+    }
+    if (!filas.length) capa = null;
+    const porDia = {};
+    for (const f of filas) {
+      const d = porDia[f.date] || { date: f.date, cost: 0, clicks: 0, conversions: 0, madurez: f.madurez };
+      d.cost += Number(f.cost || 0);
+      d.clicks += Number(f.clicks || 0);
+      d.conversions += Number(f.conversions || 0);
+      if (f.madurez === "provisional") d.madurez = "provisional";
+      porDia[f.date] = d;
+    }
+    const serie = Object.values(porDia).sort((a, b) => a.date < b.date ? -1 : 1);
+    const totales = serie.reduce((s2, d) => ({ cost: s2.cost + d.cost, clicks: s2.clicks + d.clicks, conversions: s2.conversions + d.conversions }), { cost: 0, clicks: 0, conversions: 0 });
+    res.json({ capa, serie, totales, dias: serie.length });
+  });
   app2.get("/api/propuestas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     let q = supabase.from("propuestas_estrategicas").select("*").order("fecha", { ascending: false }).limit(40);
@@ -5056,6 +5258,116 @@ Reporte completo: ${url}`;
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
+  });
+  app2.all("/api/cron/demanda-mercado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!gadsDisponible()) return res.status(503).json({ error: "Faltan credenciales GADS_* en el entorno" });
+    const t0 = Date.now();
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    const IDIOMA = {
+      "es-CL": "languageConstants/1003",
+      "es-AR": "languageConstants/1003",
+      "de-DE": "languageConstants/1001",
+      "en-US": "languageConstants/1000"
+    };
+    const cuentas = (await cuentasActivas()).filter((c) => c.cid && (!soloCuenta || c.account === soloCuenta));
+    const resumen = [];
+    for (const c of cuentas) {
+      try {
+        const { data: kws } = await supabase.from("v_keywords_analisis").select("keyword, cost").eq("account", c.account).order("cost", { ascending: false }).limit(300);
+        const lista = Array.from(new Set((kws || []).map((k) => String(k.keyword || "").trim()).filter(Boolean)));
+        if (!lista.length) {
+          resumen.push({ cuenta: c.account, estado: "sin keywords con gasto" });
+          continue;
+        }
+        const filas = await keywordPlannerHistorico(c.cid, {
+          keywords: lista,
+          idioma: IDIOMA[c.locale] || void 0
+        });
+        const corte = /* @__PURE__ */ new Date();
+        corte.setMonth(corte.getMonth() - 14);
+        const aGuardar = filas.filter((f) => f.busquedas > 0 && new Date(f.mes) >= corte).map((f) => ({
+          account: c.account,
+          keyword: f.keyword,
+          geo: "cuenta",
+          mes: f.mes,
+          busquedas: f.busquedas,
+          competencia: f.competencia,
+          competencia_indice: f.competenciaIndice,
+          puja_baja: f.pujaBaja,
+          puja_alta: f.pujaAlta,
+          moneda: c.moneda,
+          capturado_el: (/* @__PURE__ */ new Date()).toISOString()
+        }));
+        if (aGuardar.length) {
+          for (let i = 0; i < aGuardar.length; i += 500) {
+            const { error } = await supabase.from("demanda_mercado").upsert(aGuardar.slice(i, i + 500), { onConflict: "account,keyword,geo,mes" });
+            if (error) throw new Error(error.message);
+          }
+        }
+        resumen.push({ cuenta: c.account, keywords: lista.length, filas: aGuardar.length, estado: "ok" });
+      } catch (e) {
+        const msg = String(e?.message || e);
+        const sinPermiso = /explorer access|basic or standard access|not allowed for use/i.test(msg);
+        if (sinPermiso) {
+          resumen.push({ cuenta: c.account, estado: "requiere_acceso_basic", error: msg.slice(0, 200) });
+          try {
+            await supabase.from("alertas").upsert({
+              account: c.account,
+              nivel: "semana",
+              tipo: "acceso_api",
+              origen: "mercado",
+              titulo: "Keyword Planner necesita acceso Basic en el token de Google",
+              detalle: "La API rechaza las consultas de demanda con el nivel actual (explorer). El c\xF3digo y la tabla est\xE1n listos: solo falta el permiso.",
+              accion: "Pedir Basic access en el Centro de API de Google Ads (Herramientas \u203A Configuraci\xF3n \u203A Centro de API). Aprueban en d\xEDas y es gratis. Mientras tanto, la capa de demanda queda vac\xEDa y el sistema NO puede distinguir una ca\xEDda de mercado de una ca\xEDda propia.",
+              estado: "abierta",
+              fecha_dato: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+              dedupe_key: "acceso|keyword_planner|" + c.account
+            }, { onConflict: "dedupe_key" });
+          } catch {
+          }
+        } else {
+          resumen.push({ cuenta: c.account, estado: "fall\xF3", error: msg.slice(0, 200) });
+        }
+      }
+    }
+    const ok = resumen.filter((r) => r.estado === "ok").length;
+    try {
+      await supabase.rpc("registrar_latido", { p_tarea: "demanda_mercado", p_ok: ok > 0, p_error: ok ? null : "ninguna cuenta trajo demanda" });
+    } catch {
+    }
+    res.json({ ok: ok > 0, cuentas: resumen, ms: Date.now() - t0 });
+  });
+  app2.get("/api/mercado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const client = req.query.client;
+    if (!client) return res.status(400).json({ error: "Client required" });
+    const { data, error } = await supabase.from("v_mercado_vs_nosotros").select("*").eq("account", client).maybeSingle();
+    if (error) {
+      if (/does not exist|schema cache|could not find the table/i.test(error.message || "")) {
+        return res.json({ disponible: false, aviso: "La capa de mercado todav\xEDa no est\xE1 creada." });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+    const { data: serie } = await supabase.from("v_demanda_mensual").select("*").eq("account", client).order("mes");
+    if (!serie?.length) {
+      const { data: bloqueo } = await supabase.from("alertas").select("titulo, accion").eq("dedupe_key", "acceso|keyword_planner|" + client).maybeSingle();
+      return res.json({
+        disponible: false,
+        resumen: null,
+        serie: [],
+        aviso: bloqueo ? "Keyword Planner necesita acceso Basic en el token de Google: " + (bloqueo.accion || "") : "Todav\xEDa no se captur\xF3 demanda para esta cuenta. Se pobla sola el d\xEDa 3 de cada mes."
+      });
+    }
+    res.json({ disponible: true, resumen: data || null, serie });
+  });
+  app2.get("/api/presion-competitiva", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    let q = supabase.from("v_presion_competitiva").select("*");
+    if (req.query.client) q = q.eq("account", req.query.client);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ campanas: data || [] });
   });
   app2.all("/api/cron/reconciliar-api", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

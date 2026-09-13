@@ -256,8 +256,15 @@ body::before {
 .punto-glow-warn { box-shadow: 0 0 8px rgba(226, 180, 83, 0.75); }
 .punto-glow-bad { box-shadow: 0 0 8px rgba(249, 112, 102, 0.75); }
 
-/* La línea luminosa bajo el header: separa el shell del contenido con luz. */
-.glass-dense { position: relative; }
+/* La línea luminosa bajo el header: separa el shell del contenido con luz.
+   El `position: relative` va SOLO en el header. Estaba en `.glass-dense` a
+   secas, y esta hoja no está dentro de ninguna @layer: una regla sin capa le
+   gana a cualquier utilidad de Tailwind por más específica que sea. O sea que
+   `.glass-dense` estaba anulando el `fixed` del sidebar y del botón de ayuda
+   del teléfono, y el `absolute` de cualquier globo que usara este vidrio. Se
+   veía como un problema de layout — texto truncado, bloques corridos — y era
+   la cascada. */
+header.glass-dense { position: relative; }
 header.glass-dense::after {
   content: '';
   position: absolute;

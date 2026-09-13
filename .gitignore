@@ -6,3 +6,5 @@ supabase/.branches/
 .env.*
 .DS_Store
 .claude/settings.local.json
+.vercel
+.env*

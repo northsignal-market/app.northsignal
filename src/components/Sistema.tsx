@@ -1,7 +1,7 @@
 import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
-import { PageShell, fetchJSON, fmtFechaCorta } from './ui';
+import { PageShell, fetchJSON, fmtFechaCorta, Titular } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
 
@@ -281,8 +281,9 @@ export function Sistema() {
 
   return (
     <PageShell
-      titulo="Sistema"
-      subtitulo="¿Está funcionando? Salud, integridad, calidad de corridas, automatización y bitácora"
+      /* Sin título: el menú ya dice "Sistema" y el subtítulo enumeraba los
+         nombres de las secciones que están tres centímetros más abajo. Lo que
+         falta arriba no es el rótulo de la página, es su veredicto. */
       derecha={
         <button aria-label="Actualizar" title="Actualizar"
           onClick={cargarTodo}
@@ -294,6 +295,34 @@ export function Sistema() {
         </button>
       }
     >
+
+      {/* EL VEREDICTO, arriba de todo. Es la única pregunta que trae a alguien
+          a esta pantalla —"¿está funcionando?"— y la respuesta estaba abajo,
+          adentro de una tarjeta, en una pastilla de 11px. Los silencios se
+          nombran primero: una tarea que dejó de correr no grita, y por eso es
+          el estado más caro de no ver. */}
+      {(saludSistema || latidos.length > 0) && (() => {
+        const callados = latidos.filter((l: any) => l.en_silencio && l.vigilado !== false);
+        const roto = saludSistema?.veredicto === 'hay algo roto';
+        const primera = (saludSistema?.fallas || [])[0];
+        const color = roto || callados.length > 0 ? 'var(--bad)' : saludSistema?.veredicto === 'todo bien' ? '#4ADE80' : 'var(--warn)';
+        const frase = callados.length > 0
+          ? `${callados.length} tarea${callados.length !== 1 ? 's' : ''} dejó de correr en silencio.`
+          : roto
+            ? `Hay algo roto${primera ? `: ${primera.area} · ${primera.cuenta}` : ''}.`
+            : saludSistema?.veredicto === 'todo bien'
+              ? 'El sistema está sano.'
+              : 'Hay cosas para mirar, nada roto.';
+        const guia = callados.length > 0
+          ? callados.map((l: any) => String(l.tarea).replace(/_/g, ' ')).join(' · ')
+          : roto && primera ? primera.detalle : undefined;
+        return (
+          <Titular estado={color} guia={guia}
+            meta={saludSistema ? <span>{saludSistema.ok} verificaciones pasadas{(saludSistema.atencion || []).length > 0 ? ` · ${saludSistema.atencion.length} para mirar` : ''}</span> : undefined}>
+            {frase}
+          </Titular>
+        );
+      })()}
 
       <div ref={contRef} className="grid xl:grid-cols-[minmax(0,1fr)_190px] gap-x-8 items-start">
         <div className="min-w-0 space-y-9">

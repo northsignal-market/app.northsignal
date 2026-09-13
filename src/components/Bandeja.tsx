@@ -19,7 +19,7 @@ import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
-import { fmtFechaCorta, useJSON, DosPaneles } from './ui';
+import { fmtFechaCorta, useJSON, DosPaneles, Titular } from './ui';
 import { abrirTextoAgente } from '../lib/lectura';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
@@ -157,16 +157,23 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   return (
     <div className="px-5 md:px-7 py-5 max-w-[1440px] mx-auto space-y-5">
 
-      {/* La fecha es el contexto; el nombre de la vista ya lo dice el menú.
-          Un h1 "Bandeja" arriba del menú que dice "Bandeja" era una fila
-          gastada en repetirse. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs first-letter:uppercase" style={LABEL}>{fechaHoy}</p>
-        <div className="flex p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
-          <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${!filtroCuenta ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>Todas</button>
-          {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${filtroCuenta === c ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>{c}</button>)}
-        </div>
-      </div>
+      {/* La lectura del sistema ES el titular, y va primero. Estaba abajo de
+          las cifras, con un rótulo chico y un ícono de reloj encima: la única
+          frase que dice qué hacer hoy, presentada como una nota al pie. El
+          nombre de la vista no se repite — ya lo dice el menú — y la fecha
+          baja a metadato, que es lo que es. */}
+      <Titular
+        meta={<span className="first-letter:uppercase">{fechaHoy}</span>}
+        guia={lecturaSistema.guia}
+        derecha={
+          <div className="flex p-0.5 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+            <button onClick={() => setFiltroCuenta(null)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${!filtroCuenta ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>Todas</button>
+            {cuentas.map(c => <button key={c} onClick={() => setFiltroCuenta(c)} className={`px-2.5 py-1 rounded-md text-[11px] transition-colors ${filtroCuenta === c ? 'bg-white/10 text-[#FAFAFA]' : 'text-[#ADADAD] hover:text-[#FAFAFA]'}`}>{c}</button>)}
+          </div>
+        }
+      >
+        {lecturaSistema.frase}
+      </Titular>
 
       <DosPaneles id="bandeja" defIzq={72} izquierda={
         // LA COLA: lo que espera tu criterio, en orden de urgencia.
@@ -193,16 +200,6 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               </div>
               <div className="text-xs mt-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL}>{briefing?.datos_al_dia === false ? 'mirá Sistema › Salud →' : 'detalle en Sistema →'}</div>
             </button>
-          </div>
-
-          {/* Lectura del sistema — el bloque grande y legible de la referencia */}
-          <div className="py-5 border-t" style={HAIR}>
-            <div className="flex items-center gap-1.5 text-xs mb-3" style={LABEL}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-              Lectura del sistema
-            </div>
-            <p className="text-[17px] leading-[26px] text-[#FAFAFA]" style={{ maxWidth: '52ch' }}>{lecturaSistema.frase}</p>
-            <p className="text-sm mt-1.5" style={LABEL}>{lecturaSistema.guia}</p>
           </div>
 
           {/* La cola: sin caja — headers de grupo como títulos de sección, hairlines */}

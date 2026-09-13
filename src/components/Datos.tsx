@@ -753,54 +753,14 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
           ← {volverA.etiqueta}
         </button>
       )}
-      {/* Sin título propio: el nav ya dice Datos y el header dice la cuenta.
-          Los controles son de la HERRAMIENTA (densidad, exportar, pantalla
-          completa) y viven compactos a la derecha, en castellano como el resto
-          de la app: acá quedaban "Density" y "PDF Report" sueltos en inglés. */}
-      <header className="h-12 flex items-center justify-end gap-1.5 px-5 md:px-7 shrink-0 z-10" style={{ borderBottom: '1px solid var(--border)' }}>
-        <select aria-label="Densidad de las filas" title="Densidad de las filas"
-          value={density}
-          onChange={(e) => setDensity(e.target.value as any)}
-          className="rounded-lg px-2 py-1 text-[11px] text-[#EDEFF3] focus:outline-none cursor-pointer"
-          style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
-        >
-          <option value="compact">Densidad · compacta</option>
-          <option value="normal">Densidad · normal</option>
-          <option value="comfortable">Densidad · cómoda</option>
-        </select>
-
-        <button aria-label="Exportar a PDF" title="Exportar la vista a PDF"
-          onClick={exportToPDF}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors hover:bg-white/5"
-          style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
-        >
-          <FileText size={12} /> PDF
-        </button>
-
-        <button aria-label="Exportar a CSV" title="Exportar la vista a CSV"
-          onClick={exportToCSV}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors hover:bg-white/5"
-          style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
-        >
-          <Download size={12} /> CSV
-        </button>
-
-        <button
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors ${isFullscreen ? 'bg-[#0062CC] text-[#EDEFF3]' : 'hover:bg-white/5'}`}
-          style={isFullscreen ? undefined : { color: '#ADADAD', border: '1px solid var(--border)' }}
-        >
-          {isFullscreen ? <X size={12} /> : <Layers size={12} />}
-          {isFullscreen ? 'Salir' : 'Pantalla completa'}
-        </button>
-      </header>
-
       <div className="flex-1 flex flex-col px-5 md:px-7 py-4 overflow-hidden relative">
-      
-        
 
-<div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
+        {/* UNA sola fila de controles. Eran dos: una barra propia de 48px con
+            densidad y exportaciones, y debajo otra con las vistas y las
+            columnas — dos bordes horizontales y casi cien píxeles de alto para
+            no mostrar ni un dato. Elegir qué mirar y cómo mirarlo es el mismo
+            gesto: izquierda la vista, derecha las herramientas. */}
+        <div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
           <div className="flex gap-2 p-1 rounded-xl border border-[var(--border)] overflow-x-auto custom-scrollbar shadow-sm">
             {(['Por semana', 'Por día', 'Diagnóstico'] as const).map(grupo => {
               const items = Object.entries(VIEW_CONFIGS).filter(([, cfg]: any) => (cfg.grupo || 'Por semana') === grupo);
@@ -820,9 +780,47 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             })}
           </div>
 
-          {/* Moved Column Selector Next to Trends/Views */}
+          {/* Las herramientas de la tabla, juntas y a la derecha. */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+          <select aria-label="Densidad de las filas" title="Densidad de las filas"
+            value={density}
+            onChange={(e) => setDensity(e.target.value as any)}
+            className="rounded-lg px-2 py-1.5 text-[11px] text-[#EDEFF3] focus:outline-none cursor-pointer"
+            style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
+          >
+            <option value="compact">Densidad · compacta</option>
+            <option value="normal">Densidad · normal</option>
+            <option value="comfortable">Densidad · cómoda</option>
+          </select>
+
+          <button aria-label="Exportar a PDF" title="Exportar la vista a PDF"
+            onClick={exportToPDF}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors hover:bg-white/5"
+            style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
+          >
+            <FileText size={12} /> PDF
+          </button>
+
+          <button aria-label="Exportar a CSV" title="Exportar la vista a CSV"
+            onClick={exportToCSV}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors hover:bg-white/5"
+            style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
+          >
+            <Download size={12} /> CSV
+          </button>
+
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors ${isFullscreen ? 'bg-[#0062CC] text-[#EDEFF3]' : 'hover:bg-white/5'}`}
+            style={isFullscreen ? undefined : { color: '#ADADAD', border: '1px solid var(--border)' }}
+          >
+            {isFullscreen ? <X size={12} /> : <Layers size={12} />}
+            {isFullscreen ? 'Salir' : 'Pantalla completa'}
+          </button>
+
           <div className="relative z-[60]">
-            <button 
+            <button
               onClick={() => setShowColSelector(!showColSelector)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-[11px] transition-colors" style={{ color: '#ADADAD', border: '1px solid var(--border)' }}
             >
@@ -832,7 +830,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             {showColSelector && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-[var(--surface-1)] border border-[var(--border-strong)] rounded-xl shadow-2xl z-[100] p-2">
                  <div className="flex justify-between items-center px-3 py-2 border-b border-[var(--border)] mb-2">
-                   <span className="text-xs font-semibold text-[#F5F7FA]/70">Mostrar Columnas</span>
+                   <span className="text-xs font-semibold text-[#F5F7FA]/70">Mostrar columnas</span>
                    <button onClick={() => {
                       const defaults = DEFAULT_COLS[activeView] || allCols;
                       setVisibleCols(defaults);
@@ -854,6 +852,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                  </div>
               </div>
             )}
+          </div>
           </div>
         </div>
 
