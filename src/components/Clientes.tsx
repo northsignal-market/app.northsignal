@@ -296,11 +296,15 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         <span className="text-[10px] text-[#F5F7FA] opacity-50">objetivos, reportes, pendientes, decisiones</span>
       </div>}
 
+      {/* El diagnóstico es un TABLERO, no una pila: cada bloque declara cuánto
+          ocupa y los que se leen juntos comparten fila. Los separadores de
+          pregunta cruzan las 12 columnas. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       {/* P4b · El diagnóstico se recorre por PREGUNTA, no por origen del dato
           (informe 14 §4: agrupar por origen es el organigrama disfrazado):
           (1) ¿hay algo para decidir? (2) ¿cómo viene? (3) contexto, plegado. */}
       {ver('diagnostico') && (
-        <div className="flex items-center gap-3 pt-1">
+        <div className="lg:col-span-12 flex items-center gap-3 pt-1">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#EDEFF3]">¿Hay algo para decidir?</span>
           <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
           <span className="text-[10px] text-[#F5F7FA] opacity-50">propuestas, decisiones estructurales, pendientes</span>
@@ -308,7 +312,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       )}
       {ver('diagnostico') && (<>
       {propuestas.length > 0 && (
-        <div className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="lg:col-span-7 p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Propuestas estratégicas</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
@@ -417,7 +421,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {ver('diagnostico') && (<>
       {/* Accionables Abiertos de esta cuenta */}
       <div 
-        className="p-5 rounded-2xl space-y-3"
+        className="lg:col-span-5 p-5 rounded-2xl space-y-3"
         style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -461,7 +465,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
       </>)}
       {ver('diagnostico') && (
-        <div className="flex items-center gap-3 pt-4">
+        <div className="lg:col-span-12 flex items-center gap-3 pt-4">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#EDEFF3]">¿Cómo viene?</span>
           <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
           <span className="text-[10px] text-[#F5F7FA] opacity-50">brecha, objetivos y escalera de valor</span>
@@ -470,7 +474,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {ver('diagnostico') && (<>
       {/* Brecha y propuestas estratégicas: la ambición con lógica */}
       {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
-        <div className="p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="lg:col-span-12 p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
           <div className="text-[#F5F7FA] opacity-30">→</div>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
@@ -480,7 +484,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       </>)}
       {ver('diagnostico') && (<>
       {/* Objetivos: dónde está la cuenta respecto de lo que el negocio necesita */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+      <div className="lg:col-span-5 p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2">
             <Target size={15} className="text-[#4D9DFF]" /> Objetivos y estado
@@ -542,7 +546,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           barra apilada por campaña, columnas semanales para la evolución.
           La pregunta es comparativa y temporal — por eso no hay donut. */}
       {ver('diagnostico') && isData?.campanas?.some((c: any) => Number(c.impr_share) > 0) && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="lg:col-span-7 p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">La subasta: ganado y perdido</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="De cada 100 impresiones posibles: cuántas ganó la campaña, cuántas se perdieron por presupuesto (se arreglan con plata) y cuántas por ranking (se arreglan con calidad de anuncio y keyword).">De cada 100 impresiones posibles, cuántas ganó cada campaña — y si el resto se perdió por plata o por calidad.</p>
@@ -592,7 +596,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           objetivo de campaña — comparar visitas con visitas. Solo FM tiene
           locales, así que en las demás cuentas esto no existe. */}
       {ver('diagnostico') && gruposLocales.length > 0 && (
-        <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+        <div className="lg:col-span-5 p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Locales contra su manada</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada raya es un local; el eje es su CPA de 4 semanas encogido hacia el promedio del grupo (el volumen bajo no grita). Cyan = paga bien por encima de su manada y la comparación se sostiene. El presupuesto de un local no se mueve a otro: esto se conversa con Pablo, no se ejecuta.">Cada raya un local, sobre el CPA ajustado de 4 semanas. Cyan = se salió de su manada. El presupuesto de un local no se mueve a otro.</p>
@@ -632,7 +636,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
       {ver('diagnostico') && (<>
       {/* Escalera de valor: qué ve Smart Bidding y qué debería ver */}
-      <div className="p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+      <div className="lg:col-span-7 p-5 rounded-2xl space-y-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
         <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-[15px] font-medium text-[#EDEFF3] flex items-center gap-2"><Layers size={15} className="text-[#4D9DFF]" /> Escalera de valor</h2>
           <p className="text-xs text-[#F5F7FA] opacity-60 mt-0.5">Smart Bidding solo ve las primarias. La primaria debe ser la etapa más profunda con 15+ eventos al mes.</p>
@@ -663,7 +667,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {/* Contexto estable: cambia poco, es consulta y no lectura diaria — plegado
           por defecto. Se despliega entero: ficha y calidad (QS) se leen juntas. */}
       {ver('diagnostico') && (
-        <Collapsible titulo="Contexto de la cuenta" resumen="ficha · por qué está donde está">
+        <div className="lg:col-span-12"><Collapsible titulo="Contexto de la cuenta" resumen="ficha · por qué está donde está">
           <div className="space-y-4">
       {/* Ficha de Cuenta */}
       <div 
@@ -756,8 +760,9 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         </div>
       )}
           </div>
-        </Collapsible>
+        </Collapsible></div>
       )}
+      </div>
       {ver('reportes') && (<>
       {/* Reportes al cliente v2 */}
       <ReportesEditor activeClient={activeClient} />
