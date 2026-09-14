@@ -985,6 +985,50 @@ function rutasDeClickId(v, ruta = "", out = [], profundidad = 0) {
   return out;
 }
 
+// src/server/domain/ghl-lead.ts
+var CAMPOS_BHI = {
+  gclid: "XNYn6LB1z6srM1Ba1sZp",
+  // contact.google_click_id
+  keyword: "bpOCzQuY8wRgUTity222",
+  // contact.ad_keyword
+  concordancia: "PBkgT6J0y3Q9glKvUcPT"
+  // contact.ad_match_type
+};
+function valorDeCampo(campos, id) {
+  if (!Array.isArray(campos)) return null;
+  const c = campos.find((x) => x?.id === id);
+  const v = c?.value ?? c?.fieldValue;
+  if (v == null) return null;
+  const s2 = String(v).trim();
+  return s2 === "" ? null : s2;
+}
+function estadoDelLead(etapa, status) {
+  const e = String(etapa ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (/descart|perdid|no calific/.test(e)) return "descartado";
+  if (String(status ?? "").toLowerCase() === "won" || /cliente activo/.test(e)) return "ganado";
+  if (String(status ?? "").toLowerCase() === "lost") return "descartado";
+  return "en curso";
+}
+function armarLead(oportunidad, contacto, nombreEtapa, account = "BHI") {
+  const contactId = oportunidad?.contactId ?? contacto?.id;
+  if (!contactId) return null;
+  const etapa = nombreEtapa(oportunidad?.pipelineStageId);
+  const campos = contacto?.customFields;
+  return {
+    account,
+    contact_id: String(contactId),
+    opportunity_id: oportunidad?.id ? String(oportunidad.id) : null,
+    etapa,
+    estado: estadoDelLead(etapa, oportunidad?.status),
+    gclid: valorDeCampo(campos, CAMPOS_BHI.gclid),
+    keyword: valorDeCampo(campos, CAMPOS_BHI.keyword),
+    concordancia: valorDeCampo(campos, CAMPOS_BHI.concordancia),
+    monto: typeof oportunidad?.monetaryValue === "number" ? oportunidad.monetaryValue : null,
+    creado: oportunidad?.createdAt ?? contacto?.dateAdded ?? null,
+    ultimo_cambio_de_etapa: oportunidad?.lastStageChangeAt ?? null
+  };
+}
+
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
@@ -6181,6 +6225,65 @@ Reporte completo: ${url}`;
       sondeo_version: 4,
       aviso: "Formas, conteos y nombres de configuraci\xF3n solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
       pasos
+    });
+  });
+  app2.all("/api/cron/ghl-leads", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!ghlDisponible()) return res.status(503).json({ error: "Falta GHL_API_TOKEN en el entorno" });
+    const cuenta = String(req.query.client || "BHI");
+    const { data: cta } = await supabase.from("cuentas").select("account, ghl_location_id").eq("account", cuenta).maybeSingle();
+    const locationId = cta?.ghl_location_id;
+    if (!locationId) return res.status(400).json({ error: `${cuenta} no tiene ghl_location_id` });
+    const pipes = await ghlGet("/opportunities/pipelines", { locationId });
+    const nombres = /* @__PURE__ */ new Map();
+    for (const p of pipes.cuerpo?.pipelines || []) {
+      for (const s2 of p?.stages || []) if (s2?.id) nombres.set(String(s2.id), String(s2.name ?? ""));
+    }
+    if (!nombres.size) return res.status(502).json({ error: "No se pudieron leer las etapas del pipeline", detalle: pipes.error });
+    const nombreEtapa = (id) => nombres.get(String(id)) ?? null;
+    const porContacto = /* @__PURE__ */ new Map();
+    let cursor;
+    for (let pagina = 0; pagina < 20; pagina++) {
+      const r = await ghlGet("/contacts/", { locationId, limit: "100", ...cursor ? { startAfterId: cursor } : {} });
+      if (!r.ok) break;
+      const lista = r.cuerpo?.contacts || [];
+      for (const c of lista) if (c?.id) porContacto.set(String(c.id), c);
+      cursor = r.cuerpo?.meta?.startAfterId;
+      if (!lista.length || !r.cuerpo?.meta?.nextPage) break;
+    }
+    const leads = [];
+    const porEtapa = {};
+    for (const [idEtapa, nombre] of nombres) {
+      const r = await ghlGet("/opportunities/search", { location_id: locationId, pipeline_stage_id: idEtapa, limit: "100" });
+      if (!r.ok) continue;
+      const lista = r.cuerpo?.opportunities || [];
+      porEtapa[nombre] = lista.length;
+      for (const o of lista) {
+        const l = armarLead(o, porContacto.get(String(o?.contactId)) ?? null, nombreEtapa, cuenta);
+        if (l) leads.push(l);
+      }
+    }
+    if (leads.length) {
+      const { error } = await supabase.from("ghl_leads").upsert(leads, { onConflict: "account,contact_id" });
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    try {
+      await supabase.rpc("latir", { p_tarea: "ghl_leads", p_ok: leads.length > 0, p_error: leads.length ? null : "ninguna oportunidad leida" });
+    } catch {
+    }
+    const conKeyword = leads.filter((l) => l.keyword).length;
+    res.json({
+      ok: true,
+      build: (process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
+      cuenta,
+      contactos_leidos: porContacto.size,
+      leads: leads.length,
+      con_keyword: conKeyword,
+      // NULL sin leads, no 0%: sin denominador el porcentaje no dice nada.
+      pct_con_keyword: leads.length ? +(100 * conKeyword / leads.length).toFixed(1) : null,
+      con_gclid: leads.filter((l) => l.gclid).length,
+      por_estado: leads.reduce((a, l) => ({ ...a, [l.estado]: (a[l.estado] || 0) + 1 }), {}),
+      por_etapa: porEtapa
     });
   });
   app2.all("/api/cron/clicks-keyword", async (req, res) => {

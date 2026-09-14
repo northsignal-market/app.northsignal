@@ -6,6 +6,7 @@ import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } fr
 import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-cuenta';
 import { mapearClickView, coberturaPct } from './src/server/domain/atribucion-clic';
 import { ghlDisponible, ghlGet, formaDe, rutasDeClickId } from './src/server/lib/ghl';
+import { armarLead } from './src/server/domain/ghl-lead';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -4844,6 +4845,89 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       sondeo_version: 4,
       aviso: 'Formas, conteos y nombres de configuración solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
       pasos,
+    });
+  });
+
+  /**
+   * TRAER LOS LEADS DE GOHIGHLEVEL · solo lectura.
+   *
+   * Lee oportunidades + contactos y guarda de dónde vino cada lead y dónde
+   * quedó. Nunca escribe en GHL: `ghlGet` es la única función que existe.
+   *
+   * Tres decisiones que salieron del sondeo y no de la documentación:
+   *  - Los campos se leen por ID (el índice se mueve entre contactos).
+   *  - El descarte se deriva de la ETAPA: los descartados tienen status 'open'.
+   *  - Un dato que no se pudo leer va NULL, nunca a un valor por defecto.
+   */
+  app.all("/api/cron/ghl-leads", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!ghlDisponible()) return res.status(503).json({ error: 'Falta GHL_API_TOKEN en el entorno' });
+
+    const cuenta = String(req.query.client || 'BHI');
+    const { data: cta } = await supabase.from('cuentas').select('account, ghl_location_id').eq('account', cuenta).maybeSingle();
+    const locationId = cta?.ghl_location_id;
+    if (!locationId) return res.status(400).json({ error: `${cuenta} no tiene ghl_location_id` });
+
+    // El diccionario de etapas. Sin él, `etapa` serían UUIDs y el cruce no se lee.
+    const pipes = await ghlGet('/opportunities/pipelines', { locationId });
+    const nombres = new Map<string, string>();
+    for (const p of (pipes.cuerpo?.pipelines || [])) {
+      for (const s of (p?.stages || [])) if (s?.id) nombres.set(String(s.id), String(s.name ?? ''));
+    }
+    if (!nombres.size) return res.status(502).json({ error: 'No se pudieron leer las etapas del pipeline', detalle: pipes.error });
+    const nombreEtapa = (id: unknown) => nombres.get(String(id)) ?? null;
+
+    // Los contactos, indexados por id: ahí viven los campos personalizados con
+    // el gclid y la keyword. La oportunidad trae un `contact` embebido, pero SIN
+    // esos campos.
+    const porContacto = new Map<string, any>();
+    let cursor: string | undefined;
+    for (let pagina = 0; pagina < 20; pagina++) {
+      const r = await ghlGet('/contacts/', { locationId, limit: '100', ...(cursor ? { startAfterId: cursor } : {}) });
+      if (!r.ok) break;
+      const lista = r.cuerpo?.contacts || [];
+      for (const c of lista) if (c?.id) porContacto.set(String(c.id), c);
+      cursor = r.cuerpo?.meta?.startAfterId;
+      if (!lista.length || !r.cuerpo?.meta?.nextPage) break;
+    }
+
+    // Las oportunidades, etapa por etapa. Recorrer las etapas y no el listado
+    // general es lo que garantiza traer los descartados: por `status` no salen.
+    const leads: any[] = [];
+    const porEtapa: Record<string, number> = {};
+    for (const [idEtapa, nombre] of nombres) {
+      const r = await ghlGet('/opportunities/search', { location_id: locationId, pipeline_stage_id: idEtapa, limit: '100' });
+      if (!r.ok) continue;
+      const lista = r.cuerpo?.opportunities || [];
+      porEtapa[nombre] = lista.length;
+      for (const o of lista) {
+        const l = armarLead(o, porContacto.get(String(o?.contactId)) ?? null, nombreEtapa, cuenta);
+        if (l) leads.push(l);
+      }
+    }
+
+    if (leads.length) {
+      const { error } = await supabase.from('ghl_leads').upsert(leads, { onConflict: 'account,contact_id' });
+      if (error) return res.status(500).json({ error: error.message });
+    }
+
+    try {
+      await supabase.rpc('latir', { p_tarea: 'ghl_leads', p_ok: leads.length > 0, p_error: leads.length ? null : 'ninguna oportunidad leida' });
+    } catch { /* el latido es opcional */ }
+
+    const conKeyword = leads.filter((l) => l.keyword).length;
+    res.json({
+      ok: true,
+      build: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
+      cuenta,
+      contactos_leidos: porContacto.size,
+      leads: leads.length,
+      con_keyword: conKeyword,
+      // NULL sin leads, no 0%: sin denominador el porcentaje no dice nada.
+      pct_con_keyword: leads.length ? +((100 * conKeyword) / leads.length).toFixed(1) : null,
+      con_gclid: leads.filter((l) => l.gclid).length,
+      por_estado: leads.reduce((a: any, l) => ({ ...a, [l.estado]: (a[l.estado] || 0) + 1 }), {}),
+      por_etapa: porEtapa,
     });
   });
 
