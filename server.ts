@@ -4703,7 +4703,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     }
 
     // ¿Llega el gclid? Muestra grande y RECIENTE, que es donde tendría que estar.
-    const muchos = await ghlGet('/contacts/', { locationId, limit: '100' });
+    const muchos = await ghlGet('/contacts/', { locationId, limit: '100' });   // eslint-disable-line
     if (muchos.ok) {
       const lista = muchos.cuerpo?.contacts || muchos.cuerpo?.data || [];
       const conClickId = lista.filter((c: any) => rutasDeClickId(c).length > 0);
@@ -4730,11 +4730,93 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       });
     }
 
+    // 6 · EL PORQUÉ DEL DESCARTE.
+    //
+    //     `lostReasonId` vino NULL en los 10 descartados: el campo existe y nadie
+    //     lo usa. Así que el motivo está donde Andrés dijo desde el principio —
+    //     en las notas. Pero la nota que miré antes estaba vacía, y era de un
+    //     contacto cualquiera, no de un descartado.
+    //
+    //     Acá se pregunta sobre los que importan. Y se contesta "¿se puede
+    //     clasificar?" SIN EMITIR UNA SOLA NOTA: se cuenta cuántas encajan en cada
+    //     motivo de la lista cerrada que acordamos. Si los conteos dan, el diseño
+    //     de "motivo clasificado, sin texto crudo" es viable; si no dan, hay que
+    //     pensar otra cosa. Las dos respuestas salen de números, no de texto.
+    const MOTIVOS: [string, RegExp][] = [
+      ['preexistencia', /preexist|enfermedad|diagn|salud previa|patolog/i],
+      ['presupuesto',   /presupuest|precio|caro|costo|no puede pagar|plata/i],
+      ['fuera de perfil', /perfil|edad|no califica|no aplica|extranjer|isapre|fonasa/i],
+      ['no contesta',   /no contest|no responde|ilocaliz|no atiende|numero equivocado|nº equivocado/i],
+      ['no interesado', /no le interes|desistio|desistió|ya no quiere|arrepint/i],
+    ];
+    const idsDescartados: string[] = [];
+    for (const { id, nombre } of idsDeDescarte) {
+      const r = await ghlGet('/opportunities/search', { location_id: locationId, pipeline_stage_id: id, limit: '20' });
+      if (!r.ok) continue;
+      for (const o of (r.cuerpo?.opportunities || [])) if (o?.contactId) idsDescartados.push(String(o.contactId));
+    }
+    if (idsDescartados.length) {
+      let conNotas = 0, notasTotales = 0;
+      const largos: number[] = [];
+      const porMotivo: Record<string, number> = Object.fromEntries(MOTIVOS.map(([m]) => [m, 0]));
+      let sinClasificar = 0, fallos = 0;
+      for (const cid of idsDescartados.slice(0, 15)) {
+        const r = await ghlGet(`/contacts/${cid}/notes`);
+        if (!r.ok) { fallos++; continue; }
+        const notas = r.cuerpo?.notes || r.cuerpo?.data || [];
+        if (notas.length) conNotas++;
+        notasTotales += notas.length;
+        for (const n of notas) {
+          const cuerpo = String(n?.body ?? '');
+          largos.push(cuerpo.length);
+          const pega = MOTIVOS.find(([, re]) => re.test(cuerpo));
+          if (pega) porMotivo[pega[0]]++; else if (cuerpo.trim()) sinClasificar++;
+        }
+      }
+      pasos.push({
+        paso: 'descartados · ¿por qué?',
+        contactos_descartados_mirados: Math.min(idsDescartados.length, 15),
+        con_al_menos_una_nota: conNotas,
+        notas_totales: notasTotales,
+        // El largo, no el texto.
+        largo_min: largos.length ? Math.min(...largos) : null,
+        largo_max: largos.length ? Math.max(...largos) : null,
+        // Cuántas encajan en cada motivo. Conteos, ni una palabra de nadie.
+        por_motivo: porMotivo,
+        sin_clasificar: sinClasificar,
+        lecturas_fallidas: fallos || undefined,
+        nota: notasTotales === 0
+          ? 'Los descartados NO tienen notas. El porqué no está en GHL: o se anota en otro lado, o no se anota.'
+          : `De ${notasTotales} notas, ${notasTotales - sinClasificar} encajan en la lista cerrada de motivos.`,
+      });
+    }
+
+    // 7 · ¿De dónde viene el 41% sin gclid? Si son orgánicos, no es una falla de
+    //     tagging: es tráfico que nunca tuvo click id. Las dos cosas se arreglan
+    //     en lugares distintos.
+    if (muchos?.ok) {
+      const lista = muchos.cuerpo?.contacts || [];
+      const sinClick = lista.filter((c: any) => rutasDeClickId(c).length === 0);
+      const cuentaPor = (arr: any[], f: (x: any) => any) => arr.reduce((acc: Record<string, number>, x: any) => {
+        const k = String(f(x) ?? '(vacío)'); acc[k] = (acc[k] || 0) + 1; return acc;
+      }, {});
+      pasos.push({
+        paso: 'los que NO traen gclid · ¿de dónde vienen?',
+        cuantos: sinClick.length,
+        // `source` y utm son etiquetas de campaña, no datos de personas.
+        por_source: cuentaPor(sinClick, (c: any) => c?.source),
+        por_utm_session_source: cuentaPor(sinClick, (c: any) => c?.attributions?.[0]?.utmSessionSource),
+        por_medium: cuentaPor(sinClick, (c: any) => c?.attributions?.[0]?.medium),
+      });
+    }
+
     // El gclid aparece en customFields[2] y customFields[3] segun el contacto: el
     // ÍNDICE SE MUEVE, así que leerlo por posición es una bomba. Hay que casarlo
     // por el id del campo, y para eso hace falta el catálogo con sus nombres.
-    for (const ruta of [`/locations/${locationId}/customFields`, '/custom-fields/']) {
-      const r = await ghlGet(ruta, { locationId, model: 'contact' });
+    // El 422 decía "property locationId should not exist": ya va en la RUTA, no
+    // como query. Mandarlo dos veces era el error.
+    for (const ruta of [`/locations/${locationId}/customFields`]) {
+      const r = await ghlGet(ruta, { model: 'contact' });
       const campos = r.ok ? (r.cuerpo?.customFields || r.cuerpo?.data || []) : [];
       pasos.push({
         paso: `campos personalizados · ${ruta}`,
@@ -4759,7 +4841,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       // Con el sha adentro, "¿esto es el código nuevo?" se contesta mirando, no
       // deduciendo.
       build: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
-      sondeo_version: 3,
+      sondeo_version: 4,
       aviso: 'Formas, conteos y nombres de configuración solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
       pasos,
     });

@@ -6085,8 +6085,75 @@ Reporte completo: ${url}`;
         claves_de_attributions: lista.find((c) => c?.attributions?.[0]) ? Object.keys(lista.find((c) => c?.attributions?.[0]).attributions[0]) : []
       });
     }
-    for (const ruta of [`/locations/${locationId}/customFields`, "/custom-fields/"]) {
-      const r = await ghlGet(ruta, { locationId, model: "contact" });
+    const MOTIVOS = [
+      ["preexistencia", /preexist|enfermedad|diagn|salud previa|patolog/i],
+      ["presupuesto", /presupuest|precio|caro|costo|no puede pagar|plata/i],
+      ["fuera de perfil", /perfil|edad|no califica|no aplica|extranjer|isapre|fonasa/i],
+      ["no contesta", /no contest|no responde|ilocaliz|no atiende|numero equivocado|nº equivocado/i],
+      ["no interesado", /no le interes|desistio|desistió|ya no quiere|arrepint/i]
+    ];
+    const idsDescartados = [];
+    for (const { id, nombre } of idsDeDescarte) {
+      const r = await ghlGet("/opportunities/search", { location_id: locationId, pipeline_stage_id: id, limit: "20" });
+      if (!r.ok) continue;
+      for (const o of r.cuerpo?.opportunities || []) if (o?.contactId) idsDescartados.push(String(o.contactId));
+    }
+    if (idsDescartados.length) {
+      let conNotas = 0, notasTotales = 0;
+      const largos = [];
+      const porMotivo = Object.fromEntries(MOTIVOS.map(([m]) => [m, 0]));
+      let sinClasificar = 0, fallos = 0;
+      for (const cid of idsDescartados.slice(0, 15)) {
+        const r = await ghlGet(`/contacts/${cid}/notes`);
+        if (!r.ok) {
+          fallos++;
+          continue;
+        }
+        const notas = r.cuerpo?.notes || r.cuerpo?.data || [];
+        if (notas.length) conNotas++;
+        notasTotales += notas.length;
+        for (const n of notas) {
+          const cuerpo = String(n?.body ?? "");
+          largos.push(cuerpo.length);
+          const pega = MOTIVOS.find(([, re]) => re.test(cuerpo));
+          if (pega) porMotivo[pega[0]]++;
+          else if (cuerpo.trim()) sinClasificar++;
+        }
+      }
+      pasos.push({
+        paso: "descartados \xB7 \xBFpor qu\xE9?",
+        contactos_descartados_mirados: Math.min(idsDescartados.length, 15),
+        con_al_menos_una_nota: conNotas,
+        notas_totales: notasTotales,
+        // El largo, no el texto.
+        largo_min: largos.length ? Math.min(...largos) : null,
+        largo_max: largos.length ? Math.max(...largos) : null,
+        // Cuántas encajan en cada motivo. Conteos, ni una palabra de nadie.
+        por_motivo: porMotivo,
+        sin_clasificar: sinClasificar,
+        lecturas_fallidas: fallos || void 0,
+        nota: notasTotales === 0 ? "Los descartados NO tienen notas. El porqu\xE9 no est\xE1 en GHL: o se anota en otro lado, o no se anota." : `De ${notasTotales} notas, ${notasTotales - sinClasificar} encajan en la lista cerrada de motivos.`
+      });
+    }
+    if (muchos?.ok) {
+      const lista = muchos.cuerpo?.contacts || [];
+      const sinClick = lista.filter((c) => rutasDeClickId(c).length === 0);
+      const cuentaPor = (arr, f) => arr.reduce((acc, x) => {
+        const k = String(f(x) ?? "(vac\xEDo)");
+        acc[k] = (acc[k] || 0) + 1;
+        return acc;
+      }, {});
+      pasos.push({
+        paso: "los que NO traen gclid \xB7 \xBFde d\xF3nde vienen?",
+        cuantos: sinClick.length,
+        // `source` y utm son etiquetas de campaña, no datos de personas.
+        por_source: cuentaPor(sinClick, (c) => c?.source),
+        por_utm_session_source: cuentaPor(sinClick, (c) => c?.attributions?.[0]?.utmSessionSource),
+        por_medium: cuentaPor(sinClick, (c) => c?.attributions?.[0]?.medium)
+      });
+    }
+    for (const ruta of [`/locations/${locationId}/customFields`]) {
+      const r = await ghlGet(ruta, { model: "contact" });
       const campos = r.ok ? r.cuerpo?.customFields || r.cuerpo?.data || [] : [];
       pasos.push({
         paso: `campos personalizados \xB7 ${ruta}`,
@@ -6111,7 +6178,7 @@ Reporte completo: ${url}`;
       // Con el sha adentro, "¿esto es el código nuevo?" se contesta mirando, no
       // deduciendo.
       build: (process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
-      sondeo_version: 3,
+      sondeo_version: 4,
       aviso: "Formas, conteos y nombres de configuraci\xF3n solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
       pasos
     });
