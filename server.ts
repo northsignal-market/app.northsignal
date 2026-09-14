@@ -4497,7 +4497,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
 
     const TOPE_DIAS = 90;   // lo que guarda click_view. Pedir más no trae más.
-    const dias = Math.min(TOPE_DIAS, Math.max(1, parseInt(String(req.query.dias || '1')) || 1));
+    // Ventana en "días atrás": desde=1&hasta=30 son los 30 días previos a hoy.
+    // Es chunkeable a propósito: 90 días × 4 cuentas no entran en una invocación
+    // de Vercel, y un relleno que se corta a la mitad sin avisar es peor que uno
+    // que hay que correr tres veces.
+    const n = (v: any, def: number) => Math.max(1, Math.min(TOPE_DIAS, parseInt(String(v ?? '')) || def));
+    const desde = req.query.desde != null ? n(req.query.desde, 1) : 1;
+    const hasta = req.query.hasta != null ? n(req.query.hasta, desde)
+                : req.query.dias  != null ? n(req.query.dias, 1) : 1;
+    const [dIni, dFin] = desde <= hasta ? [desde, hasta] : [hasta, desde];
+    const dias = dFin - dIni + 1;
     const soloCuenta = req.query.client ? String(req.query.client) : null;
     const f = (d: Date) => d.toISOString().slice(0, 10);
     const cuentas = (await cuentasActivas()).filter((c: any) => c.cid && (!soloCuenta || c.account === soloCuenta));
@@ -4509,14 +4518,31 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       let capturados = 0, conKeyword = 0, clicsReales = 0, diasConError = 0;
       const errores: string[] = [];
 
-      for (let i = 1; i <= dias; i++) {
+      // El denominador de TODA la ventana en UNA consulta. Antes era una por día:
+      // con 90 días eran 90 llamadas de más por cuenta, y el relleno se pasaba del
+      // timeout. `customer` sí acepta rango; click_view es el que no.
+      const primerDia = new Date(); primerDia.setDate(primerDia.getDate() - dFin);
+      const ultimoDia = new Date(); ultimoDia.setDate(ultimoDia.getDate() - dIni);
+      const clicsPorDia = new Map<string, number>();
+      try {
+        const m = await gadsSearch(cta.cid, `SELECT segments.date, metrics.clicks FROM customer
+                                             WHERE segments.date BETWEEN '${f(primerDia)}' AND '${f(ultimoDia)}'`);
+        for (const r of m) {
+          const dd = r.segments?.date; if (!dd) continue;
+          clicsPorDia.set(dd, (clicsPorDia.get(dd) || 0) + Number(r.metrics?.clicks || 0));
+        }
+      } catch (e: any) {
+        // Sin denominador la cobertura no se puede calcular. Se sigue capturando
+        // —el dato de click_view vale igual— pero cobertura_pct queda null, que
+        // es "no se pudo medir", no "cero".
+        errores.push(`denominador: ${String(e?.message || e).slice(0, 140)}`);
+      }
+
+      for (let i = dIni; i <= dFin; i++) {
         const d = new Date(); d.setDate(d.getDate() - i);
         const dia = f(d);
         try {
-          // El denominador primero: sin él, "0 filas" no se puede leer.
-          const m = await gadsSearch(cta.cid, `SELECT metrics.clicks FROM customer WHERE segments.date = '${dia}'`);
-          const clicksDelDia = m.reduce((a: number, r: any) => a + Number(r.metrics?.clicks || 0), 0);
-          clicsReales += clicksDelDia;
+          clicsReales += clicsPorDia.get(dia) || 0;
 
           const filas = await gadsSearch(cta.cid, `
             SELECT click_view.gclid, click_view.keyword_info.text, click_view.keyword_info.match_type,
@@ -4546,7 +4572,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
 
       fallas += diasConError;
       resumen.push({
-        cuenta: cta.account, dias, capturados, con_keyword: conKeyword,
+        cuenta: cta.account, ventana: `${dIni}-${dFin} días atrás`, dias, capturados, con_keyword: conKeyword,
         clics_reales: clicsReales, dias_con_error: diasConError,
         cobertura_pct: coberturaPct(capturados, clicsReales),
         errores: errores.length ? errores : undefined,
@@ -4563,7 +4589,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       });
     } catch { /* el latido es opcional */ }
 
-    res.json({ ok: fallas === 0, dias, cuentas: resumen });
+    res.json({ ok: fallas === 0, dias, desde: dIni, hasta: dFin, cuentas: resumen });
   });
 
   app.all("/api/cron/reconciliar-api", async (req, res) => {

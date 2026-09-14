@@ -5838,7 +5838,11 @@ Reporte completo: ${url}`;
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     if (!gadsDisponible()) return res.status(503).json({ error: "Faltan credenciales GADS_* en el entorno" });
     const TOPE_DIAS = 90;
-    const dias = Math.min(TOPE_DIAS, Math.max(1, parseInt(String(req.query.dias || "1")) || 1));
+    const n = (v, def) => Math.max(1, Math.min(TOPE_DIAS, parseInt(String(v ?? "")) || def));
+    const desde = req.query.desde != null ? n(req.query.desde, 1) : 1;
+    const hasta = req.query.hasta != null ? n(req.query.hasta, desde) : req.query.dias != null ? n(req.query.dias, 1) : 1;
+    const [dIni, dFin] = desde <= hasta ? [desde, hasta] : [hasta, desde];
+    const dias = dFin - dIni + 1;
     const soloCuenta = req.query.client ? String(req.query.client) : null;
     const f = (d) => d.toISOString().slice(0, 10);
     const cuentas = (await cuentasActivas()).filter((c) => c.cid && (!soloCuenta || c.account === soloCuenta));
@@ -5847,14 +5851,28 @@ Reporte completo: ${url}`;
     for (const cta of cuentas) {
       let capturados = 0, conKeyword = 0, clicsReales = 0, diasConError = 0;
       const errores = [];
-      for (let i = 1; i <= dias; i++) {
+      const primerDia = /* @__PURE__ */ new Date();
+      primerDia.setDate(primerDia.getDate() - dFin);
+      const ultimoDia = /* @__PURE__ */ new Date();
+      ultimoDia.setDate(ultimoDia.getDate() - dIni);
+      const clicsPorDia = /* @__PURE__ */ new Map();
+      try {
+        const m = await gadsSearch(cta.cid, `SELECT segments.date, metrics.clicks FROM customer
+                                             WHERE segments.date BETWEEN '${f(primerDia)}' AND '${f(ultimoDia)}'`);
+        for (const r of m) {
+          const dd = r.segments?.date;
+          if (!dd) continue;
+          clicsPorDia.set(dd, (clicsPorDia.get(dd) || 0) + Number(r.metrics?.clicks || 0));
+        }
+      } catch (e) {
+        errores.push(`denominador: ${String(e?.message || e).slice(0, 140)}`);
+      }
+      for (let i = dIni; i <= dFin; i++) {
         const d = /* @__PURE__ */ new Date();
         d.setDate(d.getDate() - i);
         const dia = f(d);
         try {
-          const m = await gadsSearch(cta.cid, `SELECT metrics.clicks FROM customer WHERE segments.date = '${dia}'`);
-          const clicksDelDia = m.reduce((a, r) => a + Number(r.metrics?.clicks || 0), 0);
-          clicsReales += clicksDelDia;
+          clicsReales += clicsPorDia.get(dia) || 0;
           const filas = await gadsSearch(cta.cid, `
             SELECT click_view.gclid, click_view.keyword_info.text, click_view.keyword_info.match_type,
                    campaign.id, campaign.name, ad_group.id, ad_group.name,
@@ -5875,6 +5893,7 @@ Reporte completo: ${url}`;
       fallas += diasConError;
       resumen.push({
         cuenta: cta.account,
+        ventana: `${dIni}-${dFin} d\xEDas atr\xE1s`,
         dias,
         capturados,
         con_keyword: conKeyword,
@@ -5892,7 +5911,7 @@ Reporte completo: ${url}`;
       });
     } catch {
     }
-    res.json({ ok: fallas === 0, dias, cuentas: resumen });
+    res.json({ ok: fallas === 0, dias, desde: dIni, hasta: dFin, cuentas: resumen });
   });
   app2.all("/api/cron/reconciliar-api", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

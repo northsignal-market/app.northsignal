@@ -134,3 +134,63 @@ describe('estadoAtribucion', () => {
     }
   });
 });
+
+/**
+ * LA VENTANA QUE SE PIDE TIENE QUE SER LA QUE SE RECORRE.
+ *
+ * El relleno de 90 días hacía una consulta de denominador POR DÍA: con 4 cuentas
+ * eran 720 llamadas a Google en serie, y Vercel corta antes. Un relleno que se
+ * parte a la mitad sin avisar deja la tabla incompleta, y una tabla incompleta se
+ * lee igual que "esos clics no tuvieron keyword". Por eso la ventana es
+ * chunkeable y se declara en la respuesta.
+ *
+ * Es la regla de CLAUDE.md —"la ventana que decís tiene que ser la que sumaste"—
+ * aplicada a una captura en vez de a una métrica.
+ */
+describe('la ventana del relleno', () => {
+  /** La misma resolución de ventana que usa /api/cron/clicks-keyword. */
+  const ventana = (q: { desde?: any; hasta?: any; dias?: any }) => {
+    const TOPE = 90;
+    const n = (v: any, def: number) => Math.max(1, Math.min(TOPE, parseInt(String(v ?? '')) || def));
+    const desde = q.desde != null ? n(q.desde, 1) : 1;
+    const hasta = q.hasta != null ? n(q.hasta, desde) : q.dias != null ? n(q.dias, 1) : 1;
+    const [dIni, dFin] = desde <= hasta ? [desde, hasta] : [hasta, desde];
+    return { dIni, dFin, dias: dFin - dIni + 1 };
+  };
+
+  it('sin parámetros captura solo ayer, que es lo que hace el cron diario', () => {
+    expect(ventana({})).toEqual({ dIni: 1, dFin: 1, dias: 1 });
+  });
+
+  it('dias=N sigue andando: son los N días previos', () => {
+    expect(ventana({ dias: 30 })).toEqual({ dIni: 1, dFin: 30, dias: 30 });
+  });
+
+  it('desde/hasta define un tramo, para poder partir el relleno', () => {
+    expect(ventana({ desde: 31, hasta: 60 })).toEqual({ dIni: 31, dFin: 60, dias: 30 });
+  });
+
+  it('los tramos del relleno cubren los 90 días sin huecos ni solapes', () => {
+    const tramos = [ventana({ desde: 1, hasta: 30 }), ventana({ desde: 31, hasta: 60 }), ventana({ desde: 61, hasta: 90 })];
+    expect(tramos.reduce((a, t) => a + t.dias, 0)).toBe(90);
+    const dias = new Set<number>();
+    for (const t of tramos) for (let i = t.dIni; i <= t.dFin; i++) dias.add(i);
+    expect(dias.size, 'los tramos se solapan o dejan un hueco').toBe(90);
+  });
+
+  it('invertido se ordena solo, en vez de recorrer cero días en silencio', () => {
+    expect(ventana({ desde: 60, hasta: 31 })).toEqual({ dIni: 31, dFin: 60, dias: 30 });
+  });
+
+  // click_view no guarda más de ~90 días: pedir 200 no trae más, y prometerlo
+  // en la respuesta sería declarar una ventana que no se pudo recorrer.
+  it('no se puede pedir más de lo que Google guarda', () => {
+    expect(ventana({ dias: 500 }).dFin).toBe(90);
+    expect(ventana({ desde: 999, hasta: 999 }).dFin).toBe(90);
+  });
+
+  it('basura en el parámetro cae al default, no a cero días', () => {
+    expect(ventana({ dias: 'ayer' })).toEqual({ dIni: 1, dFin: 1, dias: 1 });
+    expect(ventana({ desde: '', hasta: '' })).toEqual({ dIni: 1, dFin: 1, dias: 1 });
+  });
+});
