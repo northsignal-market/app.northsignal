@@ -1,0 +1,61 @@
+# Reglas de gitleaks para NorthSignal
+# ----------------------------------------------------------------------------
+# Escrito el 14 de septiembre de 2026, después de encontrar cinco scripts del
+# MCC con un JWT de Supabase embebido, versionados en un repo PÚBLICO desde el
+# 8 de septiembre. Las reglas de fábrica de gitleaks no traen un patrón para las
+# claves de Supabase, que son JWT con un claim `role` adentro: pasan como
+# "un JWT cualquiera" y no se distinguen de un token de sesión.
+
+title = "NorthSignal"
+
+[extend]
+useDefault = true
+
+# ── Claves de Supabase ──────────────────────────────────────────────────────
+# Un JWT de Supabase empieza siempre con el header {"alg":"HS256","typ":"JWT"},
+# que en base64url da exactamente este prefijo. El payload arranca con `eyJ`.
+# No distingue anon de service_role —para eso habría que decodificar— y está
+# bien que no lo haga: la anon tampoco tiene por qué estar en el código, porque
+# el día que alguien le agregue un grant a una tabla se vuelve una llave.
+[[rules]]
+id = "supabase-jwt"
+description = "Clave de Supabase (JWT). Ni la service_role ni la anon van en el código."
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJ[A-Za-z0-9_-]{20,}'''
+tags = ["supabase", "clave"]
+
+# ── Google Ads API ──────────────────────────────────────────────────────────
+[[rules]]
+id = "google-ads-developer-token"
+description = "Developer token de Google Ads"
+regex = '''(?i)(developer[_-]?token|GADS_DEVELOPER_TOKEN)\s*[:=]\s*['"][A-Za-z0-9_-]{20,}['"]'''
+tags = ["google-ads", "clave"]
+
+[[rules]]
+id = "google-oauth-refresh"
+description = "Refresh token de OAuth de Google"
+regex = '''['"]1//[A-Za-z0-9_-]{30,}['"]'''
+tags = ["google", "oauth"]
+
+# ── Notion ──────────────────────────────────────────────────────────────────
+[[rules]]
+id = "notion-token"
+description = "Token de integración de Notion"
+regex = '''(secret_|ntn_)[A-Za-z0-9]{35,}'''
+tags = ["notion", "clave"]
+
+[allowlist]
+description = "Lo que no es una filtración"
+paths = [
+  # El bundle del servidor es generado: si hay algo acá, el problema está en la
+  # fuente, y ahí sí se reporta. Marcarlo dos veces enseña a ignorar el aviso.
+  '''^api/index\.js$''',
+  '''^dist/''',
+  # Las migraciones y los prompts NOMBRAN las variables de entorno para explicar
+  # qué falta cargar; no llevan valores.
+  '''^supabase/migrations/''',
+  '''^docs/prompts/''',
+]
+regexes = [
+  # Un placeholder no es una clave.
+  '''(?i)(tu[_-]?clave|your[_-]?key|<[A-Z_]+>|PEGAR[_-]?ACA|xxx+|\.\.\.)''',
+]

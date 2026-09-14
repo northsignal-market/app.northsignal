@@ -1,0 +1,63 @@
+# CI · lo que tiene que pasar antes de que algo llegue a main
+# ----------------------------------------------------------------------------
+# Este repo no tenía ninguna verificación automática. Todo lo que se rompió el
+# 13 y 14 de septiembre se descubrió mirando, no fallando: la cascada que
+# anulaba `fixed`, la clave en el código, la función que no existía. Nada de eso
+# rompía el build, y por eso llegó a producción.
+#
+# Cada paso de acá abajo existe porque algo concreto se escapó por ahí.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks necesita el historial para revisar los commits del push,
+          # no solo el árbol final. Una clave borrada en el último commit sigue
+          # estando en el anterior.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # ── Lo que ya existía y nadie corría automáticamente ──────────────────
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # ── Los controles propios ─────────────────────────────────────────────
+      # La familia de bugs que apareció tres veces en un día: una declaración
+      # global que gana una pelea que nadie sabía que estaba dando. Ninguna
+      # herramienta estándar la agarra porque cada mitad es válida por separado.
+      # Probado contra el CSS del 13-sep: sale 1. Contra el de hoy: sale 0.
+      - name: Cascada CSS
+        run: node scripts/revisar-cascada.mjs
+
+      # ── Secretos ──────────────────────────────────────────────────────────
+      # El 14 de septiembre aparecieron cinco scripts con un JWT de Supabase
+      # embebido, versionados en un repo público desde hacía seis días. Esto no
+      # recupera esa clave, pero impide que la próxima entre igual.
+      - name: Secretos
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Dependencias ──────────────────────────────────────────────────────
+      # Solo producción y solo alto/crítico: un audit que falla por una
+      # vulnerabilidad moderada en una dependencia de desarrollo enseña a
+      # ignorar el CI, que es peor que no tenerlo.
+      - name: Dependencias
+        run: npm audit --omit=dev --audit-level=high
