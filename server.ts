@@ -4750,6 +4750,16 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
 
     res.json({
       cuenta, location_id: locationId,
+      // QUÉ BUILD CONTESTÓ.
+      //
+      // Dos veces seguidas Andrés corrió el sondeo antes de que aterrizara el
+      // deploy y recibió la respuesta del build ANTERIOR, idéntica a la de la
+      // vuelta pasada. La segunda vez lo detecté comparando el texto a mano, que
+      // no es forma: una respuesta vieja y una nueva sin cambios se ven iguales.
+      // Con el sha adentro, "¿esto es el código nuevo?" se contesta mirando, no
+      // deduciendo.
+      build: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
+      sondeo_version: 3,
       aviso: 'Formas, conteos y nombres de configuración solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
       pasos,
     });
