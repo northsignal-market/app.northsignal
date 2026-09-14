@@ -45,7 +45,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const { data: pulsoRaw } = useJSON<any>('/api/pulso?days=2', null, { refetchMs: R });
   const { data: ciclo } = useJSON<any>('/api/ciclo', null, { refetchMs: R });
   const { data: novedadesRaw } = useJSON<any[]>('/api/novedades', [], { refetchMs: R });
-  const { data: bloqueadosRaw } = useJSON<Record<string, string>>('/api/relaciones-abiertas', {}, { refetchMs: R });
+  const { data: bloqueadosRaw, error: errorBloqueos } = useJSON<Record<string, string>>('/api/relaciones-abiertas', {}, { refetchMs: R });
   const { data: propuestasRaw } = useJSON<any[]>('/api/propuestas', [], { refetchMs: R });
   const { data: notas } = useJSON<any>('/api/notas-agentes', null);
   // El punto de "Datos" tiene tres estados, no dos. Antes era
@@ -74,7 +74,17 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const hoy = alertas.filter(a => a.nivel === 'hoy' && enCuenta(a.account || ''));
   const propuestos = actionables.filter(a => a.status === NOTION_STATES.PROPUESTO && !a.reemplazado_por && enCuenta(a.client));
   const esPregunta = (a: any) => String(a.accion?.verbo || '').startsWith('preguntar');
-  const esUnClic = (a: any) => !esPregunta(a) && !bloqueados[a.id] && !!(a.accion ? tipoAutoDesde(a.accion) : detectarTipoAuto(a.title, a.como_hacerlo));
+  // Si la consulta de conflictos FALLÓ, nada es "de un clic". Es la única regla
+  // de esta pantalla donde un hueco no baja un número: habilita una acción.
+  // Reproducido contra el bundle real: con /api/relaciones-abiertas en 500,
+  // `bloqueados` quedaba en {} —indistinguible de "no hay conflictos"—, un
+  // accionable BLOQUEADO ascendía al grupo "De un clic · el ejecutor las aplica
+  // al aprobar", la marca "conflicto abierto" desaparecía, y el titular llegaba
+  // a decir "Lo que más devuelve por minuto: 1 decisión de un clic". El
+  // pre-vuelo lo habría frenado después, pero recién en el servidor y con
+  // Andrés ya habiendo apretado el botón sobre algo que la pantalla le presentó
+  // como seguro. Ante la duda, a mano: cuesta un clic de más, no una escritura.
+  const esUnClic = (a: any) => !errorBloqueos && !esPregunta(a) && !bloqueados[a.id] && !!(a.accion ? tipoAutoDesde(a.accion) : detectarTipoAuto(a.title, a.como_hacerlo));
   const listos = propuestos.filter(esUnClic);
   const preguntas = propuestos.filter(esPregunta);
   const aMano = propuestos.filter(a => !esUnClic(a) && !esPregunta(a));
@@ -233,6 +243,16 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                         accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] text-[#FAFAFA] hover:bg-white/10 transition-colors" style={{ border: '1px solid var(--border-strong)' }}>Resuelta</button>} />
                     ))}
                   </Grupo>
+                )}
+                {/* Sin esto, "De un clic" vacío se leería como "no hay nada listo",
+                    cuando en realidad no se pudo saber cuáles tenían conflicto y
+                    todos bajaron a "A mano" por precaución. Los accionables siguen
+                    estando: lo que falta es el atajo, y conviene decir por qué. */}
+                {errorBloqueos && (
+                  <p className="text-[11px] px-5 py-2" style={{ color: 'var(--warn)' }}>
+                    No se pudo consultar qué accionables tienen un conflicto abierto, así que
+                    ninguno se ofrece de un clic: están todos en «A mano». {errorBloqueos}
+                  </p>
                 )}
                 {listosOrd.length > 0 && (
                   <Grupo id="listos" titulo="De un clic" nota="el ejecutor las aplica al aprobar" n={listosOrd.length} abierto={estaAbierto('listos')} onToggle={() => setGAbierto(s => ({ ...s, listos: !estaAbierto('listos') }))} todo={!!gTodo.listos} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, listos: true }))}>

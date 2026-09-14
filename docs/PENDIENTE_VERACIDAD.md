@@ -503,18 +503,13 @@ los lista bajo **"Accionables que no cumplen el estándar"**, mostrando
 Es exactamente lo que `CLAUDE.md` advierte: *"Tratarla como falla es cómo mueren
 las alertas."*
 
-### 4.4 · Un hueco que habilita una ejecución que el pre-vuelo bloqueó
-`src/components/Bandeja.tsx:64`
-```tsx
-const esUnClic = (a) => !esPregunta(a) && !bloqueados[a.id] && …
-```
-`/api/relaciones-abiertas` (`server.ts:3367-3372`) descarta el `error` y devuelve
-`{}` con status 200. Si falla, **todo accionable con conflicto abierto pasa a
-"De un clic · el ejecutor las aplica al aprobar"** y el aviso `conflicto
-abierto` desaparece.
-
-Es el caso más caro de esta familia: **el hueco no baja un número, habilita una
-acción.**
+### 4.4 · ~~Un hueco que habilita una ejecución~~ · ARREGLADO el 14/9
+`esUnClic` ahora falla cerrado: si la consulta de conflictos falló, nada se
+ofrece de un clic y la pantalla dice por qué. Se deja acá porque el lado del
+servidor sigue pendiente: `/api/relaciones-abiertas` (`server.ts:3367-3372`)
+**descarta el `error` y devuelve `{}` con status 200**. El cliente ya no se lo
+cree, pero el endpoint sigue mintiendo y hay otros consumidores posibles.
+Alinealo con el patrón del resto del archivo: `console.error` + 500.
 
 ### 4.5 · El KPI "Datos" es verde por defecto por tres caminos
 `src/components/Bandeja.tsx:197` — solo el literal `false` advierte.
@@ -781,6 +776,36 @@ hay que rehacerlo** contra un Sheet, Drive o JDBC.
 > instalación limpia. Si se hubiera aplicado, era un outage total del pipeline.
 > **La decisión de no tocarlos resultó correcta por razones que no se conocían
 > al tomarla.**
+
+---
+
+## 9.ter · Tres cambios visuales que nadie aprobó todavía
+
+Salieron del arreglo de la cascada y son **correctos por intención** —el markup
+ahora hace lo que dice—, pero cambiaron cosas que estaban a la vista y ningún
+informe los mencionó. Los encontró el revisor adversarial diffeando las 199
+combinaciones reales de `className` bajo los dos CSS compilados. **Mirálos y
+decidí; no son bugs.**
+
+El mecanismo: la animación de entrada usaba `fill-mode: both`, y la mitad
+*forwards* dejaba `opacity: 1` pegado sobre **cualquier** hijo directo de un
+`main .space-y-{4,6,8}`, pisando su propia utilidad. Con `backwards` el elemento
+vuelve a lo que declara.
+
+1. **`src/components/Sistema.tsx:541`** — el párrafo de "Integridad de datos"
+   (`text-[11px] text-[#F5F7FA] opacity-50`) pasó de opacidad efectiva 1 a 0,5.
+   Medido con muestreo de píxel sobre el fondo real: **18,86:1 → 5,05:1**. Sigue
+   pasando AA para texto chico (4,5:1), así que no rompe accesibilidad, pero es
+   3,7× menos contraste. Mismo mecanismo en `src/components/Clientes.tsx:532`,
+   `:534`, `:671`.
+2. **`src/components/LoginScreen.tsx:68`** — la tarjeta del login pasó de 12px a
+   16px de radio (`.glass` + `rounded-2xl`, y ahora gana la utilidad).
+3. **`src/components/Ayuda.tsx:105`** — el panel de ayuda, lo mismo.
+
+> Conviene mirarlos junto con el trabajo de contraste, que empujó en la
+> dirección contraria (subir opacidades). Si el párrafo de Integridad quedó muy
+> tenue, el arreglo es cambiar el markup a `opacity-70`, **no** volver a
+> depender de que una animación lo pise por accidente.
 
 ---
 
