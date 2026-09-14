@@ -6164,6 +6164,29 @@ Reporte completo: ${url}`;
           else if (cuerpo.trim()) sinClasificar++;
         }
       }
+      if (String(req.query.crudo || "") === "1") {
+        const textos = [];
+        const respuestas = [];
+        for (const cid of idsDescartados.slice(0, 15)) {
+          const rc = await ghlGet(`/contacts/${cid}`);
+          if (rc.ok) {
+            const c = rc.cuerpo?.contact || rc.cuerpo;
+            respuestas.push({
+              seguro_actual: valorDeCampo(c?.customFields, "Cxo9rbLaxtgkoYKxbaIM"),
+              cobertura_buscada: valorDeCampo(c?.customFields, "EE9IRPlkr7tJNrJSo50F"),
+              keyword: valorDeCampo(c?.customFields, CAMPOS_BHI.keyword),
+              concordancia: valorDeCampo(c?.customFields, CAMPOS_BHI.concordancia),
+              tiene_gclid: !!valorDeCampo(c?.customFields, CAMPOS_BHI.gclid)
+            });
+          }
+          const rn = await ghlGet(`/contacts/${cid}/notes`);
+          if (rn.ok) for (const n of rn.cuerpo?.notes || []) {
+            const b = String(n?.body ?? "").trim();
+            if (b) textos.push(b);
+          }
+        }
+        pasos.push({ paso: "descartados \xB7 notas (crudo, autorizado)", notas: textos, formulario: respuestas });
+      }
       pasos.push({
         paso: "descartados \xB7 \xBFpor qu\xE9?",
         contactos_descartados_mirados: Math.min(idsDescartados.length, 15),
@@ -6222,7 +6245,7 @@ Reporte completo: ${url}`;
       // Con el sha adentro, "¿esto es el código nuevo?" se contesta mirando, no
       // deduciendo.
       build: (process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
-      sondeo_version: 4,
+      sondeo_version: 5,
       aviso: "Formas, conteos y nombres de configuraci\xF3n solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
       pasos
     });

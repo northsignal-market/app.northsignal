@@ -6,7 +6,7 @@ import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } fr
 import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-cuenta';
 import { mapearClickView, coberturaPct } from './src/server/domain/atribucion-clic';
 import { ghlDisponible, ghlGet, formaDe, rutasDeClickId } from './src/server/lib/ghl';
-import { armarLead } from './src/server/domain/ghl-lead';
+import { armarLead, valorDeCampo, CAMPOS_BHI } from './src/server/domain/ghl-lead';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -4774,6 +4774,42 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
           if (pega) porMotivo[pega[0]]++; else if (cuerpo.trim()) sinClasificar++;
         }
       }
+      // CON ?crudo=1 SALE EL TEXTO DE LAS NOTAS.
+      //
+      // Andrés autorizó leerlas: el formulario de BHI pregunta seguro actual y
+      // cobertura buscada, que es comercial, no clínico. Va detrás de un
+      // parámetro explícito y no por defecto, para que sea un acto deliberado y
+      // no algo que pasa solo. Y aun con el permiso dado, no se piden nombre,
+      // teléfono ni mail: no ayudan a clasificar un descarte, y lo que no se
+      // necesita no se trae.
+      //
+      // Queda anotado que la regla 3 de BHI —en cuentas.reglas_dominio— habla de
+      // descartes "por preexistencias". Si eso apareciera en una nota, es dato de
+      // salud aunque el formulario no lo sea. En las 9 sondeadas no apareció.
+      if (String(req.query.crudo || '') === '1') {
+        const textos: string[] = [];
+        const respuestas: any[] = [];
+        for (const cid of idsDescartados.slice(0, 15)) {
+          const rc = await ghlGet(`/contacts/${cid}`);
+          if (rc.ok) {
+            const c = rc.cuerpo?.contact || rc.cuerpo;
+            respuestas.push({
+              seguro_actual: valorDeCampo(c?.customFields, 'Cxo9rbLaxtgkoYKxbaIM'),
+              cobertura_buscada: valorDeCampo(c?.customFields, 'EE9IRPlkr7tJNrJSo50F'),
+              keyword: valorDeCampo(c?.customFields, CAMPOS_BHI.keyword),
+              concordancia: valorDeCampo(c?.customFields, CAMPOS_BHI.concordancia),
+              tiene_gclid: !!valorDeCampo(c?.customFields, CAMPOS_BHI.gclid),
+            });
+          }
+          const rn = await ghlGet(`/contacts/${cid}/notes`);
+          if (rn.ok) for (const n of (rn.cuerpo?.notes || [])) {
+            const b = String(n?.body ?? '').trim();
+            if (b) textos.push(b);
+          }
+        }
+        pasos.push({ paso: 'descartados · notas (crudo, autorizado)', notas: textos, formulario: respuestas });
+      }
+
       pasos.push({
         paso: 'descartados · ¿por qué?',
         contactos_descartados_mirados: Math.min(idsDescartados.length, 15),
@@ -4842,7 +4878,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       // Con el sha adentro, "¿esto es el código nuevo?" se contesta mirando, no
       // deduciendo.
       build: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
-      sondeo_version: 4,
+      sondeo_version: 5,
       aviso: 'Formas, conteos y nombres de configuración solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
       pasos,
     });
