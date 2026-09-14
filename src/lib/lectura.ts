@@ -37,7 +37,9 @@ export interface PlanLectura {
   senales_sin_dato_hoy: number;
   total_senales: number;
   senales_sin_cruce: number;
-  senales: SenalLectura[];
+  /** NULL cuando no hay ninguna: `json_agg` sobre cero filas devuelve NULL.
+   *  El tipo lo dice para que se vea, en vez de prometer una lista que no viene. */
+  senales: SenalLectura[] | null;
 }
 
 const dias = (n: number) => `${n} día${n === 1 ? '' : 's'}`;
@@ -76,8 +78,35 @@ export function leerPlan(pl: PlanLectura | null, hoyISO: string): LecturaPlan | 
   finDeSemana.setDate(finDeSemana.getDate() + 6);
   const vencido = hoyISO > finDeSemana.toISOString().slice(0, 10);
 
-  const persistentes = pl.senales.filter(s => s.hoy === 'encendida' && s.racha >= 2);
-  const top = persistentes[0] ?? pl.senales.find(s => s.hoy === 'encendida') ?? null;
+  // `senales` llega NULL —no `[]`— cuando el plan no tiene ninguna. En SQL es el
+  // clásico: `json_agg` sobre cero filas devuelve NULL, y `plan_lectura` lo emite
+  // tal cual. El tipo de arriba declara `SenalLectura[]`, así que ni el compilador
+  // ni quien lee el código se enteran.
+  //
+  // Reventó el 14/9/2026 a las 6 de la mañana, lunes: arrancó la semana del 14 y
+  // las cuatro cuentas pasaron a `estado: 'sin_senal'` con `senales: null` a la
+  // vez. Toda la pantalla Cuenta se cayó — "Cannot read properties of null
+  // (reading 'filter')" — y venía armada desde que existe la función, esperando el
+  // primer lunes con el plan vacío.
+  //
+  // OJO con lo que `[]` significa acá, porque casi lo escribo mal: el payload real
+  // del 14/9 traía `total_senales: 5` junto con `senales: null`. O sea que NO es
+  // "cero señales": es "hay cinco y todavía no puedo decir el estado de ninguna"
+  // (`evaluables_totales: 0`, día 1 de la semana). Tratarlo como cero sería
+  // convertir un "no sé" en una medición, que es el modo de falla de esta casa.
+  //
+  // El `?? []` sirve igual y no miente EN PANTALLA porque el veredicto de este
+  // estado no sale de la lista: sale de `pl.estado`, que es 'sin_senal', y dice
+  // "Sin señal todavía: la semana recién empieza". La lista solo alimenta `top` y
+  // `persistentes`, que en este estado no se usan.
+  //
+  // La raíz sigue del lado de SQL y NO es `coalesce(json_agg(...), '[]')`: eso
+  // afirmaría cero señales. Es que el join que arma la lista se come las cinco
+  // cuando todavía no hay pulso que cruzar; con un LEFT JOIN saldrían las cinco
+  // con `hoy: 'sin_dato'`, que es el estado que el propio `case` ya sabe emitir.
+  const listaSenales = pl.senales ?? [];
+  const persistentes = listaSenales.filter(s => s.hoy === 'encendida' && s.racha >= 2);
+  const top = persistentes[0] ?? listaSenales.find(s => s.hoy === 'encendida') ?? null;
   const estadoId: EstadoPlan = vencido ? 'vencido' : pl.estado;
 
   let veredicto: string;
