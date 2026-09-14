@@ -1,9 +1,18 @@
 import { useCuentas } from '../lib/useCuentas';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
 import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular, Fallo, pedirJSON, motivoFallo } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
+
+/** Un valor suelto de jsonb, listo para imprimir. `null` y ausente se muestran
+ *  como `—` y no como "null" ni como vacío: en un diff de configuración, "no
+ *  estaba" y "estaba en cero" son cosas distintas y ninguna es una cadena vacía. */
+function fmtValorJson(v: any): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
 
 /**
  * SISTEMA · una sola página recorrible (P4b, informe 14).
@@ -61,10 +70,18 @@ export function Sistema() {
   const [latidos, setLatidos] = useState<any[]>([]);
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
-  const [tamano, setTamano] = useState<any[]>([]);
-  // `tamano.length === 0` significaba a la vez "todavía no llegó" y "la consulta
-  // falló", y el panel imprimía "Cargando…" para siempre en el segundo caso.
-  const [tamanoEstado, setTamanoEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
+  // /api/salud-sistema devuelve `v_salud_sistema`: el UNION ALL de las
+  // verificaciones de integridad, con forma (area, prueba, cuenta, estado, detalle).
+  // Hasta el 14 sep 2026 este estado se llamaba `tamano` y el panel lo dibujaba como
+  // "Tamaño y crecimiento", leyendo tabla/filas/tamano/filas_por_dia/filas_en_un_ano.
+  // Ninguna de esas columnas existe en esta vista NI en ninguna otra del esquema —no
+  // hay vista de tamaños de tabla en el repo—, así que `Number(t.filas)` sobre
+  // undefined imprimía NaN en cada fila. El dato que sí llegaba, y que nadie veía,
+  // son las verificaciones.
+  const [verificaciones, setVerificaciones] = useState<any[]>([]);
+  // `verificaciones.length === 0` significaba a la vez "todavía no llegó" y "la
+  // consulta falló", y el panel imprimía "Cargando…" para siempre en el segundo caso.
+  const [verifEstado, setVerifEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
   // Salud completa: las 32 verificaciones, tareas caidas y cuarentena.
   const [saludSistema, setSaludSistema] = useState<any>(null);
   const [respaldo, setRespaldo] = useState<any>(null);
@@ -118,6 +135,7 @@ export function Sistema() {
   // Scorecard editable revisions
   const [revisions, setRevisions] = useState<Record<string, string>>({});
   const [savingRevisionId, setSavingRevisionId] = useState<string | null>(null);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
 
   const fetchHealth = async () => {
     setLoading(true);
@@ -129,10 +147,10 @@ export function Sistema() {
   // Sin pestañas, todo carga una vez al entrar; Actualizar repite el lote entero.
   const cargarTodo = () => {
     fetchJSON<any>('/api/aprendizaje', null).then(d => d && setAprendizaje(d));
-    setTamanoEstado({ fase: 'cargando', error: null });
+    setVerifEstado({ fase: 'cargando', error: null });
     pedirJSON<any[]>('/api/salud-sistema')
-      .then(d => { setTamano(Array.isArray(d) ? d : []); setTamanoEstado({ fase: 'listo', error: null }); })
-      .catch(e => { setTamano([]); setTamanoEstado({ fase: 'listo', error: motivoFallo(e) }); });
+      .then(d => { setVerificaciones(Array.isArray(d) ? d : []); setVerifEstado({ fase: 'listo', error: null }); })
+      .catch(e => { setVerificaciones([]); setVerifEstado({ fase: 'listo', error: motivoFallo(e) }); });
     fetchJSON<any>('/api/salud', null).then(d => d && setSaludSistema(d));
     fetchJSON<any[]>('/api/latidos', []).then(d => setLatidos(Array.isArray(d) ? d : []));
     fetchJSON<any>('/api/respaldo', null).then(d => {
@@ -254,22 +272,54 @@ export function Sistema() {
   }, [healthData?.integridadDatos]);
   const integridadFaltan: string[] = healthData?.integridadDatosFaltan || [];
   const integridadFalla: string | null = healthData?.integridadDatosFalla || null;
+  // Los otros cuatro paneles de salud, con el mismo contrato que Integridad.
+  const dataHealthFaltan: string[] = healthData?.dataHealthFaltan || [];
+  const dataHealthFalla: string | null = healthData?.dataHealthFalla || null;
+  const webhookFaltan: string[] = healthData?.webhookHealthFaltan || [];
+  const webhookFalla: string | null = healthData?.webhookHealthFalla || null;
+  const scorecardFaltan: string[] = healthData?.runScorecardFaltan || [];
+  const scorecardFalla: string | null = healthData?.runScorecardFalla || null;
+  const cambiosFaltan: string[] = healthData?.cambiosDetectadosFaltan || [];
+  const cambiosFalla: string | null = healthData?.cambiosDetectadosFalla || null;
+
+  // Lo que no está en OK va arriba: una lista donde el problema queda sepultado
+  // entre treinta filas verdes se lee igual que una lista sin problemas.
+  const verificacionesOrdenadas = useMemo(() => {
+    const peso = (e: any) => (e === 'OK' ? 1 : 0);
+    return [...verificaciones].sort((a, b) =>
+      peso(a.estado) - peso(b.estado) ||
+      String(a.area || '').localeCompare(String(b.area || '')) ||
+      String(a.prueba || '').localeCompare(String(b.prueba || '')));
+  }, [verificaciones]);
+
+  /** Aviso único para "la vista dejó de traer estas columnas". El panel las deja
+   *  en blanco en vez de rellenarlas con un default que parezca medido. */
+  const AvisoColumnas = ({ faltan }: { faltan: string[] }) =>
+    faltan.length === 0 ? null : (
+      <p className="text-[11px] text-[#4D9DFF]">
+        La vista dejó de traer {faltan.join(', ')}. Esas columnas van en blanco: el panel no las inventa.
+      </p>
+    );
 
   const verMas = (t: { resto: number; abrir: () => void }, frase: string) =>
     t.resto > 0 ? <button onClick={t.abrir} className="text-[11px] text-[#4D9DFF] hover:opacity-80 pt-0.5 text-left">{frase}</button> : null;
 
-  const handleSaveRevision = async (id: string) => {
-    setSavingRevisionId(id);
+  /** `clave` identifica la fila en el estado local (cuenta|fecha); `fecha` y `cuenta`
+   *  son lo que necesita el servidor para acotar la escritura a UNA corrida. El
+   *  resultado se mira: un guardado que falla y no dice nada es indistinguible de
+   *  uno que anduvo, y acá lo que se pierde es una nota escrita a mano. */
+  const handleSaveRevision = async (clave: string, fecha: string, cuenta: string) => {
+    setSavingRevisionId(clave);
+    setRevisionError(null);
     try {
-      await fetch(`/api/health/run_quality/${id}`, {
+      await pedirJSON(`/api/health/run_quality/${encodeURIComponent(fecha)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ revision_humana: revisions[id] })
+        body: JSON.stringify({ revision_humana: revisions[clave], account: cuenta })
       });
       fetchHealth();
     } catch(err) {
-      console.error(err);
+      setRevisionError(`No se guardó la revisión de ${cuenta}: ${motivoFallo(err)}`);
     } finally {
       setSavingRevisionId(null);
     }
@@ -468,6 +518,8 @@ export function Sistema() {
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Datos por cuenta
             </h2>
+            <AvisoColumnas faltan={dataHealthFaltan} />
+            {dataHealthFalla && <Fallo que="la salud de los datos por cuenta" motivo={dataHealthFalla} onReintentar={cargarTodo} />}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
@@ -493,17 +545,20 @@ export function Sistema() {
                             isOk ? 'bg-white/10 text-[#EDEFF3]' : 'border-l-2 border-[#0062CC] bg-[#0062CC]/15 text-[#EDEFF3]'
                           }`}>
                             {isOk ? <Check size={12} /> : <AlertCircle size={12} className="text-[#4D9DFF]" />}
-                            <span>{row.estado || 'OK'}</span>
+                            <span>{row.estado || '—'}</span>
                           </span>
                         </td>
                         <td className="py-2.5 px-3 tabular text-[#F5F7FA] opacity-80">
-                          {row.ultimo_dia_datos || row.ultimo_dia || '—'}
+                          {row.semana_datos || '—'}
                         </td>
                         <td className="py-2.5 px-3 tabular text-[#F5F7FA] opacity-80">
-                          {row.ultima_sincronizacion || '—'}
+                          {row.ultimo_run ? fmtFechaCorta(row.ultimo_run) : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-[#F5F7FA] opacity-70">
-                          {row.motivo || row.detalle || 'Sincronización al día'}
+                          {/* `mensaje` es la columna que dice "El script no corre hace mas de
+                              8 dias. Los datos mostrados son viejos." El default anterior
+                              ("Sincronización al día") se imprimía incluso sobre filas en ERROR. */}
+                          {row.mensaje || '—'}
                         </td>
                       </tr>
                     );
@@ -518,15 +573,33 @@ export function Sistema() {
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Webhooks & Eventos de Ingesta
             </h2>
+            <AvisoColumnas faltan={webhookFaltan} />
+            {webhookFalla && <Fallo que="el estado de los webhooks" motivo={webhookFalla} onReintentar={cargarTodo} />}
+            {/* La vista agrupa `webhook_events` por `source`: una integración que NUNCA
+                recibió un evento no tiene filas y por lo tanto no aparece acá. Su
+                ausencia de esta lista no es "está bien", es "nunca se supo nada de
+                ella" — el caso de los webhooks de cierres (ticket 60). */}
+            {!webhookFalla && (healthData?.webhookHealth || []).length === 0 && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-60 italic">
+                Ninguna integración registró eventos todavía. Un webhook que nunca disparó no figura en esta lista: la ausencia acá no es señal de salud.
+              </p>
+            )}
             <div className="space-y-2 text-xs">
               {(healthData?.webhookHealth || []).map((w: any, idx: number) => (
-                <div key={idx} className="p-3 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div key={w.source || idx} className="p-3 rounded-xl flex items-center justify-between" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div className="font-semibold text-[#EDEFF3]">{w.servicio || w.endpoint || 'Webhook Ingest'}</div>
-                    <div className="text-[11px] text-[#F5F7FA] opacity-60">Último disparo: {w.ultimo_disparo || 'reciente'}</div>
+                    <div className="font-semibold text-[#EDEFF3]">{w.source || '—'}</div>
+                    <div className="text-[11px] text-[#F5F7FA] opacity-60">
+                      {w.ultimo_evento
+                        ? `Último evento: ${fmtFechaCorta(w.ultimo_evento)}${w.horas_sin_eventos != null ? ` · hace ${w.horas_sin_eventos} h` : ''}`
+                        : 'Último evento: sin registro'}
+                      {w.eventos_7d != null ? ` · ${w.eventos_7d} en 7 días` : ''}
+                      {w.fallidos ? ` · ${w.fallidos} fallidos` : ''}
+                      {w.en_cuarentena ? ` · ${w.en_cuarentena} en cuarentena` : ''}
+                    </div>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#EDEFF3]">
-                    {w.estado || 'Activo'}
+                    {w.estado || '—'}
                   </span>
                 </div>
               ))}
@@ -631,32 +704,31 @@ export function Sistema() {
             </div>
           </div>
 
-          <div id="tamano" data-toc="Tamaño y crecimiento" data-grupo="g-salud" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
+          <div id="verificaciones" data-toc="Verificaciones de integridad" data-grupo="g-salud" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-              Tamaño y crecimiento
+              Verificaciones de integridad
             </h2>
-            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
-            {tamanoEstado.error ? (
-              <Fallo que="el tamaño de las tablas" motivo={tamanoEstado.error} onReintentar={cargarTodo} />
-            ) : tamanoEstado.fase === 'cargando' ? (
+            <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Cada prueba que el sistema se corre a sí mismo, por área y por cuenta, con su veredicto. Las que no están en OK van arriba: son las que piden mirada.">Cada prueba que el sistema se corre a sí mismo, por área y por cuenta, con su veredicto. Las que no están en OK van arriba: son las que piden mirada.</p>
+            {verifEstado.error ? (
+              <Fallo que="las verificaciones de integridad" motivo={verifEstado.error} onReintentar={cargarTodo} />
+            ) : verifEstado.fase === 'cargando' ? (
               <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
-            ) : tamano.length === 0 ? (
-              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin filas: la consulta respondió, pero no devolvió ninguna tabla.</p>
+            ) : verificaciones.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin filas: la consulta respondió, pero no devolvió ninguna verificación.</p>
             ) : (
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-xs">
                   <thead><tr className="text-[#F5F7FA] opacity-60 text-left" style={{ borderBottom: '1px solid var(--border)' }}>
-                    <th className="py-2 px-2">Tabla</th><th className="py-2 px-2 text-right">Filas</th><th className="py-2 px-2 text-right">Tamaño</th><th className="py-2 px-2 text-right">Filas/día</th><th className="py-2 px-2 text-right">En un año</th><th className="py-2 px-2">Estado</th>
+                    <th className="py-2 px-2">Área</th><th className="py-2 px-2">Prueba</th><th className="py-2 px-2">Cuenta</th><th className="py-2 px-2">Estado</th><th className="py-2 px-2">Detalle</th>
                   </tr></thead>
                   <tbody>
-                    {tamano.map((t: any) => (
-                      <tr key={t.tabla} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                        <td className="py-1.5 px-2 text-[#EDEFF3]">{t.tabla}</td>
-                        <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA]">{Number(t.filas).toLocaleString('es-CL')}</td>
-                        <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.tamano}</td>
-                        <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_por_dia ?? '—'}</td>
-                        <td className="py-1.5 px-2 tabular text-right text-[#F5F7FA] opacity-70">{t.filas_en_un_ano ? Number(t.filas_en_un_ano).toLocaleString('es-CL') : '—'}</td>
-                        <td className={`py-1.5 px-2 ${t.estado === 'OK' ? 'text-[#F5F7FA] opacity-50' : 'text-[#E2B453] font-semibold'}`}>{t.estado}</td>
+                    {verificacionesOrdenadas.map((v: any, i: number) => (
+                      <tr key={`${v.area}-${v.prueba}-${v.cuenta}-${i}`} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
+                        <td className="py-1.5 px-2 text-[#F5F7FA] opacity-70">{v.area || '—'}</td>
+                        <td className="py-1.5 px-2 text-[#EDEFF3]">{v.prueba || '—'}</td>
+                        <td className="py-1.5 px-2 text-[#F5F7FA] opacity-70">{v.cuenta || '—'}</td>
+                        <td className={`py-1.5 px-2 ${v.estado === 'OK' ? 'text-[#F5F7FA] opacity-50' : 'text-[#E2B453] font-semibold'}`}>{v.estado || '—'}</td>
+                        <td className="py-1.5 px-2 text-[#F5F7FA] opacity-70">{v.detalle || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -905,11 +977,20 @@ export function Sistema() {
                 Puntuación sobre 15 puntos, fallos detectados y campo editable de revisión humana
               </p>
             </div>
+            <AvisoColumnas faltan={scorecardFaltan} />
+            {scorecardFalla && <Fallo que="la calidad de las corridas" motivo={scorecardFalla} onReintentar={cargarTodo} />}
+            {revisionError && (
+              <p className="text-[11px] text-[#4D9DFF]">{revisionError}</p>
+            )}
 
             <div className="space-y-3">
               {tScorecard.vis.map((run: any, idx: number) => {
-                const runKey = `scorecard-${run.id || run.run_date || 'date'}-${run.account || 'all'}-${idx}`;
-                const revisionId = run.id || run.run_date || `run-${idx}`;
+                const runKey = `scorecard-${run.run_date || 'date'}-${run.account || 'all'}-${idx}`;
+                // La vista no expone la PK `id`, así que la corrida se identifica por
+                // (cuenta, fecha). Antes la clave era solo `run_date`, que las cuatro
+                // cuentas comparten: escribir la nota de una la mostraba en las otras
+                // tres, y el PUT la guardaba en las cuatro.
+                const revisionId = `${run.account || 'all'}|${run.run_date || idx}`;
                 return (
                   <div
                     key={runKey}
@@ -921,8 +1002,16 @@ export function Sistema() {
                         <span className="font-bold text-[#EDEFF3] tabular">
                           {run.run_date}
                         </span>
+                        {/* `v_run_scorecard` emite `puntos` y `puntos_posibles`. Antes decía
+                            `run.score || run.puntuacion || 15`: los dos nombres eran
+                            inventados y el `|| 15` clavaba la pastilla en el máximo, así
+                            que la métrica que mide si el análisis se degrada mostraba
+                            "15 / 15 pts" en toda cuenta y toda fecha. Con 0 puntos el `||`
+                            también habría dado 15. */}
                         <span className="px-2 py-0.5 rounded font-bold text-xs bg-[#0062CC] text-[#EDEFF3] tabular">
-                          {run.score || run.puntuacion || 15} / 15 pts
+                          {run.puntos == null || run.puntos_posibles == null
+                            ? '— pts'
+                            : `${run.puntos} / ${run.puntos_posibles} pts`}
                         </span>
                       </div>
                       <span className="text-[11px] text-[#F5F7FA] opacity-60">
@@ -947,7 +1036,7 @@ export function Sistema() {
                         style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-1)' }}
                       />
                       <button
-                        onClick={() => handleSaveRevision(revisionId)}
+                        onClick={() => handleSaveRevision(revisionId, run.run_date, run.account)}
                         disabled={savingRevisionId === revisionId}
                         className="px-3 py-1.5 bg-[#0062CC] text-[#EDEFF3] rounded text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
                       >
@@ -1076,25 +1165,52 @@ export function Sistema() {
               Cambios de configuración detectados
             </h2>
 
+            <AvisoColumnas faltan={cambiosFaltan} />
+            {cambiosFalla && <Fallo que="los cambios de configuración" motivo={cambiosFalla} onReintentar={cargarTodo} />}
             <div className="space-y-2 text-xs">
-              {tCambios.vis.map((ch: any, idx: number) => (
+              {/* El detalle del cambio vive en `campos_cambiados` (jsonb), con la forma
+                  { campo: { antes, despues } }. Antes se leían `tipo_cambio`, `campo`,
+                  `valor_anterior` y `valor_nuevo`, ninguno de los cuales existe en
+                  v_cambios_detectados: cada fila salía como "Ajuste de configuración · : → ",
+                  un panel de cambios que no mostraba ningún cambio. */}
+              {tCambios.vis.map((ch: any, idx: number) => {
+                const campos = ch.campos_cambiados && typeof ch.campos_cambiados === 'object'
+                  ? Object.entries(ch.campos_cambiados as Record<string, any>)
+                  : [];
+                return (
                 <div
-                  key={idx}
+                  key={`${ch.account}-${ch.entity_name}-${ch.detectado_hasta}-${idx}`}
                   className="p-3 rounded-xl flex items-center justify-between gap-3"
                   style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
                 >
                   <div className="space-y-0.5 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="tabular text-[#F5F7FA] opacity-60 text-[11px]">{ch.fecha_actual || 'Reciente'}</span>
-                      <span className="font-semibold text-[#EDEFF3]">{ch.cuenta || ch.account}</span>
-                      <span className="text-[#F5F7FA] opacity-80 truncate">{ch.entidad || ch.campaign}</span>
+                      <span className="tabular text-[#F5F7FA] opacity-60 text-[11px]">
+                        {ch.detectado_hasta ? fmtFechaCorta(ch.detectado_hasta) : '—'}
+                        {ch.detectado_entre ? ` (desde ${fmtFechaCorta(ch.detectado_entre)})` : ''}
+                      </span>
+                      <span className="font-semibold text-[#EDEFF3]">{ch.account || '—'}</span>
+                      <span className="text-[#F5F7FA] opacity-80 truncate">
+                        {[ch.entity_type, ch.entity_name].filter(Boolean).join(' · ') || '—'}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-[#F5F7FA] opacity-70">
-                      {ch.tipo_cambio || 'Ajuste de configuración'} · {ch.campo}: {ch.valor_anterior} → {ch.valor_nuevo}
-                    </div>
+                    {campos.length === 0 ? (
+                      <div className="text-[11px] text-[#F5F7FA] opacity-70">
+                        La fila no trae el detalle del cambio.
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-[#F5F7FA] opacity-70 space-y-0.5">
+                        {campos.map(([campo, v]: [string, any]) => (
+                          <div key={campo}>
+                            <span className="text-[#EDEFF3]">{campo}</span>: {fmtValorJson(v?.antes)} → {fmtValorJson(v?.despues)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {verMas(tCambios, `ver los ${(healthData?.cambiosDetectados || []).length} cambios`)}
             </div>
           </div>

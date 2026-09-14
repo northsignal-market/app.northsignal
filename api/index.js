@@ -1988,6 +1988,10 @@ function createApp() {
     "dif_campana_vs_keyword",
     "diagnostico"
   ];
+  const COLUMNAS_DATA_HEALTH = ["account", "ultimo_run", "semana_datos", "estado", "mensaje"];
+  const COLUMNAS_WEBHOOK = ["source", "ultimo_evento", "horas_sin_eventos", "estado"];
+  const COLUMNAS_SCORECARD = ["account", "run_date", "puntos", "puntos_posibles"];
+  const COLUMNAS_CAMBIOS = ["account", "entity_type", "entity_name", "detectado_hasta", "campos_cambiados"];
   function columnasFaltantes(filas, esperadas) {
     if (!filas || !filas.length) return [];
     return esperadas.filter((c) => !(c in filas[0]));
@@ -1995,22 +1999,30 @@ function createApp() {
   app2.get("/api/health/system", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase missing" });
     try {
-      const { data: dataHealth } = await supabase.from("v_data_health").select("*");
-      const { data: webhookHealth } = await supabase.from("v_webhook_health").select("*");
+      const { data: dataHealth, error: errDataHealth } = await supabase.from("v_data_health").select("*");
+      const { data: webhookHealth, error: errWebhook } = await supabase.from("v_webhook_health").select("*");
       const { data: integridadDatos, error: errIntegridad } = await supabase.from("v_integridad_datos").select("*").order("week_start", { ascending: false });
-      const { data: runScorecard } = await supabase.from("v_run_scorecard").select("*").order("run_date", { ascending: false });
+      const { data: runScorecard, error: errScorecard } = await supabase.from("v_run_scorecard").select("*").order("run_date", { ascending: false });
       const { data: runTendencia } = await supabase.from("v_run_tendencia").select("*");
-      const { data: cambiosDetectados } = await supabase.from("v_cambios_detectados").select("*").order("detectado_hasta", { ascending: false }).limit(25);
+      const { data: cambiosDetectados, error: errCambios } = await supabase.from("v_cambios_detectados").select("*").order("detectado_hasta", { ascending: false }).limit(25);
       const { data: diccionarioDatos } = await supabase.rpc("diccionario_datos");
       res.json({
         dataHealth: dataHealth || [],
+        dataHealthFalla: errDataHealth?.message || null,
+        dataHealthFaltan: columnasFaltantes(dataHealth, COLUMNAS_DATA_HEALTH),
         webhookHealth: webhookHealth || [],
+        webhookHealthFalla: errWebhook?.message || null,
+        webhookHealthFaltan: columnasFaltantes(webhookHealth, COLUMNAS_WEBHOOK),
         integridadDatos: integridadDatos || [],
         integridadDatosFalla: errIntegridad?.message || null,
         integridadDatosFaltan: columnasFaltantes(integridadDatos, COLUMNAS_INTEGRIDAD),
         runScorecard: runScorecard || [],
+        runScorecardFalla: errScorecard?.message || null,
+        runScorecardFaltan: columnasFaltantes(runScorecard, COLUMNAS_SCORECARD),
         runTendencia: runTendencia || [],
         cambiosDetectados: cambiosDetectados || [],
+        cambiosDetectadosFalla: errCambios?.message || null,
+        cambiosDetectadosFaltan: columnasFaltantes(cambiosDetectados, COLUMNAS_CAMBIOS),
         diccionarioDatos: diccionarioDatos || []
       });
     } catch (e) {
@@ -2020,7 +2032,7 @@ function createApp() {
   app2.put("/api/health/run_quality/:id", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase missing" });
     try {
-      const { revision_humana } = req.body;
+      const { revision_humana, account } = req.body;
       const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
       const paramId = req.params.id;
       let query = supabase.from("run_quality").update({
@@ -2028,7 +2040,8 @@ function createApp() {
         revision_humana_fecha: today
       });
       if (/^\d{4}-\d{2}-\d{2}/.test(paramId)) {
-        query = query.eq("run_date", paramId);
+        if (!account) return res.status(400).json({ error: "Falta account: run_date no identifica una corrida por si solo." });
+        query = query.eq("run_date", paramId).eq("account", account);
       } else {
         query = query.eq("id", paramId);
       }
