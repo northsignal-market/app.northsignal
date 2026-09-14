@@ -1,4 +1,25 @@
 -- ============================================================================
+-- ESTA MIGRACIÓN NO SE PUDO APLICAR Y FUE REEMPLAZADA POR 20260914220000.
+--
+-- Abortó con su propia guarda —"el fragmento de I3 no esta como se esperaba"— y
+-- tenía razón: entre que se escribió y que se intentó aplicar, la 20260914150000
+-- reescribió el mensaje de I3 y el ancla se movió. La guarda hizo lo correcto
+-- (abortar en vez de dejar la función a medias), pero el bug quedó vivo.
+--
+-- El error de diseño que hay que no repetir: este parche dependía de que un
+-- literal de ~600 caracteres, con regex escapado adentro, coincidiera AL BYTE con
+-- la definición viva. Cualquier migración intermedia que tocara la función lo
+-- rompía. La v2 ubica el bloque por dos marcas cortas y lo reemplaza por
+-- posición, y verifica DESPUÉS de aplicar que el arreglo quedó y el bug no.
+--
+-- Se deja el cuerpo abajo, inerte, porque explica el bug mejor que ningún commit.
+-- ============================================================================
+do $$ begin
+  raise notice 'Migracion 20260914030000 reemplazada por 20260914220000_i3_falla_cerrado_v2. No hace nada.';
+end $$;
+
+/*  ---- CUERPO ORIGINAL, YA NO SE EJECUTA ----
+
 -- I3 TIENE QUE FALLAR CERRADO: un guardarraíl que no puede medir no aprueba
 -- ----------------------------------------------------------------------------
 -- Es el único hallazgo de la auditoría del 14/9 que termina en un cambio real
@@ -105,3 +126,5 @@ end $$;
 --    group by 1 having sum(k.conversions) > 0 order by 2 desc limit 3;
 --   -- Tomar una de esas y repetir la llamada de arriba con su texto exacto.
 -- ────────────────────────────────────────────────────────────────────────────
+
+*/
