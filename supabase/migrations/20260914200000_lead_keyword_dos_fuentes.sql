@@ -28,7 +28,19 @@
 -- día deja de dar cero es una señal, no un detalle.
 -- ---------------------------------------------------------------------------
 
-create or replace view public.v_lead_keyword
+-- DROP y CREATE, no CREATE OR REPLACE.
+--
+-- `create or replace view` NO PUEDE cambiar la lista de columnas: solo agregar al
+-- final. La version vieja de v_keyword_por_etapa tiene `con_gclid` donde esta
+-- tiene `fuentes_en_desacuerdo`, asi que el REPLACE falla — y si las dos van en
+-- el mismo lote, el rollback se lleva tambien a la que si habria funcionado.
+-- Paso exactamente eso el 14/9/2026: quedaron las dos sin crear y la vista vieja
+-- en su lugar, que es peor que un error visible porque la consulta sigue
+-- andando y devuelve las columnas de antes.
+drop view if exists public.v_keyword_por_etapa;
+drop view if exists public.v_lead_keyword;
+
+create view public.v_lead_keyword
 with (security_invoker = true) as
 select
   l.account,
@@ -76,7 +88,7 @@ comment on view public.v_lead_keyword is
 -- arregla en el anuncio o en la landing, no pausandola. Esa distincion es todo
 -- el punto de esta vista.
 -- ---------------------------------------------------------------------------
-create or replace view public.v_keyword_por_etapa
+create view public.v_keyword_por_etapa
 with (security_invoker = true) as
 select
   v.account,
