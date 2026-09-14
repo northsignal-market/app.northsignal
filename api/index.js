@@ -6003,22 +6003,52 @@ Reporte completo: ${url}`;
     const idsDeDescarte = [...nombrePorStageId.entries()].filter(([, nombre]) => /descart|perdid|lost|no calific/i.test(nombre)).map(([id, nombre]) => ({ id, nombre }));
     pasos.push({ paso: "columnas de descarte encontradas", columnas: idsDeDescarte.map((x) => x.nombre) });
     for (const { id, nombre } of idsDeDescarte) {
-      const r = await ghlGet("/opportunities/search", { location_id: locationId, pipelineStageId: id, limit: "20" });
-      const lista = r.ok ? r.cuerpo?.opportunities || r.cuerpo?.data || [] : [];
+      const variantes = [
+        { pipeline_stage_id: id },
+        { stageId: id },
+        { pipelineStageUId: id }
+      ];
+      let gano = null, intentos = [];
+      for (const extra of variantes) {
+        const r = await ghlGet("/opportunities/search", { location_id: locationId, limit: "20", ...extra });
+        const clave = Object.keys(extra)[0];
+        if (r.ok) {
+          gano = { clave, r };
+          break;
+        }
+        intentos.push(`${clave}: ${r.status} ${String(r.error).slice(0, 70)}`);
+      }
+      const lista = gano ? gano.r.cuerpo?.opportunities || gano.r.cuerpo?.data || [] : [];
       pasos.push({
         paso: `descarte \xB7 ${nombre}`,
+        parametro_que_funciona: gano?.clave ?? null,
+        intentos_fallidos: gano ? void 0 : intentos,
+        total_declarado: gano ? gano.r.cuerpo?.meta?.total ?? null : null,
+        en_la_muestra: lista.length,
+        con_lost_reason: lista.filter((o) => o?.lostReasonId).length,
+        campos_presentes: lista.length ? Object.keys(lista[0] || {}) : []
+      });
+    }
+    for (const estado of ["lost", "abandoned", "won"]) {
+      const r = await ghlGet("/opportunities/search", { location_id: locationId, status: estado, limit: "20" });
+      const lista = r.ok ? r.cuerpo?.opportunities || r.cuerpo?.data || [] : [];
+      pasos.push({
+        paso: `por estado \xB7 ${estado}`,
         ok: r.ok,
         status: r.status,
         error: r.ok ? void 0 : r.error,
         total_declarado: r.ok ? r.cuerpo?.meta?.total ?? null : null,
         en_la_muestra: lista.length,
-        // ¿Viene el motivo estructurado, y cuántos lo tienen?
         con_lost_reason: lista.filter((o) => o?.lostReasonId).length,
-        campos_presentes: lista.length ? Object.keys(lista[0] || {}) : [],
-        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : []
+        etapas: lista.length ? [...new Set(lista.map((o) => nombreEtapa(o?.pipelineStageId)))] : []
       });
     }
-    for (const ruta of ["/opportunities/pipelines/lost-reasons", "/locations/" + locationId + "/lost-reasons"]) {
+    const pipelineId = (pipes.ok ? (pipes.cuerpo?.pipelines || [])[0]?.id : null) || "";
+    for (const ruta of [
+      `/opportunities/pipelines/${pipelineId}/lost-reasons`,
+      "/opportunities/lost-reasons",
+      "/locations/" + locationId + "/lostReasons"
+    ]) {
       const r = await ghlGet(ruta, { locationId });
       pasos.push({
         paso: `cat\xE1logo de motivos \xB7 ${ruta}`,
@@ -6038,6 +6068,12 @@ Reporte completo: ${url}`;
       for (const c of conClickId) for (const r of rutasDeClickId(c)) rutas.set(r, (rutas.get(r) || 0) + 1);
       pasos.push({
         paso: "\xBFllega el gclid?",
+        // EL DENOMINADOR. Pedí 100 y volvieron 34: sin saber si 34 es la
+        // población o una página, el porcentaje no se puede leer. Es el mismo
+        // error que vengo corrigiendo en otras capas y lo dejé en mi propio
+        // sondeo: un porcentaje sin su universo no dice nada.
+        contactos_en_la_cuenta: muchos.cuerpo?.meta?.total ?? null,
+        hay_pagina_siguiente: !!muchos.cuerpo?.meta?.nextPage,
         contactos_mirados: lista.length,
         con_click_id: conClickId.length,
         // NULL y no 0% si la muestra vino vacía: no es "ninguno trae gclid",
@@ -6048,6 +6084,20 @@ Reporte completo: ${url}`;
         // Las claves de attributions dicen si GHL guarda el origen del clic.
         claves_de_attributions: lista.find((c) => c?.attributions?.[0]) ? Object.keys(lista.find((c) => c?.attributions?.[0]).attributions[0]) : []
       });
+    }
+    for (const ruta of [`/locations/${locationId}/customFields`, "/custom-fields/"]) {
+      const r = await ghlGet(ruta, { locationId, model: "contact" });
+      const campos = r.ok ? r.cuerpo?.customFields || r.cuerpo?.data || [] : [];
+      pasos.push({
+        paso: `campos personalizados \xB7 ${ruta}`,
+        ok: r.ok,
+        status: r.status,
+        error: r.ok ? void 0 : r.error,
+        // Nombre y id de cada campo: configuración de la cuenta, no datos de nadie.
+        campos: campos.map((c) => ({ id: c?.id, nombre: c?.name, clave: c?.fieldKey, tipo: c?.dataType })),
+        candidatos_a_gclid: campos.filter((c) => /gclid|click|utm|campaign|keyword|wbraid|gbraid/i.test(`${c?.name} ${c?.fieldKey}`)).map((c) => ({ id: c?.id, nombre: c?.name, clave: c?.fieldKey }))
+      });
+      if (r.ok) break;
     }
     res.json({
       cuenta,
