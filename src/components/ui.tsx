@@ -511,6 +511,38 @@ export function Collapsible({ titulo, resumen, abiertoInicial = false, children 
 // ================================================================
 // FILTROS
 // ================================================================
+/**
+ * "Este total no cubre el rango que elegiste."
+ *
+ * El script diario extrae hasta AYER, así que hasta que corre, el último día del
+ * rango no está en la base y el total sale más bajo — sin que nada lo diga. El
+ * 14/9/2026 faltaba el 13 de septiembre en las cuatro cuentas: en KAREDO eran
+ * 94,56 EUR de 1.806,84, un 5% de diferencia contra Google.
+ *
+ * Va pegado a la cifra, no al pie: el que lee el número tiene que ver en la misma
+ * mirada que no cubre todo. `cobertura` en null significa que no se pudo saber, y
+ * eso también se dice: no se asume completa.
+ */
+export function AvisoCobertura({ cobertura }: {
+  cobertura?: { dias_pedidos: number; dias_con_dato: number; completa: boolean; dias_faltantes: string[] } | null;
+}) {
+  if (cobertura === undefined) return null;            // el endpoint no la manda todavía
+  if (cobertura === null) return (
+    <p className="text-[11px] text-[#4D9DFF] leading-relaxed">
+      No se pudo saber cuántos días del rango tienen dato. El total puede no cubrirlo entero.
+    </p>
+  );
+  if (cobertura.completa) return null;
+  const f = cobertura.dias_faltantes;
+  return (
+    <p className="text-[11px] text-[#4D9DFF] leading-relaxed">
+      Estas cifras suman <strong>{cobertura.dias_con_dato} de los {cobertura.dias_pedidos} días</strong> del
+      rango. {f.length === 1 ? `Falta el ${f[0]}` : `Faltan ${f.length} días: ${f.slice(0, 5).join(', ')}${f.length > 5 ? '…' : ''}`}.
+      {' '}No es que no hubo gasto: es que ese día todavía no se extrajo.
+    </p>
+  );
+}
+
 /** Filtro segmentado: una opción activa, estilo píldora. */
 /** `opciones` va readonly para que el llamador pueda pasarlo `as const` y los `id`
  *  entren como literales: así T queda en la unión real y no en `string`, y agregar

@@ -316,6 +316,7 @@ function Reporte({ r, R }) {
       deltas ? `
 ${deltas} ${t.vs}` : ""
     ] }),
+    r.cobertura && !r.cobertura.completa && /* @__PURE__ */ jsx(Text, { style: s.cobertura, children: t.cobertura.replace("{n}", String(r.cobertura.dias_con_dato)).replace("{t}", String(r.cobertura.dias_pedidos)).replace("{d}", r.cobertura.dias_faltantes.slice(0, 6).join(", ") + (r.cobertura.dias_faltantes.length > 6 ? "\u2026" : "")) }),
     r.bloques.map((b, i) => /* @__PURE__ */ jsxs(View, { style: s.bloque, wrap: false, children: [
       /* @__PURE__ */ jsx(Text, { style: s.etiqueta, children: b.etiqueta }),
       b.texto ? b.texto.split(/\n\s*\n/).map((p, j) => /* @__PURE__ */ jsx(Text, { style: s.p, children: p.trim() }, j)) : null,
@@ -432,6 +433,7 @@ var init_reporte_pdf = __esm({
       titulo: { fontSize: 20, color: NAVY, marginTop: 2, lineHeight: 1.15 },
       sub: { fontSize: 10, color: SUAVE, marginTop: 5, lineHeight: 1.3 },
       totales: { fontSize: 10, color: TEXTO, marginBottom: 16, lineHeight: 1.45 },
+      cobertura: { fontSize: 8, color: "#b42318", marginTop: 3, marginBottom: 2 },
       bloque: { marginBottom: 10 },
       etiqueta: { fontFamily: "Helvetica-Bold", fontSize: 10, color: NAVY, marginBottom: 3 },
       p: { fontSize: 10, marginBottom: 4, lineHeight: 1.45 },
@@ -451,9 +453,9 @@ var init_reporte_pdf = __esm({
       pie: { position: "absolute", bottom: 18, left: 42, fontSize: 8, color: PIE }
     };
     T = {
-      es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", imprShare: "Cuota impr.", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo; de los grupos, a lo sumo los 12 de mayor inversi\xF3n." },
-      de: { titulo: "Leistungsbericht", cliente: "Kunde", periodo: "Zeitraum", fecha: "Datum", inv: "Ausgaben", clics: "Klicks", imprShare: "Impr.-Anteil", conv: "Conv.", cpa: "CPA", ctr: "CTR", campanas: "Kampagnen", grupos: "Anzeigengruppen", campana: "Kampagne", grupo: "Anzeigengruppe", costo: "Kosten", conversiones: "Conversions", pag: "Seite", de: "von", vs: "gg\xFC. Vorzeitraum", nota: "Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen h\xF6chstens die 12 mit den h\xF6chsten Ausgaben." },
-      en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", imprShare: "Impr. share", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend." }
+      es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", imprShare: "Cuota impr.", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo; de los grupos, a lo sumo los 12 de mayor inversi\xF3n.", cobertura: "Atenci\xF3n: las cifras suman {n} de los {t} d\xEDas del per\xEDodo. Faltan datos de: {d}." },
+      de: { titulo: "Leistungsbericht", cliente: "Kunde", periodo: "Zeitraum", fecha: "Datum", inv: "Ausgaben", clics: "Klicks", imprShare: "Impr.-Anteil", conv: "Conv.", cpa: "CPA", ctr: "CTR", campanas: "Kampagnen", grupos: "Anzeigengruppen", campana: "Kampagne", grupo: "Anzeigengruppe", costo: "Kosten", conversiones: "Conversions", pag: "Seite", de: "von", vs: "gg\xFC. Vorzeitraum", nota: "Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen h\xF6chstens die 12 mit den h\xF6chsten Ausgaben.", cobertura: "Hinweis: Die Zahlen umfassen {n} von {t} Tagen des Zeitraums. Es fehlen Daten f\xFCr: {d}." },
+      en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", imprShare: "Impr. share", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend.", cobertura: "Note: these figures cover {n} of the {t} days in the period. Missing data for: {d}." }
     };
     money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
     num = (v, l, d = 1) => v == null ? "-" : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
@@ -2109,6 +2111,28 @@ function createApp() {
     de: { nombre: "alem\xE1n", etiquetas: "Kontext:, Beobachtungen:, Umgesetzte \xC4nderungen:, Zu beachten:, N\xE4chste Schritte:" }
   };
   const idiomaReporte = (cod) => IDIOMAS_REPORTE[String(cod || "es")] || IDIOMAS_REPORTE.es;
+  async function coberturaDe(account, desde, hasta) {
+    if (!supabase || !account || !desde || !hasta) return null;
+    const { data, error } = await supabase.from("v_serie_diaria").select("date").eq("account", account).gte("date", desde).lte("date", hasta);
+    if (error) {
+      console.error("[cobertura] " + error.message);
+      return null;
+    }
+    const con = new Set((data || []).map((d) => String(d.date).slice(0, 10)));
+    const faltantes = [];
+    const fin = /* @__PURE__ */ new Date(hasta + "T12:00:00");
+    for (const d = /* @__PURE__ */ new Date(desde + "T12:00:00"); d <= fin; d.setDate(d.getDate() + 1)) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!con.has(iso)) faltantes.push(iso);
+    }
+    return {
+      dias_pedidos: faltantes.length + con.size,
+      dias_con_dato: con.size,
+      completa: faltantes.length === 0,
+      ultimo_dia_con_dato: con.size ? [...con].sort().pop() : null,
+      dias_faltantes: faltantes
+    };
+  }
   const COLUMNAS_INTEGRIDAD = [
     "account",
     "week_start",
@@ -2603,7 +2627,8 @@ function createApp() {
         return res.json({
           data: r.data || [],
           total: r.total || 0,
-          totals: { ...r.totals || {}, disponible: true }
+          totals: { ...r.totals || {}, disponible: true },
+          cobertura: await coberturaDe(client, from_date, to_date)
         });
       }
       let query = supabase.from(view).select("*", { count: "exact" });
@@ -3794,7 +3819,8 @@ ${extra}` : system,
         p_offset: Number(req.query.offset) || 0
       });
       if (error) return res.status(500).json({ error: error.message });
-      res.json(data);
+      const cobertura = await coberturaDe(client, from, to);
+      res.json(typeof data === "object" && data !== null && !Array.isArray(data) ? { ...data, cobertura } : { data, cobertura });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -4322,6 +4348,7 @@ ${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
     if (!r) return res.status(404).json({ error: "no encontrado" });
     const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
     const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
+    const cobertura = await coberturaDe(r.account, r.periodo_desde, r.periodo_hasta);
     const { count: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
     const bloquesR = await bloquesDe(r);
     const input = {
@@ -4337,6 +4364,7 @@ ${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
       bloques: bloquesR,
       metricas: r.metricas,
       periodo_anterior_completo: (anteriorCount ?? 0) >= dias,
+      cobertura,
       campanas: r.campanas?.campanas || [],
       grupos: r.campanas?.grupos || [],
       logo: await pdf.descargarLogo()

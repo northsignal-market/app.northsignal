@@ -231,6 +231,40 @@ const IDIOMAS_REPORTE: Record<string, { nombre: string; etiquetas: string }> = {
 };
 const idiomaReporte = (cod: string | null | undefined) => IDIOMAS_REPORTE[String(cod || 'es')] || IDIOMAS_REPORTE.es;
 
+/**
+ * Cuántos días del rango pedido tienen dato de verdad.
+ *
+ * No es un detalle de un endpoint: es la regla 3 de CLAUDE.md ("la ventana que
+ * declarás tiene que ser la que sumaste") aplicada a TODA pantalla donde se elige
+ * un rango y se ve un total. El script diario extrae hasta "ayer", así que hasta
+ * que corre, el último día del rango no está — y el total sale más bajo sin que
+ * nada lo diga. El 14/9/2026 faltaba el 13 de septiembre en las CUATRO cuentas:
+ * en KAREDO eran 94,56 EUR de 1.806,84, un 5%.
+ *
+ * Devuelve `null` si no se pudo consultar: un hueco acá no se rellena con
+ * "completa", porque eso es exactamente la afirmación que no se puede hacer.
+ */
+async function coberturaDe(account: string, desde: string, hasta: string) {
+  if (!supabase || !account || !desde || !hasta) return null;
+  const { data, error } = await supabase.from('v_serie_diaria').select('date')
+    .eq('account', account).gte('date', desde).lte('date', hasta);
+  if (error) { console.error('[cobertura] ' + error.message); return null; }
+  const con = new Set((data || []).map((d: any) => String(d.date).slice(0, 10)));
+  const faltantes: string[] = [];
+  const fin = new Date(hasta + 'T12:00:00');
+  for (const d = new Date(desde + 'T12:00:00'); d <= fin; d.setDate(d.getDate() + 1)) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (!con.has(iso)) faltantes.push(iso);
+  }
+  return {
+    dias_pedidos: faltantes.length + con.size,
+    dias_con_dato: con.size,
+    completa: faltantes.length === 0,
+    ultimo_dia_con_dato: con.size ? [...con].sort().pop() : null,
+    dias_faltantes: faltantes,
+  };
+}
+
   // Las columnas que el panel de Integridad dibuja. El panel mostró "0 filas /
   // Consistente" para las cuatro cuentas hasta el 13 sep 2026 porque leía nombres
   // (campanas_count, keywords_count, search_terms_count, estado) que la vista
@@ -922,10 +956,13 @@ const idiomaReporte = (cod: string | null | undefined) => IDIOMAS_REPORTE[String
       if (!error && data) {
         // La función devuelve un objeto JSON escalar, no un array.
         const r = Array.isArray(data) ? data[0] : data;
+        // La cobertura va con los totales: es la que decide si la cifra que se
+        // muestra cubre el rango que el usuario eligió.
         return res.json({
           data: r.data || [],
           total: r.total || 0,
-          totals: { ...(r.totals || {}), disponible: true }
+          totals: { ...(r.totals || {}), disponible: true },
+          cobertura: await coberturaDe(client, from_date, to_date)
         });
       }
 
@@ -2353,7 +2390,10 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
         p_offset: Number(req.query.offset) || 0
       });
       if (error) return res.status(500).json({ error: error.message });
-      res.json(data);
+      // La cobertura viaja con el dato: la pantalla no puede decidir si el total
+      // cubre el rango si el servidor no se lo dice.
+      const cobertura = await coberturaDe(client, from, to);
+      res.json(typeof data === 'object' && data !== null && !Array.isArray(data) ? { ...data, cobertura } : { data, cobertura });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -2898,6 +2938,10 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       // vacío y el renglón "Inversión +12,3% · Conversiones −4,1% vs período
       // anterior" no salió en ningún reporte, nunca. Este mismo archivo lo hace bien
       // 200 líneas antes (`const { count: nDias } = ...`).
+      // La cobertura sale del helper compartido: la misma cifra que ve la pantalla
+      // de Datos tiene que ser la que ve el PDF, o el reporte y el tablero discuten.
+      const cobertura = await coberturaDe(r.account, r.periodo_desde, r.periodo_hasta);
+
       const { count: anteriorCount } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', r.account)
         .gte('date', new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt('date', r.periodo_desde);
       const bloquesR = await bloquesDe(r);
@@ -2908,6 +2952,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         bloques: bloquesR,
         metricas: r.metricas,
         periodo_anterior_completo: ((anteriorCount as any) ?? 0) >= dias,
+        cobertura,
         campanas: r.campanas?.campanas || [], grupos: r.campanas?.grupos || [],
         logo: await pdf.descargarLogo()
       };

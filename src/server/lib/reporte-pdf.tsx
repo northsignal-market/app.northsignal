@@ -41,6 +41,7 @@ const s: Record<string, any> = ({
   titulo: { fontSize: 20, color: NAVY, marginTop: 2, lineHeight: 1.15 },
   sub: { fontSize: 10, color: SUAVE, marginTop: 5, lineHeight: 1.3 },
   totales: { fontSize: 10, color: TEXTO, marginBottom: 16, lineHeight: 1.45 },
+  cobertura: { fontSize: 8, color: '#b42318', marginTop: 3, marginBottom: 2 },
   bloque: { marginBottom: 10 },
   etiqueta: { fontFamily: 'Helvetica-Bold', fontSize: 10, color: NAVY, marginBottom: 3 },
   p: { fontSize: 10, marginBottom: 4, lineHeight: 1.45 },
@@ -66,6 +67,10 @@ export interface ReporteInput {
   bloques: Bloque[];
   metricas: Record<string, { actual: number | null; anterior: number | null }>;
   periodo_anterior_completo: boolean;
+  /** Qué parte del período pedido tiene dato de verdad. Si no está completa, el PDF
+   *  lo dice: un total que suma 12 de 13 días y no lo aclara es ~5% más bajo, y el
+   *  que lo recibe no tiene cómo notarlo. */
+  cobertura?: { dias_pedidos: number; dias_con_dato: number; completa: boolean; dias_faltantes: string[] };
   campanas: { nombre: string; gasto: number; conv: number; cpa: number | null; ctr: number | null }[];
   grupos: { nombre: string; campana: string; gasto: number; conv: number; cpa: number | null }[];
   logo?: Buffer | null;
@@ -78,9 +83,9 @@ export interface ReporteInput {
 export type Idioma = 'es' | 'en' | 'de';
 
 const T = {
-  es: { titulo: 'Reporte de Rendimiento', cliente: 'Cliente', periodo: 'Período', fecha: 'Fecha', inv: 'Inversión', clics: 'Clics', imprShare: 'Cuota impr.', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campañas', grupos: 'Grupos de anuncios', campana: 'Campaña', grupo: 'Grupo', costo: 'Costo', conversiones: 'Conversiones', pag: 'Página', de: 'de', vs: 'vs período anterior', nota: 'Solo se muestran campañas y grupos con inversión en el período; de los grupos, a lo sumo los 12 de mayor inversión.' },
-  de: { titulo: 'Leistungsbericht', cliente: 'Kunde', periodo: 'Zeitraum', fecha: 'Datum', inv: 'Ausgaben', clics: 'Klicks', imprShare: 'Impr.-Anteil', conv: 'Conv.', cpa: 'CPA', ctr: 'CTR', campanas: 'Kampagnen', grupos: 'Anzeigengruppen', campana: 'Kampagne', grupo: 'Anzeigengruppe', costo: 'Kosten', conversiones: 'Conversions', pag: 'Seite', de: 'von', vs: 'ggü. Vorzeitraum', nota: 'Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen höchstens die 12 mit den höchsten Ausgaben.' },
-  en: { titulo: 'Performance Report', cliente: 'Client', periodo: 'Period', fecha: 'Date', inv: 'Spend', clics: 'Clicks', imprShare: 'Impr. share', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campaigns', grupos: 'Ad groups', campana: 'Campaign', grupo: 'Ad group', costo: 'Cost', conversiones: 'Conversions', pag: 'Page', de: 'of', vs: 'vs previous period', nota: 'Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend.' },
+  es: { titulo: 'Reporte de Rendimiento', cliente: 'Cliente', periodo: 'Período', fecha: 'Fecha', inv: 'Inversión', clics: 'Clics', imprShare: 'Cuota impr.', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campañas', grupos: 'Grupos de anuncios', campana: 'Campaña', grupo: 'Grupo', costo: 'Costo', conversiones: 'Conversiones', pag: 'Página', de: 'de', vs: 'vs período anterior', nota: 'Solo se muestran campañas y grupos con inversión en el período; de los grupos, a lo sumo los 12 de mayor inversión.', cobertura: 'Atención: las cifras suman {n} de los {t} días del período. Faltan datos de: {d}.' },
+  de: { titulo: 'Leistungsbericht', cliente: 'Kunde', periodo: 'Zeitraum', fecha: 'Datum', inv: 'Ausgaben', clics: 'Klicks', imprShare: 'Impr.-Anteil', conv: 'Conv.', cpa: 'CPA', ctr: 'CTR', campanas: 'Kampagnen', grupos: 'Anzeigengruppen', campana: 'Kampagne', grupo: 'Anzeigengruppe', costo: 'Kosten', conversiones: 'Conversions', pag: 'Seite', de: 'von', vs: 'ggü. Vorzeitraum', nota: 'Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen höchstens die 12 mit den höchsten Ausgaben.', cobertura: 'Hinweis: Die Zahlen umfassen {n} von {t} Tagen des Zeitraums. Es fehlen Daten für: {d}.' },
+  en: { titulo: 'Performance Report', cliente: 'Client', periodo: 'Period', fecha: 'Date', inv: 'Spend', clics: 'Clicks', imprShare: 'Impr. share', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campaigns', grupos: 'Ad groups', campana: 'Campaign', grupo: 'Ad group', costo: 'Cost', conversiones: 'Conversions', pag: 'Page', de: 'of', vs: 'vs previous period', nota: 'Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend.', cobertura: 'Note: these figures cover {n} of the {t} days in the period. Missing data for: {d}.' },
 };
 
 const money = (v: number | null | undefined, m: string, l: string) => v == null ? '-' : new Intl.NumberFormat(l, { style: 'currency', currency: m, maximumFractionDigits: m === 'CLP' ? 0 : 2 }).format(v);
@@ -121,6 +126,16 @@ function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
           </View>
         </View>
         <Text style={s.totales}>{totales}{deltas ? `\n${deltas} ${t.vs}` : ''}</Text>
+        {/* Va PEGADO a los totales, no al pie: el que lee la cifra tiene que ver en
+            la misma mirada que no cubre todo el período. Al pie se lo pierde. */}
+        {r.cobertura && !r.cobertura.completa && (
+          <Text style={s.cobertura}>
+            {t.cobertura
+              .replace('{n}', String(r.cobertura.dias_con_dato))
+              .replace('{t}', String(r.cobertura.dias_pedidos))
+              .replace('{d}', r.cobertura.dias_faltantes.slice(0, 6).join(', ') + (r.cobertura.dias_faltantes.length > 6 ? '…' : ''))}
+          </Text>
+        )}
 
         {r.bloques.map((b, i) => (
           <View key={i} style={s.bloque} wrap={false}>

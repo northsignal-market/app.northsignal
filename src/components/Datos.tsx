@@ -11,7 +11,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Fallo, hoyLocal } from './ui';
+import { Fallo, hoyLocal, AvisoCobertura } from './ui';
 
 
 const formatDatePretty = (dateStr: string) => {
@@ -227,6 +227,9 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   // Contador para reintentar sin tocar ningún filtro: cambiarlo vuelve a
   // disparar el efecto de carga con exactamente la misma consulta.
   const [recarga, setRecarga] = useState(0);
+  // Cuántos días del rango elegido tienen dato. undefined = el endpoint todavía no
+  // la manda; null = no se pudo saber. Los tres casos se muestran distinto.
+  const [cobertura, setCobertura] = useState<any>(undefined);
 
   // Acá había un fetch a /api/annotations que guardaba el resultado en un estado que
   // NADIE leía en todo el archivo: una consulta por cada cambio de cuenta, para nada.
@@ -560,7 +563,8 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         const result = isJson ? await res.json() : { data: [] };
         setData(result.data || []);
         setTotalCount(result.total || 0);
-        setTotals({ ...(result.totals || {}), _dias_con_datos: result.dias_con_datos, _dias_en_rango: result.dias_en_rango, _rango_completo: result.rango_completo });
+        setTotals(result.totals || {});
+        setCobertura(result.cobertura);
         
         if (result.data && result.data.length > 0 && allCols.length === 0) {
           setAllCols(Object.keys(result.data[0]).filter(k => k !== 'account'));
@@ -1238,10 +1242,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         <div className="flex items-center justify-between mt-2 shrink-0 px-2">
           <div className="text-xs text-[#F5F7FA]/70 tabular">
             {totalCount} filas
-            {totals && (totals as any)._dias_en_rango && (
-              <span className={(totals as any)._rango_completo ? ' opacity-60' : ' text-[#4D9DFF]'}>
-                {' · '}{(totals as any)._dias_con_datos} de {(totals as any)._dias_en_rango} días con datos
-                {!(totals as any)._rango_completo && ' (rango parcial)'}
+            {cobertura && (
+              <span className={cobertura.completa ? ' opacity-60' : ' text-[#4D9DFF]'}>
+                {' · '}{cobertura.dias_con_dato} de {cobertura.dias_pedidos} días con datos
+                {!cobertura.completa && ' (rango parcial)'}
               </span>
             )}
           </div>
