@@ -410,13 +410,19 @@ Un solo borrador por cuenta y semana. **Antes de crear, buscá en Gmail uno con 
 
 Una fila en `run_quality` con `foto_leida`, `ultimo_evento_visto` y `ultima_extraccion_vista` copiados de `corrida_redundante`, y `que_fallo` honesto. Sin esos marcadores, la próxima corrida cree que todo es nuevo.
 
-**Y el latido, siempre, hayas terminado bien o mal:**
+**Y el latido, siempre, hayas terminado bien o mal.** El latido responde **"¿esta tarea produjo el brief de la semana?"**, no "¿el código anduvo?". Por eso:
 
 ```sql
+-- Escribiste el brief:
 select latir('tarea_semanal_KAREDO', true, null);
--- si se cortó a la mitad o no pudiste escribir el brief:
-select latir('tarea_semanal_KAREDO', false, 'qué falló, en una línea');
+
+-- CUALQUIER otro final, incluido un corte limpio en el pre-vuelo:
+select latir('tarea_semanal_KAREDO', false, 'qué pasó, en una línea');
 ```
+
+**Un corte en el gate va con `false`, aunque el gate haya funcionado perfecto.** La tentación es marcarlo `true` porque la corrida hizo lo correcto, y es justo al revés: si un gate-abort cuenta como OK, una cuenta que corta cada semana —porque la extracción se rompió— figura sana mientras lleva un mes sin producir un brief. Con `false`, `ultimo_ok` envejece y a los 8 días la tarea aparece en `v_tareas_en_silencio`, que es exactamente lo que querés que pase. El 14 de septiembre las cuatro semanales cortaron en el gate y una escribió `true`: quedó informando que corrió bien un día en que no escribió nada.
+
+La función es `latir`, con tres argumentos.
 
 La función es `latir`, con tres argumentos. **No existe `registrar_latido`**: llamarla no falla ruidosamente, falla en silencio, y una tarea sin latido figura viva aunque haya muerto. `latidos` vigila esta tarea con tolerancia de 8 días, y como las tareas de Cowork no pasan por pg_cron nadie más escribe ese latido.
 </salidas>

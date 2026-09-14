@@ -1,6 +1,8 @@
 # TAREA MENSUAL · REVISIÓN ESTRATÉGICA · v2 (Opus 5)
 
-**Cowork › Scheduled › primer lunes del mes, 09:30 (Buenos Aires)**, después de las semanales · Conectores: Supabase, Notion, Google Drive, Gmail · Una corrida para **todas las cuentas activas**
+**Cowork › Scheduled › todos los lunes 09:30 (Buenos Aires)**, después de las semanales · Conectores: Supabase, Notion, Google Drive, Gmail · Una corrida para **todas las cuentas activas**
+
+> **Dispara todos los lunes y el gate decide.** El encabezado decía "primer lunes del mes" y el cron real es `30 9 * * 1`, semanal: la tarea se iba a disparar y frenar cuatro veces por mes sin que nadie supiera si eso era lo previsto o un cron mal puesto. No se cambió el cron —lo configuró Andrés y no es algo que decida una corrida automática—, se corrigió el encabezado para que diga lo que pasa. `mensual_puede_correr()` es el que manda: si ya hubo una mensual real este mes, corta.
 
 **Qué cambió (13 de septiembre de 2026).** Correcciones verificadas contra la base, no deducidas:
 
