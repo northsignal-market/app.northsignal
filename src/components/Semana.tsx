@@ -58,6 +58,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [annotationText, setAnnotationText] = useState('');
   const [savingAnnotation, setSavingAnnotation] = useState(false);
   const [annotationSuccess, setAnnotationSuccess] = useState(false);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
+  // Las anotaciones ya guardadas: `v_serie_diaria` no tiene ninguna columna de
+  // anotación, así que el día del drawer nunca podía traerlas consigo. Salen de
+  // su propia tabla, por el endpoint que sí las emite.
+  const [anotaciones, setAnotaciones] = useState<any[]>([]);
+  const [errorAnotaciones, setErrorAnotaciones] = useState<string | null>(null);
 
   useEffect(() => { fetchJSON<any>(`/api/plan?client=${activeClient}`, null).then(d => d && setPlan(d)); }, [activeClient]);
   // La lectura del plan: los hechos vienen calculados de la base; acá solo frases.
@@ -99,7 +105,18 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       setLoadingTerms(false);
     }
   };
-  useEffect(() => { fetchDailyOverview(); fetchChanges(); fetchNewTerms(); }, [activeClient]);
+  const fetchAnotaciones = async () => {
+    setErrorAnotaciones(null);
+    if (!activeClient) { setAnotaciones([]); return; }
+    try {
+      const d = await pedirJSON<any>(`/api/annotations?client=${activeClient}`);
+      setAnotaciones(Array.isArray(d?.manual) ? d.manual : []);
+    } catch (e) {
+      setAnotaciones([]);
+      setErrorAnotaciones(motivoFallo(e));
+    }
+  };
+  useEffect(() => { fetchDailyOverview(); fetchChanges(); fetchNewTerms(); fetchAnotaciones(); }, [activeClient]);
 
   // La serie que se muestra ES la ventana elegida: se filtra por fecha y los
   // días sin datos aparecen como hueco marcado, nunca desaparecen en silencio.
@@ -142,19 +159,30 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const kpis = useMemo(() => {
     const en = displayedDaily.filter((d: any) => !d.sin_datos);
     const sum = (arr: any[], k: string) => arr.reduce((s: number, d: any) => s + (Number(d[k]) || 0), 0);
-    const dias = Math.round((new Date(rango.hasta + 'T12:00:00').getTime() - new Date(rango.desde + 'T12:00:00').getTime()) / 864e5) + 1;
-    const desdeAnt = new Date(new Date(rango.desde + 'T12:00:00').getTime() - dias * 864e5).toISOString().slice(0, 10);
+    // Dos números distintos que antes eran uno solo: el calendario del rango
+    // (que define contra qué ventana previa se compara) y los días que la
+    // extracción SÍ trajo (que son los que se suman). Declarar el primero
+    // habiendo sumado el segundo es exactamente el drift que el sistema caza:
+    // con 10 de 14 días en la tabla, la pantalla decía "Gasto US$X · 14 días".
+    const diasCalendario = Math.round((new Date(rango.hasta + 'T12:00:00').getTime() - new Date(rango.desde + 'T12:00:00').getTime()) / 864e5) + 1;
+    const dias = en.length;
+    const desdeAnt = new Date(new Date(rango.desde + 'T12:00:00').getTime() - diasCalendario * 864e5).toISOString().slice(0, 10);
     const hastaAnt = new Date(new Date(rango.desde + 'T12:00:00').getTime() - 864e5).toISOString().slice(0, 10);
     const ant = dailyData.filter((d: any) => d.date >= desdeAnt && d.date <= hastaAnt);
-    const hayAnt = ant.length >= Math.max(3, Math.floor(dias * 0.7));
+    const hayAnt = ant.length >= Math.max(3, Math.floor(diasCalendario * 0.7));
     const delta = (a: number | null, b: number | null) => (hayAnt && a != null && b != null && b > 0) ? ((a - b) / b) * 100 : null;
     const conv = sum(en, 'conversiones'), gasto = sum(en, 'gasto'), clics = sum(en, 'clics');
     const convAnt = sum(ant, 'conversiones'), gastoAnt = sum(ant, 'gasto'), clicsAnt = sum(ant, 'clics');
     const cpa = conv > 0 ? gasto / conv : null, cpaAnt = convAnt > 0 ? gastoAnt / convAnt : null;
     const cpc = clics > 0 ? gasto / clics : null, cpcAnt = clicsAnt > 0 ? gastoAnt / clicsAnt : null;
     const spark = (k: string) => displayedDaily.map((d: any) => (d.sin_datos || d[k] == null ? null : Number(d[k])));
+    // La etiqueta dice los días sumados, y cuando no coinciden con el calendario
+    // lo dice en la misma frase: un hueco en la extracción no puede pasar por
+    // una ventana completa.
+    const notaDias = dias === diasCalendario ? `${dias} días` : `${dias} de ${diasCalendario} días con datos`;
     return {
-      dias, provisional: en.some((d: any) => d.madurez === 'provisional'),
+      dias, diasCalendario, diasAnt: ant.length, notaDias,
+      provisional: en.some((d: any) => d.madurez === 'provisional'),
       conv, gasto, cpa, clics, cpc,
       dConv: delta(conv, convAnt), dGasto: delta(gasto, gastoAnt), dCpa: delta(cpa, cpaAnt), dClics: delta(clics, clicsAnt), dCpc: delta(cpc, cpcAnt),
       sparkConv: spark('conversiones'), sparkGasto: spark('gasto'), sparkCpa: spark('cpa'), sparkClics: spark('clics'), sparkCpc: spark('cpc'),
@@ -211,25 +239,62 @@ export function Semana({ onOpenActionable }: SemanaProps) {
     return [fmtNum(Number(v), 1), nombre];
   };
 
+  // LAS CUATRO CIFRAS DEL DRAWER · un día que la extracción no trajo viene
+  // marcado con `sin_datos` desde que se arma la serie, y el drawer lo ignoraba:
+  // con `?? 0` firmaba "Gasto $0 · Conversiones 0 · Clics 0" en negrita sobre un
+  // hueco. El CPA de la misma grilla ya respetaba la ausencia con '—'; ahora las
+  // cuatro dicen lo mismo. Una métrica en null tampoco es un cero.
+  const metricasDia = useMemo(() => {
+    const d = selectedDay;
+    const leer = (...claves: string[]) => {
+      if (!d || d.sin_datos) return null;
+      for (const k of claves) if (d[k] != null) return Number(d[k]);
+      return null;
+    };
+    const gasto = leer('gasto', 'cost');
+    const conv = leer('conversiones', 'conversions');
+    const cpa = leer('cpa', 'cpa_provisional');
+    const clics = leer('clics', 'clicks');
+    return {
+      sinDatos: Boolean(d?.sin_datos),
+      gasto: gasto == null ? '—' : fmtMoneda(gasto, M),
+      conversiones: conv == null ? '—' : fmtNum(conv, conv % 1 ? 1 : 0),
+      cpa: cpa == null ? '—' : fmtMoneda(cpa, M),
+      clics: clics == null ? '—' : fmtNum(clics),
+    };
+  }, [selectedDay, M]);
+
   const handleSaveAnnotation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!annotationText.trim() || !selectedDay) return;
+    const texto = annotationText.trim();
+    if (!texto || !selectedDay) return;
     setSavingAnnotation(true);
+    setAnnotationError(null);
+    // El cuerpo que el endpoint lee es `{ account, fecha, titulo, tipo, detalle }`
+    // (server.ts:973) y la tabla tiene account, fecha y titulo NOT NULL con un
+    // CHECK sobre tipo. Acá iba `{ client, date, text }`: los tres obligatorios
+    // llegaban undefined, el insert daba 500, y como nadie miraba `res.ok` el
+    // botón volvía a su estado normal igual que si hubiera guardado.
+    const primeraLinea = texto.split('\n')[0].trim();
+    const titulo = primeraLinea.length > 120 ? `${primeraLinea.slice(0, 119)}…` : primeraLinea;
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-      const res = await fetch('/api/annotations', {
+      await pedirJSON<any>('/api/annotations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        credentials: 'include',
-        body: JSON.stringify({ client: activeClient, date: selectedDay.date, text: annotationText }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account: activeClient,
+          fecha: selectedDay.date,
+          titulo,
+          tipo: 'nota',                                  // único valor del CHECK que aplica a una nota del analista
+          detalle: texto === titulo ? null : texto,
+        }),
       });
-      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-        const d = await res.json();
-        if (d.success) {
-          setAnnotationSuccess(true); setAnnotationText(''); fetchDailyOverview();
-          setTimeout(() => { setAnnotationSuccess(false); setShowAnnotationForm(false); }, 1500);
-        }
-      }
+      setAnnotationSuccess(true); setAnnotationText('');
+      fetchDailyOverview(); fetchAnotaciones();
+      setTimeout(() => { setAnnotationSuccess(false); setShowAnnotationForm(false); }, 1500);
+    } catch (err) {
+      // Un guardado que falla tiene que decirlo: el texto queda en el campo.
+      setAnnotationError(motivoFallo(err));
     } finally { setSavingAnnotation(false); }
   };
 
@@ -283,7 +348,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           ).map((k, idx) => (
             <React.Fragment key={k.label}>
               <Stat heroe={idx === 0} label={k.label} valor={k.valor} delta={k.delta} deltaBuenoSiBaja={k.baja}
-                nota={k.delta != null ? `vs ${kpis.dias}d previos` : `${kpis.dias} días`} provisional={kpis.provisional} spark={k.spark} />
+                nota={k.delta != null ? `${kpis.notaDias} · vs ${kpis.diasAnt}d previos` : kpis.notaDias}
+                provisional={kpis.provisional} spark={k.spark} />
             </React.Fragment>
           ))}
         </div>
@@ -398,8 +464,17 @@ export function Semana({ onOpenActionable }: SemanaProps) {
             derecha={prediccionesSemana.length > 0 ? (
               <Pista titulo="Cómo se lee">
                 La barra es el real acumulado al cierre de ayer ({realSemana?.dias ?? 0} día{(realSemana?.dias ?? 0) !== 1 ? 's' : ''}) y la banda
-                es el rango que el análisis del lunes predijo al {Math.round(Number(prediccionesSemana[0].probabilidad || 0.8) * 100)}%.
-                Las conversiones recientes maduran: la predicción se evalúa recién el lunes.
+                es el rango que el análisis del lunes predijo
+                {(() => {
+                  // Antes: `probabilidad || 0.8`. Si el agente no declaró con qué
+                  // confianza predijo, la pantalla le atribuía un 80% que nunca
+                  // dijo. Sin el dato no se muestra número: se dice que falta.
+                  const p = Number(prediccionesSemana[0].probabilidad);
+                  return Number.isFinite(p) && p > 0
+                    ? ` al ${Math.round(p * 100)}%.`
+                    : ', sin declarar con qué probabilidad.';
+                })()}
+                {' '}Las conversiones recientes maduran: la predicción se evalúa recién el lunes.
               </Pista>
             ) : undefined}>
             {prediccionesSemana.length === 0 ? (
@@ -800,7 +875,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       {/* Drawer de inspección de día */}
       <Drawer
         isOpen={Boolean(selectedDay)}
-        onClose={() => { setSelectedDay(null); setShowAnnotationForm(false); }}
+        onClose={() => { setSelectedDay(null); setShowAnnotationForm(false); setAnnotationError(null); }}
         title={selectedDay ? `Día ${fmtFechaCorta(selectedDay.date)}` : 'Inspección de día'}
         subtitle={`Métricas y anotaciones de ${activeClient}`}
       >
@@ -809,28 +884,35 @@ export function Semana({ onOpenActionable }: SemanaProps) {
             <div className="p-3.5 rounded-xl space-y-2" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60">Métricas del día</span>
-                {selectedDay.madurez === 'provisional' && (
+                {metricasDia.sinDatos ? (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--surface-1)', color: 'var(--warn)' }}>sin datos: la extracción no trajo este día</span>
+                ) : selectedDay.madurez === 'provisional' && (
                   <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--primary-faint)', color: 'var(--text-secondary)' }}>madurando: estas cifras todavía se mueven</span>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Gasto</div>
-                  <div className="text-base font-bold text-[#EDEFF3] tabular">{fmtMoneda(selectedDay.gasto ?? selectedDay.cost ?? 0, M)}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{metricasDia.gasto}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Conversiones</div>
-                  <div className="text-base font-bold text-[#EDEFF3] tabular">{selectedDay.conversiones ?? selectedDay.conversions ?? 0}</div>
+                  <div className="text-base font-bold text-[#EDEFF3] tabular">{metricasDia.conversiones}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">CPA</div>
-                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{(selectedDay.cpa ?? selectedDay.cpa_provisional) ? fmtMoneda(selectedDay.cpa ?? selectedDay.cpa_provisional, M) : '—'}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{metricasDia.cpa}</div>
                 </div>
                 <div>
                   <div className="text-[11px] text-[#F5F7FA] opacity-60">Clics</div>
-                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{selectedDay.clics ?? selectedDay.clicks ?? 0}</div>
+                  <div className="text-sm font-semibold text-[#EDEFF3] tabular">{metricasDia.clics}</div>
                 </div>
               </div>
+              {metricasDia.sinDatos && (
+                <p className="text-[11px] pt-1" style={{ color: '#ADADAD', borderTop: '1px solid var(--border)' }}>
+                  Este día no vino en la extracción. No es un día sin gasto: es un día que no sabemos.
+                </p>
+              )}
               {selectedDay.explicacion && (
                 <p className="text-[11px] text-[#F5F7FA] opacity-70 pt-1" style={{ borderTop: '1px solid var(--border)' }}>
                   {selectedDay.explicacion}
@@ -846,15 +928,28 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   {showAnnotationForm ? 'Cancelar' : '+ Anotar en este día'}
                 </button>
               </div>
-              {selectedDay.annotation && (
-                <div className="p-2.5 rounded text-xs text-[#F5F7FA] leading-relaxed" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-                  "{selectedDay.annotation}"
-                </div>
+              {/* Acá se leía `selectedDay.annotation`, que no existe: la fila del día
+                  viene de v_serie_diaria y esa vista no tiene ninguna columna de
+                  anotación, así que el bloque no se mostró nunca. Las anotaciones
+                  salen de su tabla, filtradas por la fecha del día abierto. */}
+              {errorAnotaciones ? (
+                <p className="text-[11px]" style={{ color: 'var(--warn)' }}>No se pudieron traer las anotaciones: {errorAnotaciones}</p>
+              ) : (
+                anotaciones.filter((a: any) => a.fecha === selectedDay.date).map((a: any) => (
+                  <div key={a.id} className="p-2.5 rounded text-xs text-[#F5F7FA] leading-relaxed" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+                    <div className="text-[#EDEFF3]">{a.titulo}</div>
+                    {a.detalle && a.detalle !== a.titulo && <div className="opacity-75 mt-1 whitespace-pre-wrap">{a.detalle}</div>}
+                    <div className="text-[10px] opacity-50 mt-1">{a.tipo || 'nota'}{a.creado_por ? ` · ${a.creado_por}` : ''}</div>
+                  </div>
+                ))
               )}
               {showAnnotationForm && (
                 <form onSubmit={handleSaveAnnotation} className="space-y-2 pt-1">
                   {annotationSuccess && (
                     <div className="text-[11px] text-[#EDEFF3] flex items-center gap-1"><Check size={12} /> Anotación guardada</div>
+                  )}
+                  {annotationError && (
+                    <div className="text-[11px]" style={{ color: 'var(--warn)' }}>No se guardó: {annotationError}</div>
                   )}
                   <textarea required rows={3} placeholder={`Qué pasó el ${fmtFechaCorta(selectedDay.date)}…`} value={annotationText}
                     onChange={e => setAnnotationText(e.target.value)}

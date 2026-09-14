@@ -3,7 +3,7 @@ import { avisar } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { LineChart, Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { 
-  Search, ChevronDown, ChevronUp, Download, AlertCircle, AlertTriangle,
+  Search, ChevronDown, ChevronUp, Download, AlertTriangle,
   Settings2, X, Filter, Activity, Database, Layers, FileText, TrendingUp
 } from 'lucide-react';
 import { Termino } from './Termino';
@@ -11,7 +11,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Fallo } from './ui';
+import { Fallo, hoyLocal } from './ui';
 
 
 const formatDatePretty = (dateStr: string) => {
@@ -176,9 +176,26 @@ function formatValue(col: string, val: any, currency: string) {
 export function Datos({ initialSearch, initialView, volverA }: { initialSearch?: string; initialView?: string; volverA?: { etiqueta: string; onVolver: () => void } } = {}) {
   const { selectedClient, setIsAuthenticated } = useAppStore();
   const [cuentasApi, setCuentasApi] = useState<any[]>([]);
-  useEffect(() => { fetch('/api/cuentas', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(x => setCuentasApi(Array.isArray(x) ? x : [])).catch(() => {}); }, []);
+  // "La cuenta no declara presupuesto" y "no se pudo leer /api/cuentas" se ven
+  // idénticos desde acá y llevan a conclusiones opuestas: el panel de burn rate
+  // necesita poder decir cuál de las dos pasó.
+  const [cuentasFallo, setCuentasFallo] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/api/cuentas', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(x => { setCuentasApi(Array.isArray(x) ? x : []); setCuentasFallo(null); })
+      .catch(e => setCuentasFallo(e?.message || 'no respondió'));
+  }, []);
   const monedaDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP');
-  const presupuestoDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.presupuesto_diario ?? (acc === 'KAREDO' ? 135 : 20000);
+  // Sin presupuesto real NO se inventa uno. El respaldo cableado (20.000 para
+  // todo lo que no fuera KAREDO) daba USD 600.000/mes en FRESH_MONKEE, y el
+  // semáforo over/under se decidía contra ese número. Devuelve null y el panel
+  // dice que no puede calcular el límite. Ojo: /api/cuentas puede venir del
+  // select de respaldo (server.ts:61-63), que NO trae presupuesto_diario.
+  const presupuestoDe = (acc: string): number | null => {
+    const v = Number(cuentasApi.find((c: any) => c.account === acc)?.presupuesto_diario);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
   const currency = monedaDe(selectedClient);
   const perfilDe = (acc: string) => cuentasApi.find((c: any) => c.account === acc)?.perfil_analisis || 'negocio_unico';
   const esCadena = perfilDe(selectedClient) === 'cadena';
@@ -187,10 +204,13 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   const [weeks, setWeeks] = useState<string[]>([]);
   
   const [dateRangeMode, setDateRangeMode] = useState<string>('last_week');
-  // Las vistas diarias usan días, no semanas. La capa diaria cubre 14 días móviles.
+  // Las vistas diarias usan días, no semanas. La capa diaria acumula desde que
+  // arrancó la extracción, pero solo los últimos 14 días se vuelven a corregir.
   const isEntidad = activeView.startsWith('ent_');
   const isDailyView = isEntidad || ['v_keywords_daily','v_search_terms_daily','v_campaign_daily','v_adgroup_daily'].includes(activeView);
-  const isoDaysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  // Fecha LOCAL, igual que corteMadurando: con toISOString, después de las 21:00
+  // de Buenos Aires "Últimos 7 días" perdía el día más viejo y agregaba hoy.
+  const isoDaysAgo = (n: number) => hoyLocal(-n);
   const [customRange, setCustomRange] = useState<{from: string, to: string}>({from: '', to: ''});
   const [comparePrev, setComparePrev] = useState<boolean>(false);
   
@@ -224,8 +244,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   const [burnRate, setBurnRate] = useState<{
     dailyAvg: number;
     projectedTotal: number;
-    monthlyBudget: number;
-    status: 'over' | 'under' | 'on_track';
+    // null = la cuenta no declara presupuesto diario: no hay límite contra el
+    // cual comparar, y eso se dice, no se rellena.
+    monthlyBudget: number | null;
+    status: 'over' | 'under' | 'on_track' | 'sin_presupuesto';
   } | null>(null);
 
     useEffect(() => {
@@ -283,25 +305,30 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
              const projectedTotal = dailyAvg * currentMonthDays;
              
              const dailyBudget = presupuestoDe(selectedClient);
-             
-             if (dailyBudget > 0) {
+
+             if (dailyBudget === null) {
+               // La proyección sí se sabe (sale del gasto real); el límite no.
+               // Mostrar una y avisar por la otra es más útil que esconder las dos.
+               setBurnRate({ dailyAvg, projectedTotal, monthlyBudget: null, status: 'sin_presupuesto' });
+             } else {
                const monthlyBudget = dailyBudget * currentMonthDays;
                let status: 'over' | 'under' | 'on_track' = 'on_track';
                if (projectedTotal > monthlyBudget * 1.05) status = 'over';
                else if (projectedTotal < monthlyBudget * 0.95) status = 'under';
-               
+
                setBurnRate({
                  dailyAvg,
                  projectedTotal,
                  monthlyBudget,
                  status
                });
-             } else {
-               setBurnRate(null);
              }
           }
        }).catch(console.error);
-  }, [selectedClient]);
+    // `cuentasApi` va acá: presupuestoDe() lo lee, y con la dependencia sola de
+    // selectedClient el efecto capturaba el array del montaje —vacío— así que el
+    // presupuesto nunca llegaba a leerse aunque /api/cuentas después respondiera.
+  }, [selectedClient, cuentasApi]);
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState<number>(1000);
@@ -584,6 +611,20 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
     const d = new Date(Date.now() - 3 * 864e5);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, []);
+
+  // Sin ninguna clave, `totals` es el objeto inicial o el que dejó un fetch
+  // fallado: ahí no hay cero medido, hay ausencia de medición.
+  const sinTotales = !totals || Object.keys(totals).length === 0;
+  // El CPA canónico es NULL sin conversiones, a propósito. Las tres vistas
+  // diarias lo emiten como cost_per_conv (server.ts:844); get_view_data y
+  // get_entidades lo emiten como cpa. Ningún endpoint emite los dos.
+  const cpaTotal: number | null = sinTotales ? null : (totals.cpa ?? totals.cost_per_conv ?? null);
+  const cpcTotal: number | null = sinTotales ? null : (totals.avg_cpc ?? null);
+  // Los totales de las vistas diarias los suma el servidor sobre la PÁGINA que
+  // trajo (server.ts:832), no sobre todo el filtro. Las que pasan por
+  // get_view_data / get_entidades devuelven `filas` —el count del filtro
+  // entero— y ahí el mosaico sí cubre lo mismo que el pie.
+  const totalesSoloDeLaPagina = !sinTotales && totals.filas === undefined && totalCount > data.length;
 
   const exportToCSV = async () => {
     if (!selectedClient) return;
@@ -951,10 +992,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             fila era justo el grid uniforme que el lenguaje prohíbe. */}
         <div className="grid grid-cols-2 md:grid-cols-5 divide-x [&>*]:px-4 [&>*:first-child]:pl-0 py-2 mb-1 shrink-0" style={{ borderColor: 'var(--border)' }}>
           {[
-            { label: 'Inversión', valor: formatValue('cost', totals.cost || 0, currency), nota: 'en el filtro' },
-            { label: 'Conversiones', valor: String(totals.conversions || 0), nota: 'en el filtro' },
-            { label: 'CPA ponderado', valor: formatValue('cpa', totals.cpa || 0, currency), nota: 'del período' },
-            { label: 'CPC promedio', valor: formatValue('avg_cpc', totals.avg_cpc || 0, currency), nota: 'del período' },
+            { label: 'Inversión', valor: sinTotales ? '—' : formatValue('cost', Number(totals.cost) || 0, currency), nota: sinTotales ? 'sin dato en la ventana' : 'en el filtro' },
+            { label: 'Conversiones', valor: sinTotales ? '—' : String(totals.conversions ?? 0), nota: sinTotales ? 'sin dato en la ventana' : 'en el filtro' },
+            { label: 'CPA ponderado', valor: cpaTotal === null ? '—' : formatValue('cpa', Number(cpaTotal), currency), nota: cpaTotal === null ? 'sin dato en la ventana' : 'del período' },
+            { label: 'CPC promedio', valor: cpcTotal === null ? '—' : formatValue('avg_cpc', Number(cpcTotal), currency), nota: cpcTotal === null ? 'sin dato en la ventana' : 'del período' },
             { label: 'Restricción principal', valor: totals?.limitacion ? String(totals.limitacion) : '—', nota: totals.limitacion === 'presupuesto' ? 'más plata trae volumen' : totals?.limitacion ? 'más plata NO trae volumen' : 'sin dato en la ventana', title: totals.limitacion === 'presupuesto' ? 'Subir presupuesto generará más volumen' : 'Subir presupuesto NO generará más volumen' },
           ].map((k: any) => (
             <div key={k.label} className="min-w-0" title={k.title}>
@@ -1234,32 +1275,14 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         </div>
       </div>
 
-        {(totals as any).dataHealth && (totals as any).dataHealth.status !== 'OK' && (
-           <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 flex items-start justify-between gap-3 shrink-0 shadow-sm">
-             <div className="flex items-start gap-3">
-                <AlertTriangle className="text-[#F5F7FA] shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium text-[#F5F7FA]">
-                  Advertencia de Frescura: Los datos de {selectedClient} son del {(totals as any).dataHealth.last_run ? new Date((totals as any).dataHealth.last_run).toLocaleDateString() : 'desconocido'}. 
-                  El script no corrió o falló en la última extracción.
-                </p>
-             </div>
-           </div>
-        )}
+        {/* Acá vivían la "Advertencia de Frescura" (totals.dataHealth) y la
+            "Pérdida de Integridad" (totals.dataIntegrity). Ningún endpoint de
+            esta pantalla emite esos campos: dataHealth solo existe en
+            /api/health/system, y como array de filas, no como objeto con
+            .status. Eran dos avisos que no se podían mostrar nunca, pero que
+            leídos en el código parecían una red que estaba puesta. La frescura
+            y la integridad se miran en Sistema › Integridad, que sí las recibe. */}
 
-        {(totals as any).dataIntegrity && ((totals as any).dataIntegrity.diff_adgroup > 0 || (totals as any).dataIntegrity.diff_keyword > 0) && (
-           <div className="mb-6 p-4 rounded-xl bg-[var(--primary-faint)] border border-[var(--border-strong)] flex items-start justify-between gap-3 shrink-0 shadow-sm">
-             <div className="flex items-start gap-3">
-                <AlertCircle className="text-[#4D9DFF] shrink-0 mt-0.5" size={18} />
-                <p className="text-sm font-medium text-[#4D9DFF]">
-                  Pérdida de Integridad: El gasto de campaña no coincide con los niveles inferiores. 
-                  (Dif. Grupos: {(totals as any).dataIntegrity.diff_adgroup}, Dif. Keywords: {(totals as any).dataIntegrity.diff_keyword}). Posible truncado de datos.
-                </p>
-             </div>
-           </div>
-        )}
-
-
-        
       <div className="mt-4 space-y-3">
         {burnRate && (
           <div className="mb-6 p-5 rounded-xl bg-[var(--surface-1)] border border-[var(--border)] flex items-center justify-between gap-4 shrink-0 shadow-sm">
@@ -1280,19 +1303,36 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                 </p>
               </div>
               <div className="w-px h-10 bg-[var(--primary-soft)]"></div>
+              {/* Sin presupuesto cargado no hay límite ni semáforo: se dice, no
+                  se completa con un número parecido a uno medido. */}
               <div className="text-right">
                 <p className="text-xs text-[#F5F7FA]/60 font-medium">Presupuesto Límite</p>
-                <p className="text-lg font-bold tabular text-[#EDEFF3]">
-                  {formatValue('gasto', burnRate.monthlyBudget, monedaDe(selectedClient))}
-                </p>
+                {burnRate.monthlyBudget === null ? (
+                  <>
+                    <p className="text-lg font-bold tabular text-[#EDEFF3]">—</p>
+                    <p className="text-[10px] text-[#F5F7FA]/60 max-w-[220px]">
+                      {cuentasFallo
+                        ? <>No se pudieron leer las cuentas ({cuentasFallo}): sin presupuesto no hay límite ni semáforo.</>
+                        : <>{selectedClient} no tiene presupuesto diario cargado: no se puede calcular el límite ni decir si va por encima o por debajo.</>}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-lg font-bold tabular text-[#EDEFF3]">
+                    {formatValue('gasto', burnRate.monthlyBudget, monedaDe(selectedClient))}
+                  </p>
+                )}
               </div>
             </div>
           </div>
         )}
-        {totals?.limited && (
+        {/* Antes esto colgaba de `totals.limited`, que no lo emite ningún
+            endpoint: el aviso no aparecía nunca. La condición real se deduce de
+            un campo que SÍ existe —`filas`, el count del filtro entero— y de
+            cuántas filas se trajeron. */}
+        {totalesSoloDeLaPagina && (
           <div className="mb-4 p-3 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 text-[#F5F7FA] text-xs flex items-center gap-2 shrink-0">
             <AlertTriangle className="text-[#F5F7FA] shrink-0" size={16} />
-            <span>Totales sobre las primeras 1000 filas del filtro</span>
+            <span>Estos totales suman solo las {data.length} filas de esta página, no las {totalCount} del filtro.</span>
           </div>
         )}
       </div>
@@ -1334,7 +1374,9 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
             </div>
           ) : (
             <div className="p-4 rounded-xl text-xs text-[#F5F7FA] opacity-70" style={{ backgroundColor: 'var(--surface-2)' }}>
-              Este término no tiene historial en los 14 días de la capa diaria.
+              Este término no tiene historial en la capa diaria. Esa capa acumula desde que arrancó la
+              extracción, pero solo los últimos 14 días se vuelven a corregir: lo anterior quedó
+              congelado con el valor que tenía.
             </div>
           )}
         </div>

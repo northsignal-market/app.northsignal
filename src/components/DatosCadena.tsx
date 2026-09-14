@@ -40,12 +40,18 @@ export function DatosCadena({ account, moneda }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [orden, setOrden] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'gasto', dir: 'desc' });
 
-  const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' = 'num') => {
-    if (v === null || v === undefined) return '—';
+  // `fmtNum` redondea a entero por defecto y acá pasaban conversiones y ROAS:
+  // 2,4 conversiones salían "2" y un ROAS de 0,4 salía "0x" — un positivo
+  // mostrado como cero. Lo entero se sigue viendo entero; lo fraccionario
+  // conserva sus decimales. Y un hueco ('' o NaN) no es un cero: es '—'.
+  const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' | 'roas' = 'num') => {
+    if (v === null || v === undefined || v === '') return '—';
     const n = Number(v);
+    if (isNaN(n)) return '—';
     if (tipo === 'moneda') return fmtMoneda(n, moneda);
     if (tipo === 'pct') return n.toFixed(2) + '%';
-    return fmtNum(n);
+    if (tipo === 'roas') return fmtNum(n, 2);
+    return fmtNum(n, Number.isInteger(n) ? 0 : 2);
   };
 
   // El `await r.json()` iba ANTES de mirar r.ok: con el HTML de un 500 reventaba
@@ -88,12 +94,21 @@ export function DatosCadena({ account, moneda }: Props) {
   const etiquetaObjetivo = (o: string) => contadores.find(c => c.dimension === 'objetivo' && c.valor === o)?.etiqueta || o;
   const migas = construirMigas();
 
+  // Un hueco no es un cero. `Number(null)` daba 0, así que ordenar por CPA
+  // ascendente ponía las filas SIN CPA a la cabeza del ranking de "más barato":
+  // lo que no se pudo medir se leía como lo mejor. Ahora las ausencias van
+  // últimas en los dos sentidos, y la comparación numérica exige que los dos
+  // lados lo sean (antes alcanzaba con que `a` lo fuera).
+  const ausente = (v: any) => v === null || v === undefined || v === '';
   const ordenadas = useMemo(() => {
     const f = [...filas];
     f.sort((a, b) => {
       const va = a[orden.col], vb = b[orden.col];
-      if (va === undefined) return 0;
-      const cmp = typeof va === 'number' || !isNaN(Number(va)) ? Number(va) - Number(vb) : String(va).localeCompare(String(vb));
+      if (ausente(va) && ausente(vb)) return 0;
+      if (ausente(va)) return 1;
+      if (ausente(vb)) return -1;
+      const numerico = !isNaN(Number(va)) && !isNaN(Number(vb));
+      const cmp = numerico ? Number(va) - Number(vb) : String(va).localeCompare(String(vb));
       return orden.dir === 'desc' ? -cmp : cmp;
     });
     return f;
@@ -178,7 +193,8 @@ export function DatosCadena({ account, moneda }: Props) {
                       <td className="px-3 py-2 text-left"><button onClick={() => ir('locales', { objetivo: f.objetivo })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF]">{f.nombre}</button></td>
                       <td className="px-3 py-2 text-left text-[11px] text-[#F5F7FA] opacity-60">{f.metrica === 'roas' ? 'ROAS' : f.metrica === 'conversiones' ? 'Conversiones' : 'CPA'}</td>
                       {td(f.campanas)}{td(f.campanas_activas)}{td(f.locales)}{td(f.gasto, 'moneda')}{td(f.conv)}{td(f.cpa, 'moneda')}
-                      <td className="px-3 py-2 text-right tabular text-xs text-[#F5F7FA]">{f.metrica === 'roas' ? fmt(f.roas) + 'x' : '—'}</td>
+                      {/* El 'x' iba pegado afuera del formateo: un ROAS nulo imprimía "—x". */}
+                      <td className="px-3 py-2 text-right tabular text-xs text-[#F5F7FA]">{f.metrica === 'roas' && !ausente(f.roas) ? fmt(f.roas, 'roas') + 'x' : '—'}</td>
                     </>}
                     {nivel === 'locales' && <>
                       <td className="px-3 py-2 text-left"><button onClick={() => ir('campanas', { local: f.location })} className="text-xs text-[#EDEFF3] hover:text-[#4D9DFF]">{f.location}</button></td>

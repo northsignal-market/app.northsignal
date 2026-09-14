@@ -72,25 +72,32 @@ export interface ReporteInput {
 }
 
 const T = {
-  es: { titulo: 'Reporte de Rendimiento', cliente: 'Cliente', periodo: 'Período', fecha: 'Fecha', inv: 'Inversión', clics: 'Clics', impr: 'Impr', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campañas', grupos: 'Grupos de anuncios', campana: 'Campaña', grupo: 'Grupo', costo: 'Costo', conversiones: 'Conversiones', pag: 'Página', de: 'de', vs: 'vs período anterior', nota: 'Solo se muestran campañas y grupos con inversión en el período.' },
-  en: { titulo: 'Performance Report', cliente: 'Client', periodo: 'Period', fecha: 'Date', inv: 'Spend', clics: 'Clicks', impr: 'Impr', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campaigns', grupos: 'Ad groups', campana: 'Campaign', grupo: 'Ad group', costo: 'Cost', conversiones: 'Conversions', pag: 'Page', de: 'of', vs: 'vs previous period', nota: 'Only campaigns and ad groups with spend in the period are shown.' },
+  es: { titulo: 'Reporte de Rendimiento', cliente: 'Cliente', periodo: 'Período', fecha: 'Fecha', inv: 'Inversión', clics: 'Clics', imprShare: 'Cuota impr.', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campañas', grupos: 'Grupos de anuncios', campana: 'Campaña', grupo: 'Grupo', costo: 'Costo', conversiones: 'Conversiones', pag: 'Página', de: 'de', vs: 'vs período anterior', nota: 'Solo se muestran campañas y grupos con inversión en el período; de los grupos, a lo sumo los 12 de mayor inversión.' },
+  en: { titulo: 'Performance Report', cliente: 'Client', periodo: 'Period', fecha: 'Date', inv: 'Spend', clics: 'Clicks', imprShare: 'Impr. share', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campaigns', grupos: 'Ad groups', campana: 'Campaign', grupo: 'Ad group', costo: 'Cost', conversiones: 'Conversions', pag: 'Page', de: 'of', vs: 'vs previous period', nota: 'Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend.' },
 };
 
 const money = (v: number | null | undefined, m: string, l: string) => v == null ? '-' : new Intl.NumberFormat(l, { style: 'currency', currency: m, maximumFractionDigits: m === 'CLP' ? 0 : 2 }).format(v);
 const num = (v: number | null | undefined, l: string, d = 1) => v == null ? '-' : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
-const fecha = (iso: string, idioma: 'es' | 'en') => new Date(iso + 'T12:00:00').toLocaleDateString(idioma === 'en' ? 'en-GB' : 'es-CL');
+// Las fechas se formateaban con un 'es-CL' cableado mientras los importes ya
+// usaban `r.locale` de la cuenta: el mismo PDF mezclaba dos convenciones.
+// Ahora las dos salen del locale de la ficha del cliente.
+const fecha = (iso: string, locale: string) => new Date(iso + 'T12:00:00').toLocaleDateString(locale || undefined);
 const delta = (a: number | null, b: number | null) => (a == null || b == null || b === 0) ? '' : `${a - b >= 0 ? '+' : ''}${(((a - b) / b) * 100).toFixed(1)}%`;
 
 function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
   const { Document, Page, Text, View, Image } = R;
   const t = T[r.idioma];
   const m = r.metricas;
-  const kpi = (k: string) => k === 'cost' || k === 'cpa' ? money(m[k]?.actual, r.moneda, r.locale) : k === 'ctr' ? (m[k]?.actual == null ? '-' : `${num(m[k].actual, r.locale, 2)}%`) : num(m[k]?.actual, r.locale, k === 'conversions' ? 2 : 0);
-  const lbl: Record<string, string> = { cost: t.inv, clicks: t.clics, impressions: t.impr, conversions: t.conv, cpa: t.cpa, ctr: t.ctr };
-  const orden = ['cost', 'clicks', 'impressions', 'conversions', 'cpa', 'ctr'].filter(k => m[k]?.actual != null);
+  const kpi = (k: string) => k === 'cost' || k === 'cpa' ? money(m[k]?.actual, r.moneda, r.locale) : k === 'ctr' || k === 'impr_share' ? (m[k]?.actual == null ? '-' : `${num(m[k].actual, r.locale, k === 'ctr' ? 2 : 1)}%`) : num(m[k]?.actual, r.locale, k === 'conversions' ? 2 : 0);
+  // `get_reporte_datos` emite cost, conversions, cpa, ctr, clicks e impr_share.
+  // Nunca `impressions`: la columna "Impr" pedía una clave inexistente, el
+  // filtro de abajo la descartaba siempre y la cuota de impresiones —la única
+  // métrica del reporte que el SQL ya pondera por impresiones— no salía nunca.
+  const lbl: Record<string, string> = { cost: t.inv, clicks: t.clics, conversions: t.conv, cpa: t.cpa, ctr: t.ctr, impr_share: t.imprShare };
+  const orden = ['cost', 'clicks', 'conversions', 'cpa', 'ctr', 'impr_share'].filter(k => m[k]?.actual != null);
   const totales = orden.map(k => `${lbl[k]}: ${kpi(k)}`).join('  |  ');
   const deltas = r.periodo_anterior_completo ? ['cost', 'conversions', 'cpa'].map(k => { const d = delta(m[k]?.actual ?? null, m[k]?.anterior ?? null); return d ? `${lbl[k]} ${d}` : ''; }).filter(Boolean).join('  |  ') : '';
-  const hoy = fecha(new Date().toISOString().slice(0, 10), r.idioma);
+  const hoy = fecha(new Date().toISOString().slice(0, 10), r.locale);
   const Pie = () => <Text style={s.pie} fixed render={({ pageNumber, totalPages }) => `${t.pag} ${pageNumber} ${t.de} ${totalPages} - NorthSignal`} />;
   return (
     <Document title={`${r.titulo || t.titulo} - ${r.nombre_cliente}`} author="NorthSignal">
@@ -100,7 +107,7 @@ function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
           {r.logo ? <Image src={{ data: r.logo, format: 'png' }} style={s.logo} /> : null}
           <View>
             <Text style={s.titulo}>{r.titulo || t.titulo} - NorthSignal</Text>
-            <Text style={s.sub}>{t.cliente}: {r.nombre_cliente} | {t.periodo}: {fecha(r.periodo_desde, r.idioma)} - {fecha(r.periodo_hasta, r.idioma)} | {t.fecha}: {hoy}</Text>
+            <Text style={s.sub}>{t.cliente}: {r.nombre_cliente} | {t.periodo}: {fecha(r.periodo_desde, r.locale)} - {fecha(r.periodo_hasta, r.locale)} | {t.fecha}: {hoy}</Text>
           </View>
         </View>
         <Text style={s.totales}>{totales}{deltas ? `\n${deltas} ${t.vs}` : ''}</Text>
