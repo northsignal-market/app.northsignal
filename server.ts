@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { webhooksRouter } from './src/server/routes/webhooks';
 import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } from './src/server/domain/notionSchema';
 import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-cuenta';
+import { mapearClickView, coberturaPct } from './src/server/domain/atribucion-clic';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -4473,6 +4474,96 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ campanas: data || [] });
+  });
+
+  /**
+   * DE QUÉ KEYWORD VINO CADA CLIC.
+   *
+   * `click_view` es el único lugar donde Google ata un gclid a la keyword que lo
+   * produjo, y tiene dos límites que mandan el diseño: pide UN SOLO DÍA por
+   * consulta, y guarda alrededor de 90 días. Lo que no se captura hoy se pierde
+   * para siempre, así que esto corre a diario y guarda, en vez de preguntar al
+   * vuelo cuando alguien necesita el dato.
+   *
+   * `?dias=N` para rellenar hacia atrás (tope 90, que es lo que Google tiene).
+   * `?client=` para una sola cuenta.
+   *
+   * Un día sin clics NO es una falla: es un día sin clics. Se distingue mirando
+   * `metrics.clicks` de la cuenta ese día, que es la única forma de saber si el
+   * cero es la respuesta o es que no pudimos preguntar.
+   */
+  app.all("/api/cron/clicks-keyword", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
+
+    const TOPE_DIAS = 90;   // lo que guarda click_view. Pedir más no trae más.
+    const dias = Math.min(TOPE_DIAS, Math.max(1, parseInt(String(req.query.dias || '1')) || 1));
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    const f = (d: Date) => d.toISOString().slice(0, 10);
+    const cuentas = (await cuentasActivas()).filter((c: any) => c.cid && (!soloCuenta || c.account === soloCuenta));
+
+    const resumen: any[] = [];
+    let fallas = 0;
+
+    for (const cta of cuentas) {
+      let capturados = 0, conKeyword = 0, clicsReales = 0, diasConError = 0;
+      const errores: string[] = [];
+
+      for (let i = 1; i <= dias; i++) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const dia = f(d);
+        try {
+          // El denominador primero: sin él, "0 filas" no se puede leer.
+          const m = await gadsSearch(cta.cid, `SELECT metrics.clicks FROM customer WHERE segments.date = '${dia}'`);
+          const clicksDelDia = m.reduce((a: number, r: any) => a + Number(r.metrics?.clicks || 0), 0);
+          clicsReales += clicksDelDia;
+
+          const filas = await gadsSearch(cta.cid, `
+            SELECT click_view.gclid, click_view.keyword_info.text, click_view.keyword_info.match_type,
+                   campaign.id, campaign.name, ad_group.id, ad_group.name,
+                   segments.date, segments.ad_network_type
+            FROM click_view WHERE segments.date = '${dia}'`);
+
+          if (!filas.length) continue;
+
+          // El mapeo vive en domain/ y tiene control propio: decide qué se muestra
+          // como "la keyword que trajo este cliente", y eso no se prueba llamando
+          // a Google.
+          const registros = filas.map((r: any) => mapearClickView(r, cta.account, dia)).filter(Boolean);
+
+          if (!registros.length) continue;
+          const { error } = await supabase.from('clicks_keyword')
+            .upsert(registros, { onConflict: 'account,gclid' });
+          if (error) throw new Error(error.message);
+
+          capturados += registros.length;
+          conKeyword += registros.filter((x: any) => x.keyword).length;
+        } catch (e: any) {
+          diasConError++;
+          if (errores.length < 3) errores.push(`${dia}: ${String(e?.message || e).slice(0, 160)}`);
+        }
+      }
+
+      fallas += diasConError;
+      resumen.push({
+        cuenta: cta.account, dias, capturados, con_keyword: conKeyword,
+        clics_reales: clicsReales, dias_con_error: diasConError,
+        cobertura_pct: coberturaPct(capturados, clicsReales),
+        errores: errores.length ? errores : undefined,
+      });
+    }
+
+    // El latido dice OK solo si ningún día falló. Un latido verde sobre una
+    // captura a medias es peor que uno rojo: deja de mirarse.
+    try {
+      await supabase.rpc('latir', {
+        p_tarea: 'clicks_keyword',
+        p_ok: fallas === 0 && cuentas.length > 0,
+        p_error: fallas ? `${fallas} dia(s) fallaron al capturar click_view` : (cuentas.length ? null : 'ninguna cuenta con cid'),
+      });
+    } catch { /* el latido es opcional */ }
+
+    res.json({ ok: fallas === 0, dias, cuentas: resumen });
   });
 
   app.all("/api/cron/reconciliar-api", async (req, res) => {

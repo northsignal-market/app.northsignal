@@ -884,6 +884,32 @@ function monedaDeFicha(cuenta, monedaEnNotion) {
   return { moneda: tabla ?? notion2, discrepancia };
 }
 
+// src/server/domain/atribucion-clic.ts
+function mapearClickView(fila, account, diaPedido) {
+  const gclid = fila.clickView?.gclid;
+  if (!gclid) return null;
+  const texto = (s2) => {
+    const v = String(s2 ?? "").trim();
+    return v === "" ? null : v;
+  };
+  return {
+    account,
+    gclid,
+    fecha: fila.segments?.date || diaPedido,
+    campana_id: fila.campaign?.id != null ? String(fila.campaign.id) : null,
+    campana: texto(fila.campaign?.name),
+    grupo_id: fila.adGroup?.id != null ? String(fila.adGroup.id) : null,
+    grupo: texto(fila.adGroup?.name),
+    keyword: texto(fila.clickView?.keywordInfo?.text),
+    concordancia: texto(fila.clickView?.keywordInfo?.matchType),
+    red: texto(fila.segments?.adNetworkType)
+  };
+}
+function coberturaPct(capturados, clicsReales) {
+  if (!(clicsReales > 0)) return null;
+  return +(100 * capturados / clicsReales).toFixed(1);
+}
+
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
@@ -5807,6 +5833,66 @@ Reporte completo: ${url}`;
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ campanas: data || [] });
+  });
+  app2.all("/api/cron/clicks-keyword", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!gadsDisponible()) return res.status(503).json({ error: "Faltan credenciales GADS_* en el entorno" });
+    const TOPE_DIAS = 90;
+    const dias = Math.min(TOPE_DIAS, Math.max(1, parseInt(String(req.query.dias || "1")) || 1));
+    const soloCuenta = req.query.client ? String(req.query.client) : null;
+    const f = (d) => d.toISOString().slice(0, 10);
+    const cuentas = (await cuentasActivas()).filter((c) => c.cid && (!soloCuenta || c.account === soloCuenta));
+    const resumen = [];
+    let fallas = 0;
+    for (const cta of cuentas) {
+      let capturados = 0, conKeyword = 0, clicsReales = 0, diasConError = 0;
+      const errores = [];
+      for (let i = 1; i <= dias; i++) {
+        const d = /* @__PURE__ */ new Date();
+        d.setDate(d.getDate() - i);
+        const dia = f(d);
+        try {
+          const m = await gadsSearch(cta.cid, `SELECT metrics.clicks FROM customer WHERE segments.date = '${dia}'`);
+          const clicksDelDia = m.reduce((a, r) => a + Number(r.metrics?.clicks || 0), 0);
+          clicsReales += clicksDelDia;
+          const filas = await gadsSearch(cta.cid, `
+            SELECT click_view.gclid, click_view.keyword_info.text, click_view.keyword_info.match_type,
+                   campaign.id, campaign.name, ad_group.id, ad_group.name,
+                   segments.date, segments.ad_network_type
+            FROM click_view WHERE segments.date = '${dia}'`);
+          if (!filas.length) continue;
+          const registros = filas.map((r) => mapearClickView(r, cta.account, dia)).filter(Boolean);
+          if (!registros.length) continue;
+          const { error } = await supabase.from("clicks_keyword").upsert(registros, { onConflict: "account,gclid" });
+          if (error) throw new Error(error.message);
+          capturados += registros.length;
+          conKeyword += registros.filter((x) => x.keyword).length;
+        } catch (e) {
+          diasConError++;
+          if (errores.length < 3) errores.push(`${dia}: ${String(e?.message || e).slice(0, 160)}`);
+        }
+      }
+      fallas += diasConError;
+      resumen.push({
+        cuenta: cta.account,
+        dias,
+        capturados,
+        con_keyword: conKeyword,
+        clics_reales: clicsReales,
+        dias_con_error: diasConError,
+        cobertura_pct: coberturaPct(capturados, clicsReales),
+        errores: errores.length ? errores : void 0
+      });
+    }
+    try {
+      await supabase.rpc("latir", {
+        p_tarea: "clicks_keyword",
+        p_ok: fallas === 0 && cuentas.length > 0,
+        p_error: fallas ? `${fallas} dia(s) fallaron al capturar click_view` : cuentas.length ? null : "ninguna cuenta con cid"
+      });
+    } catch {
+    }
+    res.json({ ok: fallas === 0, dias, cuentas: resumen });
   });
   app2.all("/api/cron/reconciliar-api", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
