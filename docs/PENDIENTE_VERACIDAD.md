@@ -205,21 +205,37 @@ Conversiones −4,1% vs período anterior"* no aparece en ningún reporte, nunca
 Falla del lado seguro, pero la comparación que el cliente más mira está muerta y
 nada lo dice.
 
-### 1.10 · "Guardar Trazabilidad" borra datos en Notion
-`useAppStore.ts` puebla `actionables` desde `/api/data`, que **no incluye**
-`naturaleza`, `que_lo_confirmaria`, `causa_raiz`, `origen`, `vence`, `brief_id`.
-El endpoint que sí las devuelve (`server.ts:993-1023`) no lo llama nadie en
-`src/`. `ActionableDrawerContent.tsx:279-285` los manda **siempre** y
-`server.ts:1362-1378` escribe incondicionalmente.
+### 1.10 · ~~"Guardar Trazabilidad" borra datos en Notion~~ · ARREGLADO el 14/9 (`f56783d`)
+Hay un `GET /api/notion/actionables/:id` nuevo que trae el accionable completo; el
+drawer lo pide al abrir y **manda solo lo que cambió**. Si ese GET falla, los tres
+campos quedan bloqueados y no se escriben: no se pisa lo que no se pudo leer.
 
-**Síntoma:** apretar "Guardar Trazabilidad" para anotar un resultado observado
-**vacía `Que lo confirmaria` y `Causa raiz` en Notion y reescribe `Naturaleza` a
-`'Dato'`**.
+Dos cosas que salieron de ahí:
 
-**Y `'Dato'` es el peor valor posible:** `v_tasa_acierto` buckea por
-`'Observacion'` y por `IN ('Inferencia','Hipotesis')`. **`'Dato'` no cae en
-ninguno: el accionable desaparece de las dos tasas de acierto, sin error y sin
-fila.**
+- **El select no ofrecía `Observacion`**, que es uno de los dos buckets de
+  `v_tasa_acierto`. No había forma de clasificar un accionable dentro de la
+  métrica con la que el sistema se califica. Ya está, con "Sin clasificar" y con
+  `Dato` rotulado como lo que es: fuera de las dos tasas.
+- El mapeo de página de Notion → objeto de la app estaba inline en la lista. Se
+  extrajo a `mapearAccionable` y lo comparten los dos endpoints: **dos mapeos
+  copiados es cómo nace la próxima columna que la UI lee y nadie emite.**
+
+> ⚠️ **Un cambio de métrica que conviene que mires.** `mapearAccionable` devuelve
+> `naturaleza = null` cuando Notion no la tiene; antes caía a `'Observacion'`, o
+> sea que todo accionable sin clasificar entraba al bucket de observaciones como
+> si alguien lo hubiera clasificado. Ahora no cuenta en ninguno. Es más honesto,
+> pero **cambia el denominador de `acierto_observaciones_pct`**. Si preferís un
+> backfill en Notion antes que una tasa más chica y más real, es tu decisión.
+
+**Queda pendiente el resto de §5:** siguen conviviendo tres vocabularios de
+naturaleza. El select ya usa el canónico; `humano.ts` y el filtro de la lista
+habría que revisarlos juntos.
+
+### 1.10.bis · Probar escrituras a Notion sin romper datos reales
+`NOTION_BASE_URL` (nueva) apunta el SDK a un Notion de mentira; sin la variable
+usa `api.notion.com`. Con eso se puede **ver qué propiedades escribe cada botón**
+antes de creerle. Lo van a necesitar 1.11, 4.8 y 4.9, que son los otros caminos
+de escritura a Notion que quedan abiertos.
 
 ### 1.11 · `a.detected` / `a.weeks_pending`
 `server.ts:1036-1037` usa esos dos nombres cuando el objeto define `detectado`
@@ -803,8 +819,7 @@ vuelve a lo que declara.
 **Lo que sigue, en orden:**
 
 1. **Lo que queda de §1** — 1.6 y 1.7 (botones y novedades que no hacen nada),
-   1.9, 1.10 (**escribe en Notion y borra datos**: es el más caro de los que
-   quedan), 1.11, 1.12.
+   1.9, 1.11, 1.12. (~~1.10~~ hecho el 14/9.)
 2. **§2** — los ceros fabricados, empezando por 2.1 y 2.2 que **escriben** en la base.
 3. **4.11** — la bomba de tiempo, ahora con ~5 días.
 4. **§7** — lo que ve el cliente.
