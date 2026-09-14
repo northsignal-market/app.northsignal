@@ -179,3 +179,43 @@ describe('preguntar sin cuenta no es preguntar', () => {
     expect(espia).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * `cargando` SIN CUENTA · el matiz que rompí y tuve que corregir.
+ *
+ * Al poner la guarda dejé `cargando: false` cuando la URL viene sin cuenta.
+ * Estaba mal, y es la misma confusión que la guarda venía a evitar, un escalón
+ * más arriba: `cargando:false` junto con `data:null` le dice a quien consume
+ * "pregunté y no hay nada". Lo cierto es "todavía no pregunté". Los componentes
+ * que muestran un spinner mientras `cargando` pasaban de largo y renderizaban
+ * con el fallback puesto.
+ *
+ * Los tres estados de `useJSON` tienen que seguir siendo distinguibles:
+ *   cargando  → todavía no sé (incluye: no sé de quién)
+ *   error     → no pude preguntar
+ *   ninguno   → pregunté, y esto es lo que hay
+ *
+ * El test es de la función que decide, no del hook: `useJSON` necesita un render
+ * de React y lo que importa acá es la regla, que se lee en una línea.
+ */
+describe('los tres estados de useJSON no se pisan', () => {
+  /** La misma expresión que usa useJSON, aislada para poder probarla. */
+  const estaCargando = (url: string | null, consultaPendiente: boolean) =>
+    url != null && (faltaLaCuenta(url) || consultaPendiente);
+
+  it('sin cuenta está CARGANDO, aunque no haya consulta en vuelo', () => {
+    // react-query no consulta (enabled:false), pero el dato no está: eso es cargando.
+    expect(estaCargando('/api/plan?client=', false)).toBe(true);
+    expect(estaCargando('/api/anomalias?client=&days=14', false)).toBe(true);
+  });
+
+  it('con cuenta, manda react-query', () => {
+    expect(estaCargando('/api/plan?client=KAREDO', true)).toBe(true);
+    expect(estaCargando('/api/plan?client=KAREDO', false)).toBe(false);
+  });
+
+  it('sin url no está cargando nada: no hay nada que pedir', () => {
+    expect(estaCargando(null, true)).toBe(false);
+    expect(estaCargando(null, false)).toBe(false);
+  });
+});

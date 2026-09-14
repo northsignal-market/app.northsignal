@@ -514,8 +514,13 @@ export function useJSON<T>(url: string | null, fallback: T, opts?: {
     data: (q.data ?? fallback) as T,
     refetch: q.refetch,
     error: q.isError ? motivoFallo(q.error) : null,
-    // Sin cuenta todavía no se está cargando nada: se está esperando saber quién.
-    cargando: url != null && !sinCuenta && q.isPending,
+    // Sin cuenta el dato TODAVÍA NO ESTÁ, y eso es lo que `cargando` significa.
+    // Lo puse en false y estaba mal: `cargando:false` + `data:null` le dice a quien
+    // consume "pregunté y no hay nada", cuando lo cierto es "todavía no pregunté".
+    // Los componentes que muestran un spinner mientras `cargando` pasaban de largo
+    // y renderizaban con el fallback puesto — el mismo hueco-presentado-como-dato
+    // que esta guarda venía a evitar, ahora un escalón más arriba.
+    cargando: url != null && (sinCuenta || q.isPending),
   };
 }
 
