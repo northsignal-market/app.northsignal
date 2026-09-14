@@ -25,23 +25,41 @@
    los días consolidados en vez de diluirse con conversiones que todavía se están
    atribuyendo.
 
-### El hallazgo más grande no estaba en la auditoría
+### Verificado contra PRODUCCIÓN el 14/9 · lo que resultó ser falso
 
-`v_tasa_acierto` —la métrica con la que el sistema se califica a sí mismo— compara
-por igualdad **exacta** contra `Observacion`, sin tilde. Los escritores de la app
-escriben así. **Los prompts de los agentes decían `Observación`, con tilde.** Un
-select de Notion crea la opción nueva cuando le mandás una variante, así que el
-accionable cae afuera de las dos tasas, sin error y sin fila.
+Tres cosas que esta sesión dio por abiertas y la base viva cerró:
 
-**No está confirmado contra Notion** (no hay credenciales acá). Confirmarlo es un
-comando que no escribe nada:
+**La tilde de `Observación` NO está pasando.** Era una deducción razonable —los
+prompts la pedían con tilde y `v_tasa_acierto` compara sin ella— pero en los datos
+reales hay **cero** valores acentuados, verificado a nivel bytes sobre los 79
+accionables del espejo: `Dato | Hipotesis | Inferencia | Observacion`. Los agentes
+venían eligiendo la opción que ya existía en el select de Notion. El arreglo de los
+prompts y el control siguen valiendo —la trampa estaba armada—, pero **no hace
+falta ningún backfill de tildes**. Lo que sí queda: 12 sin clasificar y 1 en
+`'Dato'`, o sea 13 de 79 afuera de las dos tasas. Eso es una decisión, no un bug.
 
-```bash
-node scripts/naturaleza-notion.mjs
-```
+**`locale` y `reglas_dominio` están poblados en las cuatro.** El PDF no puede
+fallar en `money()`, y el respaldo cableado de `clientRules` no se dispara hoy.
 
-La causa raíz ya está arreglada en los nueve prompts, y lo cuida
-`src/server/domain/vocabulario.test.ts`.
+**La bomba de 4.11 no había explotado.** `campaign_daily` tiene 22 días distintos
+(22/8 al 12/9); el corte era a los 28. El arreglo llegó con seis días de margen.
+
+### Lo que SÍ era, y se confirmó al centavo
+
+Andrés vio que KAREDO no cerraba contra Google del 1 al 13 de septiembre. La causa
+resultó ser la misma en las cuatro cuentas, y no es un bug de extracción:
+
+| Cuenta | App | Google (API) | Falta | Google el 13 sept |
+|---|---|---|---|---|
+| KAREDO | 1.712,28 | 1.806,83 | −94,55 | **94,56** |
+| 360 | 215.141,39 | 218.958,38 | −3.816,99 | **3.817,00** |
+| BHI | 218.535,58 | 249.828,58 | −31.293,00 | **31.293,00** |
+| FRESH_MONKEE | 1.420,12 | 1.508,52 | −88,40 | **88,40** |
+
+La diferencia es EXACTAMENTE el último día, al centavo. El script extrae hasta
+"ayer", así que hasta que corre, ese día no está — y la app lo presentaba como
+total cerrado. Arreglado en `085ef61` con `coberturaDe()`, que ahora declara
+"N de M días" en toda pantalla de rango y en el PDF al cliente.
 
 ---
 
@@ -1086,6 +1104,13 @@ credenciales o una decisión, y las dos cosas son de Andrés.**
    destruir contenido que no escribí no me corresponde decidirlo.
 
 ## 12 · ~~Encontrado al arreglar~~ · CERRADO el 14/9 (`4b2f27c`)
+
+> **ABIERTO, nuevo:** `cuentas.zona_horaria` de FRESH_MONKEE dice
+> `America/New_York` y **Google dice `America/Chicago`**. Una hora de diferencia,
+> y esa columna es la que usa cualquier cálculo de borde de día del lado del
+> servidor (el script de Google Ads usa `account.getTimeZone()`, que sí es la
+> correcta, así que la extracción está bien; el riesgo está en el servidor).
+
 
 Las diez cosas que aparecieron al arreglar están resueltas. La más cara:
 **`v_location_ranking_bayes` mostraba locales más baratos de lo medido.** Con
