@@ -1128,6 +1128,56 @@ con un solo grupo, y `PESO_PRIORIDAD` en un solo lugar.
 **Lo único que sigue abierto de acá:** `cuentas.locale` nulo haría fallar el PDF
 entero en `money()`. Es una consulta: `select account, locale from cuentas where activa`.
 
+## 12.bis · `Unknown` viajaba de vuelta como si fuera una cuenta · CERRADO el 14/9 (`3dfaadc`)
+
+Andrés pegó una consola con una pared de 400: nueve endpoints saliendo con
+`client=` **vacío**. Al medirlo en el navegador apareció la otra mitad, que no
+se veía desde su pantalla y es peor: **catorce pedidos con `client=Unknown`**.
+
+`Unknown` no es una cuenta. Es el centinela con que el servidor marca un
+accionable de Notion cuya cuenta **no pudo resolver** (`server.ts:96`), y está
+bien puesto: el comentario de ahí dice explícitamente "si no se puede resolver
+contra una cuenta real, NO se inventa un nombre". El defecto estaba en el camino
+de vuelta: el store lo adoptaba como `selectedClient` y de ahí salía a la red
+como nombre propio. Un "no sé" del servidor, convertido en entidad por la UI.
+
+La raíz estaba escrita igual en las cinco pantallas:
+
+```ts
+const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
+```
+
+`useCuentaActiva` existe para una sola cosa —resolver la cuenta **contra las
+cuentas reales** y devolver `null` cuando no puede— y ese `|| selectedClient`
+caía al valor sin validar **exactamente cuando la validación había fallado**.
+Ahora es `?? ''`.
+
+Lo que no se veía y era lo importante: cada rechazo llegaba a su panel como
+fallback —lista vacía, cero, guion— y en pantalla eso no se distingue de "esta
+cuenta no tiene datos". La app afirmaba un vacío cuando lo cierto era *todavía
+no sé de quién estamos hablando*.
+
+Cuatro capas, de la raíz hacia afuera: `?? ''` en las cinco pantallas;
+`pedirJSON` corta antes de la red si la cuenta viene vacía (con `status: null`,
+para que se distinga de un 400 real); `useJSON` no consulta **ni dice
+`cargando`** (sin cuenta no se está cargando nada, se está esperando saber
+quién); y `App.tsx` solo escribe en la URL una cuenta que existe — antes dejaba
+un `?cliente=Unknown` que Andrés podía copiar y mandar.
+
+Dos controles, los dos probados fallando antes de quedar en verde.
+`src/lib/cuenta-activa.test.ts` es **estático porque el bug es estático**: está
+en cómo se escribe la línea, no en lo que pasa al correrla, y un test de
+comportamiento no lo ve. Trae además un test de que el control mira donde tiene
+que mirar, para que un rename del hook no lo deje verde sobre cero archivos.
+
+> **Cómo se reprodujo, que es lo reusable:** en localhost `/api/cuentas` tarda
+> cero y la ventana donde la cuenta todavía no se resolvió **no llega a
+> existir** — medí dos veces "0 malformadas" sobre un bug que sí estaba. Hizo
+> falta demorar `/rest/v1/cuentas` a mano en el PostgREST de mentira
+> (`DEMORA_CUENTAS`) *y* arrancar con el caché de `cuentasActivas()` frío: ese
+> caché de 300 s en el servidor tapaba la demora a partir del primer pedido.
+> Antes: 38 pedidos, 14 con `Unknown`. Después: 23, ninguno.
+
 ## 13 · Cómo se verificó esto
 
 Tres cosas que la próxima sesión puede reusar, y que no estaban disponibles cuando
