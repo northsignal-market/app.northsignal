@@ -72,12 +72,22 @@ export function hoyLocal(offsetDias = 0): string {
 // ================================================================
 // LAYOUT · página, sección, tarjeta
 // ================================================================
-/** Marco de página: ancho máximo, márgenes y ritmo vertical iguales en toda la app. */
+/**
+ * Marco de página: ancho máximo, márgenes y ritmo vertical iguales en toda la app.
+ *
+ * El tope era 1320px fijo. En un monitor de 1920 eso dejaba 313px sin usar —el 18%
+ * del ancho útil— y en uno de 2560, 953px, el 41%. Y no es solo espacio vacío: el
+ * contenido que no puede ensancharse se apila hacia abajo, así que el mismo tablero
+ * obliga a scrollear más en la pantalla más grande. Al revés de lo que uno espera.
+ *
+ * Ahora escala por tramos en vez de cortar en seco. El tope existe igual —una línea
+ * de texto de 2000px no se lee— pero acompaña la pantalla en vez de ignorarla.
+ */
 export function PageShell({ titulo, subtitulo, derecha, children }: {
   titulo?: React.ReactNode; subtitulo?: React.ReactNode; derecha?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="px-5 md:px-8 py-6 max-w-[1320px] mx-auto space-y-8">
+    <div className="px-5 md:px-8 py-6 max-w-[1320px] min-[1680px]:max-w-[1560px] min-[1920px]:max-w-[1760px] min-[2400px]:max-w-[2000px] mx-auto space-y-8">
       {(titulo || derecha) && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">

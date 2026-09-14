@@ -300,6 +300,10 @@ export function Semana({ onOpenActionable }: SemanaProps) {
 
   const nombres: Record<string, string> = { clics: 'Clics', conv_rate: 'Conv. rate', impresiones: 'Impresiones', cpc: 'CPC', ctr: 'CTR', lost_is_budget: 'Lost IS budget', lost_is_rank: 'Lost IS rank', pct_terminos_nuevos: 'Término nuevo', cpa_marginal: 'CPA marginal', conversiones: 'Conversiones', gasto: 'Gasto', conv_rate_grupo: 'Conv. rate' };
 
+  // La MISMA condición que decide si la columna del mercado se renderiza. Se calcula
+  // una vez y la usan los dos anchos: escribirla dos veces es cómo se desincronizan
+  // y vuelve el agujero en la fila.
+  const hayMercado = presionReal.length > 0 || !!mercado?.resumen || !!mercado?.aviso;
   return (
     <PageShell
       /* Sin título: la pestaña ya dice "Semana" y el header dice la cuenta.
@@ -522,12 +526,17 @@ export function Semana({ onOpenActionable }: SemanaProps) {
       {/* POR QUÉ VIENE ASÍ · las señales que el plan mira (7 columnas) y, al
           lado, lo que pasa afuera apilado en vertical. La cancha va acá y no
           después del gráfico: explica la forma que ya se vio. */}
+      {/* Las dos tarjetas de esta fila aparecen solo si tienen algo que decir, y
+          cuando faltaba una la otra NO se ensanchaba: se quedaba en sus 5 (o 7) de
+          12 y dejaba más de la mitad de la fila en blanco. En un monitor ancho eso
+          es medio metro de vacío al lado de una tarjeta chica. Los anchos se
+          calculan de lo que REALMENTE se va a renderizar. */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       {plan?.plan && (() => {
         const p = plan.plan;
         const dias = plan.pulsos.length;
         return (
-          <Tarjeta className="lg:col-span-7">
+          <Tarjeta className={hayMercado ? "lg:col-span-7" : "lg:col-span-12"}>
             {/* El veredicto y su guía ya son el titular de la vista: acá solo
                 queda la evidencia que lo sostiene, señal por señal. */}
             <div className="flex items-baseline justify-between gap-3 pb-2.5 mb-3" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -599,8 +608,8 @@ export function Semana({ onOpenActionable }: SemanaProps) {
           Va junto a las señales y no en su propia franja: son dos respuestas a
           la misma pregunta — por qué la semana tiene la forma que tiene, por
           dentro y por fuera. Cada tarjeta solo aparece si tiene algo que decir. */}
-      {(presionReal.length > 0 || mercado?.resumen || mercado?.aviso) && (
-        <div className="lg:col-span-5 space-y-4">
+      {hayMercado && (
+        <div className={(plan?.plan ? "lg:col-span-5" : "lg:col-span-12") + " space-y-4"}>
           {mercado?.resumen ? (
             <Tarjeta>
               <h2 className="text-[13px] font-medium text-[#EDEFF3] mb-2">El mercado, y vos dentro de él</h2>
