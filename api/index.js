@@ -6303,6 +6303,55 @@ Reporte completo: ${url}`;
       pasos
     });
   });
+  app2.get("/api/ghl/estado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const cuenta = String(req.query.client || "");
+    let q = supabase.from("v_ghl_estado").select("*");
+    if (cuenta) q = q.eq("account", cuenta);
+    const { data: estados, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    if (!estados?.length) return res.json({ cuentas: [], usa_ghl: false });
+    const { data: pipelines } = await supabase.from("v_ghl_pipeline").select("*").order("orden");
+    const armar = (estado) => {
+      const pipeline = (pipelines || []).filter((p) => p.account === estado.account);
+      const min = estado.api_minutos_desde;
+      return {
+        cuenta: estado.account,
+        usa_ghl: true,
+        api: {
+          ultima_ingesta: estado.api_ultima_ingesta,
+          minutos_desde: min,
+          // El veredicto sale de comparar contra la tolerancia declarada, no de un
+          // umbral inventado acá. Si la cadencia cambia, esto la sigue sola.
+          al_dia: min != null && min <= 180,
+          lectura: min == null ? "La ingesta nunca corri\xF3." : min <= 70 ? `Al d\xEDa: \xFAltima lectura hace ${min} min. Corre cada hora.` : min <= 180 ? `Hace ${min} min. Corre cada hora, as\xED que una corrida se salte\xF3.` : `Hace ${min} min y deber\xEDa correr cada hora: la ingesta est\xE1 cortada.`
+        },
+        webhook: {
+          eventos: estado.webhook_eventos,
+          ultimo: estado.webhook_ultimo,
+          conectado: Number(estado.webhook_eventos) > 0,
+          lectura: Number(estado.webhook_eventos) > 0 ? `${estado.webhook_eventos} eventos recibidos.` : "Sin conectar: nunca entreg\xF3 un evento. NO significa que no haya habido cambios de etapa \u2014 los cambios llegan igual por la API, una vez por hora."
+        },
+        leads: {
+          total: estado.leads,
+          con_click_id: estado.con_click_id,
+          con_keyword: estado.con_keyword,
+          // NULL sin leads, no 0%: sin denominador el porcentaje no dice nada.
+          pct_atribuido: Number(estado.con_click_id) > 0 ? +(100 * Number(estado.con_keyword) / Number(estado.con_click_id)).toFixed(1) : null,
+          descartados: estado.descartados,
+          descartados_con_motivo: estado.descartados_con_motivo
+        },
+        etapas: {
+          en_ghl: estado.etapas_en_ghl,
+          declaradas: estado.etapas_declaradas,
+          sin_declarar: Number(estado.etapas_en_ghl) - Number(estado.etapas_declaradas),
+          lectura: Number(estado.etapas_en_ghl) > Number(estado.etapas_declaradas) ? `${Number(estado.etapas_en_ghl) - Number(estado.etapas_declaradas)} de ${estado.etapas_en_ghl} etapas no est\xE1n declaradas en funnel_stages. Si el webhook se conecta, sus eventos van a SIN_MAPEO.` : "Todas las etapas del pipeline est\xE1n declaradas.",
+          detalle: pipeline || []
+        }
+      };
+    };
+    res.json({ usa_ghl: true, cuentas: estados.map(armar) });
+  });
   app2.all("/api/cron/ghl-leads", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     if (!ghlDisponible()) return res.status(503).json({ error: "Falta GHL_API_TOKEN en el entorno" });
@@ -6316,6 +6365,23 @@ Reporte completo: ${url}`;
       for (const s2 of p?.stages || []) if (s2?.id) nombres.set(String(s2.id), String(s2.name ?? ""));
     }
     if (!nombres.size) return res.status(502).json({ error: "No se pudieron leer las etapas del pipeline", detalle: pipes.error });
+    const etapasFilas = [];
+    for (const p of pipes.cuerpo?.pipelines || []) {
+      (p?.stages || []).forEach((s2, i) => {
+        if (s2?.name) etapasFilas.push({
+          account: cuenta,
+          pipeline: String(p?.name ?? "sin nombre"),
+          orden: i + 1,
+          etapa: String(s2.name),
+          etapa_id: s2?.id ? String(s2.id) : null,
+          capturado_el: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      });
+    }
+    if (etapasFilas.length) {
+      const { error: eEtapas } = await supabase.from("ghl_pipeline_etapas").upsert(etapasFilas, { onConflict: "account,pipeline,etapa" });
+      if (eEtapas) console.error("[ghl-leads] no pude guardar las etapas: " + eEtapas.message);
+    }
     const nombreEtapa = (id) => nombres.get(String(id)) ?? null;
     const porContacto = /* @__PURE__ */ new Map();
     let cursor;

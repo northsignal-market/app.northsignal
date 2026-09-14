@@ -84,6 +84,8 @@ export function Sistema() {
   const { nombres: nombresCuentas, moneda } = useCuentas();
   const { actionables } = useAppStore();
   const [latidos, setLatidos] = useState<any[]>([]);
+  const [ghl, setGhl] = useState<any>(null);
+  const [ghlFalla, setGhlFalla] = useState<string | null>(null);
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
   // /api/salud-sistema devuelve `v_salud_sistema`: el UNION ALL de las
@@ -216,6 +218,13 @@ export function Sistema() {
     });
     fetchJSON<any[]>('/api/alertas', []).then(d => setAlertas(Array.isArray(d) ? d : []));
     fetchJSON<any[]>('/api/tickets', []).then(d => setTickets(Array.isArray(d) ? d : []));
+    // Con pedirJSON y no fetchJSON: si esta consulta falla, el panel tiene que
+    // DECIRLO. Un panel de "está conectado" que desaparece en silencio cuando no
+    // pudo preguntar es peor que no tenerlo — se lee como que no hay nada que ver.
+    setGhlFalla(null);
+    pedirJSON<any>('/api/ghl/estado')
+      .then(d => setGhl(d))
+      .catch(e => { setGhl(null); setGhlFalla(motivoFallo(e)); });
     fetchJSON<any>('/api/coherencia', null).then(d => d && setCoherencia(d));
     cargarPoliticas();
     fetchJSON<any>('/api/aprendido', null).then(d => setAprendido(d));
@@ -657,6 +666,88 @@ export function Sistema() {
               </table>
             </div>
           </div>
+
+          {/* CONEXIÓN CON EL CRM.
+              Tres decisiones, y las tres son para que el panel no mienta:
+              (1) los dos caminos van SEPARADOS — la API y el webhook están hoy en
+                  estados opuestos y un solo semáforo los aplastaría;
+              (2) no dice "en vivo": dice de cuándo es el dato, porque la ingesta
+                  es horaria y un dato de hace 50 minutos presentado como actual es
+                  la mentira verosímil de siempre;
+              (3) las etapas SIN DECLARAR se muestran aunque tengan cero leads: son
+                  las que mandarían sus eventos a SIN_MAPEO si el webhook arranca. */}
+          {ghlFalla && <Fallo que="el estado de GoHighLevel" motivo={ghlFalla} onReintentar={cargarTodo} />}
+          {ghl?.usa_ghl && (ghl.cuentas || []).map((g: any) => (
+            <div key={g.cuenta} id={`crm-${g.cuenta}`} data-toc={`CRM · ${g.cuenta}`} data-grupo="g-salud"
+                 className="p-5 rounded-2xl space-y-3"
+                 style={{ backgroundColor: 'transparent', border: `1px solid ${g.api?.al_dia ? 'var(--border)' : 'var(--bad)'}` }}>
+              <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <h2 className="text-[15px] font-medium text-[#EDEFF3]">CRM · {g.cuenta} <span className="opacity-50 font-normal">GoHighLevel</span></h2>
+                <span className="text-[11px] tabular text-[#F5F7FA] opacity-70">
+                  {g.api?.minutos_desde != null ? `dato de hace ${g.api.minutos_desde} min` : 'sin ingesta'}
+                </span>
+              </div>
+
+              {/* Los dos caminos. Nunca un solo verde. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.api?.al_dia ? '#4ADE80' : 'var(--bad)' }} />
+                    <span className="text-xs font-medium text-[#EDEFF3]">Lectura por API</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-60 ml-auto">cada hora</span>
+                  </div>
+                  <p className="text-[11px] text-[#F5F7FA] opacity-70 leading-relaxed">{g.api?.lectura}</p>
+                </div>
+                <div className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.webhook?.conectado ? '#4ADE80' : 'var(--border-strong)' }} />
+                    <span className="text-xs font-medium text-[#EDEFF3]">Webhook</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-60 ml-auto">al momento</span>
+                  </div>
+                  <p className="text-[11px] text-[#F5F7FA] opacity-70 leading-relaxed">{g.webhook?.lectura}</p>
+                </div>
+              </div>
+
+              {/* Los números, con su denominador. pct_atribuido es sobre los que
+                  TUVIERON clic, no sobre todos los leads: un lead orgánico sin
+                  keyword no es una falla de atribución. */}
+              <div className="flex flex-wrap gap-4 text-xs px-1">
+                <span className="text-[#F5F7FA]"><span className="text-[#EDEFF3] font-medium tabular">{g.leads?.total ?? '—'}</span> leads</span>
+                <span className="text-[#F5F7FA]"><span className="text-[#EDEFF3] font-medium tabular">{g.leads?.con_click_id ?? '—'}</span> con clic</span>
+                <span className="text-[#F5F7FA]">
+                  <span className="text-[#EDEFF3] font-medium tabular">{g.leads?.pct_atribuido != null ? `${g.leads.pct_atribuido}%` : '—'}</span> con keyword
+                  <span className="opacity-50"> (de los que tuvieron clic)</span>
+                </span>
+                <span className="text-[#F5F7FA]">
+                  <span className="text-[#EDEFF3] font-medium tabular">{g.leads?.descartados_con_motivo ?? '—'}/{g.leads?.descartados ?? '—'}</span> descartes con motivo
+                </span>
+              </div>
+
+              {/* EL RIESGO. Una etapa sin declarar manda sus eventos a SIN_MAPEO. */}
+              {g.etapas?.sin_declarar > 0 && (
+                <p className="text-[11px] leading-relaxed px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', color: '#fca5a5' }}>
+                  {g.etapas.lectura}
+                </p>
+              )}
+
+              <div className="space-y-0.5">
+                {(g.etapas?.detalle || []).map((e: any) => (
+                  <div key={e.etapa} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
+                    <span className="w-5 text-[10px] tabular text-[#F5F7FA] opacity-50 shrink-0">{e.orden}</span>
+                    <span className="flex-1 truncate text-[#F5F7FA]">{e.etapa}</span>
+                    {/* Declarada o no: es lo que decide si el webhook la entiende. */}
+                    <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ color: e.declarada ? '#4ADE80' : '#fca5a5', backgroundColor: 'var(--surface-1)' }}>
+                      {e.declarada ? `declarada${e.valor != null ? ` · ${e.valor} ${e.moneda ?? ''}` : ''}` : 'SIN DECLARAR'}
+                    </span>
+                    <span className="w-24 text-right text-[11px] tabular text-[#F5F7FA] opacity-70 shrink-0">
+                      {Number(e.leads) > 0 ? `${e.leads} lead${Number(e.leads) === 1 ? '' : 's'}` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
 
           {/* Webhook health */}
           <div id="webhooks" data-toc="Webhooks" data-grupo="g-salud" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>

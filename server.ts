@@ -4896,6 +4896,78 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
    *  - El descarte se deriva de la ETAPA: los descartados tienen status 'open'.
    *  - Un dato que no se pudo leer va NULL, nunca a un valor por defecto.
    */
+  /**
+   * EL ESTADO DE GOHIGHLEVEL, PARA EL PANEL.
+   *
+   * Devuelve los DOS caminos por separado —la API y el webhook— porque hoy están
+   * en estados opuestos y un solo semáforo los aplastaría. Y devuelve los minutos
+   * desde la última ingesta en vez de un "en vivo": la ingesta es horaria, y un
+   * dato de hace 50 minutos presentado como actual es la clase de mentira
+   * verosímil que este sistema existe para cazar.
+   */
+  app.get("/api/ghl/estado", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    // `client` es opcional: el panel de Sistema es global y no tiene selector de
+    // cuenta, asi que sin el devuelve todas las que usan GHL. Hoy es una sola,
+    // pero cablear "BHI" acá sería inventar que siempre va a ser una sola.
+    const cuenta = String(req.query.client || '');
+    let q = supabase.from('v_ghl_estado').select('*');
+    if (cuenta) q = q.eq('account', cuenta);
+    const { data: estados, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    // Ninguna cuenta con GHL no es un error: es que ninguna lo usa todavía.
+    if (!estados?.length) return res.json({ cuentas: [], usa_ghl: false });
+
+    const { data: pipelines } = await supabase.from('v_ghl_pipeline').select('*').order('orden');
+    const armar = (estado: any) => {
+      const pipeline = (pipelines || []).filter((p: any) => p.account === estado.account);
+
+      const min = estado.api_minutos_desde;
+      return {
+      cuenta: estado.account, usa_ghl: true,
+      api: {
+        ultima_ingesta: estado.api_ultima_ingesta,
+        minutos_desde: min,
+        // El veredicto sale de comparar contra la tolerancia declarada, no de un
+        // umbral inventado acá. Si la cadencia cambia, esto la sigue sola.
+        al_dia: min != null && min <= 180,
+        lectura: min == null ? 'La ingesta nunca corrió.'
+               : min <= 70   ? `Al día: última lectura hace ${min} min. Corre cada hora.`
+               : min <= 180  ? `Hace ${min} min. Corre cada hora, así que una corrida se salteó.`
+               : `Hace ${min} min y debería correr cada hora: la ingesta está cortada.`,
+      },
+      webhook: {
+        eventos: estado.webhook_eventos,
+        ultimo: estado.webhook_ultimo,
+        conectado: Number(estado.webhook_eventos) > 0,
+        lectura: Number(estado.webhook_eventos) > 0
+          ? `${estado.webhook_eventos} eventos recibidos.`
+          : 'Sin conectar: nunca entregó un evento. NO significa que no haya habido cambios de etapa — los cambios llegan igual por la API, una vez por hora.',
+      },
+      leads: {
+        total: estado.leads,
+        con_click_id: estado.con_click_id,
+        con_keyword: estado.con_keyword,
+        // NULL sin leads, no 0%: sin denominador el porcentaje no dice nada.
+        pct_atribuido: Number(estado.con_click_id) > 0
+          ? +((100 * Number(estado.con_keyword)) / Number(estado.con_click_id)).toFixed(1) : null,
+        descartados: estado.descartados,
+        descartados_con_motivo: estado.descartados_con_motivo,
+      },
+      etapas: {
+        en_ghl: estado.etapas_en_ghl,
+        declaradas: estado.etapas_declaradas,
+        sin_declarar: Number(estado.etapas_en_ghl) - Number(estado.etapas_declaradas),
+        lectura: Number(estado.etapas_en_ghl) > Number(estado.etapas_declaradas)
+          ? `${Number(estado.etapas_en_ghl) - Number(estado.etapas_declaradas)} de ${estado.etapas_en_ghl} etapas no están declaradas en funnel_stages. Si el webhook se conecta, sus eventos van a SIN_MAPEO.`
+          : 'Todas las etapas del pipeline están declaradas.',
+        detalle: pipeline || [],
+      },
+      };
+    };
+    res.json({ usa_ghl: true, cuentas: estados.map(armar) });
+  });
+
   app.all("/api/cron/ghl-leads", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     if (!ghlDisponible()) return res.status(503).json({ error: 'Falta GHL_API_TOKEN en el entorno' });
@@ -4912,6 +4984,26 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       for (const s of (p?.stages || [])) if (s?.id) nombres.set(String(s.id), String(s.name ?? ''));
     }
     if (!nombres.size) return res.status(502).json({ error: 'No se pudieron leer las etapas del pipeline', detalle: pipes.error });
+
+    // Las etapas se GUARDAN, no se derivan de los leads: una etapa vacía no
+    // aparecería en ghl_leads, y son justo las vacías las que revelan el riesgo.
+    // "Cerrado Perdido" tiene cero leads hoy y no está declarada — si el webhook
+    // se conecta, sus eventos caen en SIN_MAPEO sin que nadie lo vea venir.
+    const etapasFilas: any[] = [];
+    for (const p of (pipes.cuerpo?.pipelines || [])) {
+      (p?.stages || []).forEach((s: any, i: number) => {
+        if (s?.name) etapasFilas.push({
+          account: cuenta, pipeline: String(p?.name ?? 'sin nombre'),
+          orden: i + 1, etapa: String(s.name), etapa_id: s?.id ? String(s.id) : null,
+          capturado_el: new Date().toISOString(),
+        });
+      });
+    }
+    if (etapasFilas.length) {
+      const { error: eEtapas } = await supabase.from('ghl_pipeline_etapas')
+        .upsert(etapasFilas, { onConflict: 'account,pipeline,etapa' });
+      if (eEtapas) console.error('[ghl-leads] no pude guardar las etapas: ' + eEtapas.message);
+    }
     const nombreEtapa = (id: unknown) => nombres.get(String(id)) ?? null;
 
     // Los contactos, indexados por id: ahí viven los campos personalizados con
