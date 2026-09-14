@@ -1,7 +1,7 @@
 import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
-import { PageShell, fetchJSON, fmtFechaCorta, Titular } from './ui';
+import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
 
@@ -56,7 +56,7 @@ function GrupoSistema({ id, label, ayuda, n, children }: {
 }
 
 export function Sistema() {
-  const { nombres: nombresCuentas } = useCuentas();
+  const { nombres: nombresCuentas, moneda } = useCuentas();
   const { actionables } = useAppStore();
   const [latidos, setLatidos] = useState<any[]>([]);
   const [healthData, setHealthData] = useState<any>(null);
@@ -224,6 +224,31 @@ export function Sistema() {
   const tScorecard = useTope(healthData?.runScorecard || []);
   const tReconciliador = useTope(coherencia.reconciliaciones || []);
   const tCambios = useTope(healthData?.cambiosDetectados || []);
+
+  // v_integridad_datos trae una fila por cuenta Y semana: la tabla semanal guarda
+  // 91 días, o sea unas 13 semanas por cuenta. El panel muestra la semana más
+  // reciente de cada una y cuenta aparte las anteriores que no dieron OK, para que
+  // un descuadre viejo no quede tapado por una semana nueva que sí cuadra — lo que
+  // pide acción no se esconde, solo se resume.
+  const integridad = React.useMemo(() => {
+    const filas: any[] = healthData?.integridadDatos || [];
+    const porCuenta = new Map<string, { fila: any; previasConAlerta: number }>();
+    for (const f of filas) {
+      const acc = String(f.account ?? '');
+      const actual = porCuenta.get(acc);
+      if (!actual) { porCuenta.set(acc, { fila: f, previasConAlerta: 0 }); continue; }
+      const esMasNueva = String(f.week_start ?? '') > String(actual.fila.week_start ?? '');
+      const desplazada = esMasNueva ? actual.fila : f;
+      porCuenta.set(acc, {
+        fila: esMasNueva ? f : actual.fila,
+        previasConAlerta: actual.previasConAlerta + (desplazada.diagnostico && desplazada.diagnostico !== 'OK' ? 1 : 0),
+      });
+    }
+    return [...porCuenta.values()].sort((a, b) => String(a.fila.account).localeCompare(String(b.fila.account)));
+  }, [healthData?.integridadDatos]);
+  const integridadFaltan: string[] = healthData?.integridadDatosFaltan || [];
+  const integridadFalla: string | null = healthData?.integridadDatosFalla || null;
+
   const verMas = (t: { resto: number; abrir: () => void }, frase: string) =>
     t.resto > 0 ? <button onClick={t.abrir} className="text-[11px] text-[#4D9DFF] hover:opacity-80 pt-0.5 text-left">{frase}</button> : null;
 
@@ -492,31 +517,76 @@ export function Sistema() {
             <h2 className="text-[15px] font-medium text-[#EDEFF3] pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
               Integridad de datos
             </h2>
+            <p className="text-[11px] text-[#F5F7FA] opacity-50">
+              El gasto de una misma semana, sumado por campaña, por grupo y por keyword. Deberían coincidir: si no,
+              la extracción truncó o faltan filas. Una diferencia chica contra keywords es normal — Display y PMax
+              gastan sin tener keywords, así que no aparecen en esa tabla.
+            </p>
+            {integridadFaltan.length > 0 && (
+              <p className="text-[11px] text-[#4D9DFF]">
+                La vista dejó de traer {integridadFaltan.join(', ')}. Esas columnas van en blanco: el panel no las inventa.
+              </p>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr style={{ backgroundColor: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                     <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Cuenta</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Campañas</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Keywords</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Filas Search Terms</th>
-                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Integridad</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Semana</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Gasto campañas</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Gasto grupos</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Gasto keywords</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Dif. vs grupo</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3] text-right">Dif. vs keyword</th>
+                    <th className="py-2.5 px-3 font-semibold text-[#EDEFF3]">Diagnóstico</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(healthData?.integridadDatos || []).map((r: any, idx: number) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
-                      <td className="py-2.5 px-3 font-bold text-[#EDEFF3]">{r.account}</td>
-                      <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.campanas_count || r.filas_campanas || 0}</td>
-                      <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.keywords_count || r.filas_keywords || 0}</td>
-                      <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{r.search_terms_count || r.filas_search_terms || 0}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white/10 text-[#EDEFF3]">
-                          {r.estado || 'Consistente'}
-                        </span>
+                  {integridad.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-3 px-3 text-[#F5F7FA] opacity-50 italic">
+                        {integridadFalla
+                          ? `La consulta falló: ${integridadFalla}`
+                          : 'La vista no devolvió filas, que no es lo mismo que "todo cuadra".'}
                       </td>
                     </tr>
-                  ))}
+                  ) : integridad.map(({ fila: r, previasConAlerta }) => {
+                    const m = moneda(r.account);
+                    const ok = r.diagnostico === 'OK';
+                    // 'REVISAR: el gasto por grupo no cuadra…' → rótulo corto + la explicación debajo.
+                    const [rotulo, ...explicacion] = String(r.diagnostico ?? '').split(':');
+                    return (
+                      <tr key={r.account} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/5">
+                        <td className="py-2.5 px-3 font-bold text-[#EDEFF3]">{r.account}</td>
+                        <td className="py-2.5 px-3 tabular text-[#F5F7FA] opacity-80">{fmtFechaCorta(r.week_start)}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{fmtMoneda(r.cost_campaign, m)}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{fmtMoneda(r.cost_adgroup, m)}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{fmtMoneda(r.cost_keywords, m)}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{fmtMoneda(r.dif_campana_vs_grupo, m)}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-[#F5F7FA] opacity-80">{fmtMoneda(r.dif_campana_vs_keyword, m)}</td>
+                        <td className="py-2.5 px-3">
+                          {r.diagnostico == null ? (
+                            <span className="text-[#F5F7FA] opacity-50" title="La vista no trajo diagnóstico. Sin veredicto no hay veredicto: no se lee como OK.">—</span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
+                              ok ? 'bg-white/10 text-[#EDEFF3]' : 'border-l-2 border-[#0062CC] bg-[#0062CC]/15 text-[#EDEFF3]'
+                            }`}>
+                              {ok ? <Check size={12} /> : <AlertCircle size={12} className="text-[#4D9DFF]" />}
+                              <span>{rotulo}</span>
+                            </span>
+                          )}
+                          {explicacion.length > 0 && (
+                            <span className="block text-[11px] text-[#F5F7FA] opacity-60 pt-0.5">{explicacion.join(':').trim()}</span>
+                          )}
+                          {previasConAlerta > 0 && (
+                            <span className="block text-[11px] text-[#4D9DFF] pt-0.5">
+                              {previasConAlerta === 1 ? '1 semana anterior sin cuadrar' : `${previasConAlerta} semanas anteriores sin cuadrar`}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -211,13 +211,30 @@ export function createApp() {
 
 
 
+  // Las columnas que el panel de Integridad dibuja. El panel mostró "0 filas /
+  // Consistente" para las cuatro cuentas hasta el 13 sep 2026 porque leía nombres
+  // (campanas_count, keywords_count, search_terms_count, estado) que la vista
+  // nunca tuvo, y el `|| 0` de la UI convertía el hueco en un número que parecía
+  // medido. Si la vista vuelve a cambiar de forma, esto lo dice en la pantalla en
+  // vez de dejar que el próximo default lo tape.
+  const COLUMNAS_INTEGRIDAD = ['account', 'week_start', 'cost_campaign', 'cost_adgroup',
+    'cost_keywords', 'dif_campana_vs_grupo', 'dif_campana_vs_keyword', 'diagnostico'];
+
+  /** Columnas que el consumidor espera y la vista no trajo. Sin filas no se puede
+   *  saber, y no saber se devuelve vacío, no como ausencia. */
+  function columnasFaltantes(filas: any[] | null | undefined, esperadas: string[]): string[] {
+    if (!filas || !filas.length) return [];
+    return esperadas.filter(c => !(c in filas[0]));
+  }
+
   // Healthcheck & System Observability
   app.get("/api/health/system", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: 'Supabase missing' });
     try {
       const { data: dataHealth } = await supabase.from('v_data_health').select('*');
       const { data: webhookHealth } = await supabase.from('v_webhook_health').select('*');
-      const { data: integridadDatos } = await supabase.from('v_integridad_datos').select('*');
+      const { data: integridadDatos, error: errIntegridad } = await supabase
+        .from('v_integridad_datos').select('*').order('week_start', { ascending: false });
       const { data: runScorecard } = await supabase.from('v_run_scorecard').select('*').order('run_date', { ascending: false });
       const { data: runTendencia } = await supabase.from('v_run_tendencia').select('*');
       const { data: cambiosDetectados } = await supabase.from('v_cambios_detectados').select('*').order('detectado_hasta', { ascending: false }).limit(25);
@@ -227,6 +244,8 @@ export function createApp() {
         dataHealth: dataHealth || [], 
         webhookHealth: webhookHealth || [], 
         integridadDatos: integridadDatos || [],
+        integridadDatosFalla: errIntegridad?.message || null,
+        integridadDatosFaltan: columnasFaltantes(integridadDatos, COLUMNAS_INTEGRIDAD),
         runScorecard: runScorecard || [],
         runTendencia: runTendencia || [],
         cambiosDetectados: cambiosDetectados || [],

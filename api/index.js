@@ -1951,12 +1951,26 @@ function createApp() {
     };
     next();
   });
+  const COLUMNAS_INTEGRIDAD = [
+    "account",
+    "week_start",
+    "cost_campaign",
+    "cost_adgroup",
+    "cost_keywords",
+    "dif_campana_vs_grupo",
+    "dif_campana_vs_keyword",
+    "diagnostico"
+  ];
+  function columnasFaltantes(filas, esperadas) {
+    if (!filas || !filas.length) return [];
+    return esperadas.filter((c) => !(c in filas[0]));
+  }
   app2.get("/api/health/system", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase missing" });
     try {
       const { data: dataHealth } = await supabase.from("v_data_health").select("*");
       const { data: webhookHealth } = await supabase.from("v_webhook_health").select("*");
-      const { data: integridadDatos } = await supabase.from("v_integridad_datos").select("*");
+      const { data: integridadDatos, error: errIntegridad } = await supabase.from("v_integridad_datos").select("*").order("week_start", { ascending: false });
       const { data: runScorecard } = await supabase.from("v_run_scorecard").select("*").order("run_date", { ascending: false });
       const { data: runTendencia } = await supabase.from("v_run_tendencia").select("*");
       const { data: cambiosDetectados } = await supabase.from("v_cambios_detectados").select("*").order("detectado_hasta", { ascending: false }).limit(25);
@@ -1965,6 +1979,8 @@ function createApp() {
         dataHealth: dataHealth || [],
         webhookHealth: webhookHealth || [],
         integridadDatos: integridadDatos || [],
+        integridadDatosFalla: errIntegridad?.message || null,
+        integridadDatosFaltan: columnasFaltantes(integridadDatos, COLUMNAS_INTEGRIDAD),
         runScorecard: runScorecard || [],
         runTendencia: runTendencia || [],
         cambiosDetectados: cambiosDetectados || [],
