@@ -4591,6 +4591,20 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       });
     }
 
+    // 3.bis · El diccionario id -> nombre de etapa.
+    //
+    //     Sin esto `por_etapa` devuelve UUIDs crudos y no se puede leer. Y un
+    //     UUID no se puede mapear a mano: los nombres los pone GHL.
+    const nombrePorStageId = new Map<string, string>();
+    if (pipes.ok) {
+      for (const p of (pipes.cuerpo?.pipelines || pipes.cuerpo?.data || [])) {
+        for (const s of (p?.stages || [])) {
+          if (s?.id) nombrePorStageId.set(String(s.id), String(s.name ?? '(sin nombre)'));
+        }
+      }
+    }
+    const nombreEtapa = (id: any) => nombrePorStageId.get(String(id)) ?? `(id desconocido)`;
+
     // 4 · Las oportunidades: la etapa de cada una y en qué estado quedó.
     //     `status` es donde vive el descarte (won / lost / abandoned), y es lo
     //     que distingue "se cayó" de "sigue abierta".
@@ -4606,7 +4620,7 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         en_la_muestra: lista.length,
         // Nombres de etapa y estados: configuración y enums, no datos de personas.
         por_estado: cuenta((o: any) => o?.status),
-        por_etapa: cuenta((o: any) => o?.pipelineStageName ?? o?.stageName ?? o?.pipelineStageId),
+        por_etapa: cuenta((o: any) => o?.pipelineStageName ?? o?.stageName ?? nombreEtapa(o?.pipelineStageId)),
         // ¿Trae motivo de descarte en algún campo propio, sin abrir las notas?
         campos_de_motivo: lista.length
           ? Object.keys(lista[0] || {}).filter((k) => /reason|motivo|lost|disqualif|descart/i.test(k))
@@ -4615,9 +4629,71 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       });
     }
 
+    // 5 · LO QUE FALTABA: los descartados, y si el gclid llega.
+    //
+    //     La muestra por defecto vino sesgada (19 open, 1 won, cero perdidas) y
+    //     con 3 contactos sin gclid. Con 3 no se puede saber si el formulario no
+    //     captura el click id o si esos tres eran viejos — y las dos cosas llevan
+    //     a acciones opuestas. Acá se pregunta dirigido.
+    const idsDeDescarte = [...nombrePorStageId.entries()]
+      .filter(([, nombre]) => /descart|perdid|lost|no calific/i.test(nombre))
+      .map(([id, nombre]) => ({ id, nombre }));
+
+    pasos.push({ paso: 'columnas de descarte encontradas', columnas: idsDeDescarte.map((x) => x.nombre) });
+
+    for (const { id, nombre } of idsDeDescarte) {
+      const r = await ghlGet('/opportunities/search', { location_id: locationId, pipelineStageId: id, limit: '20' });
+      const lista = r.ok ? (r.cuerpo?.opportunities || r.cuerpo?.data || []) : [];
+      pasos.push({
+        paso: `descarte · ${nombre}`,
+        ok: r.ok, status: r.status, error: r.ok ? undefined : r.error,
+        total_declarado: r.ok ? (r.cuerpo?.meta?.total ?? null) : null,
+        en_la_muestra: lista.length,
+        // ¿Viene el motivo estructurado, y cuántos lo tienen?
+        con_lost_reason: lista.filter((o: any) => o?.lostReasonId).length,
+        campos_presentes: lista.length ? Object.keys(lista[0] || {}) : [],
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : [],
+      });
+    }
+
+    // Los motivos de descarte, si GHL los expone como catálogo. Si están, el
+    // "por qué se cayó" sale sin leer una sola nota — mejor que lo planeado.
+    for (const ruta of ['/opportunities/pipelines/lost-reasons', '/locations/' + locationId + '/lost-reasons']) {
+      const r = await ghlGet(ruta, { locationId });
+      pasos.push({
+        paso: `catálogo de motivos · ${ruta}`,
+        ok: r.ok, status: r.status, error: r.ok ? undefined : r.error,
+        // Los motivos son configuración de la cuenta, no datos de una persona.
+        motivos: r.ok ? (r.cuerpo?.lostReasons || r.cuerpo?.data || r.cuerpo || null) : undefined,
+      });
+      if (r.ok) break;
+    }
+
+    // ¿Llega el gclid? Muestra grande y RECIENTE, que es donde tendría que estar.
+    const muchos = await ghlGet('/contacts/', { locationId, limit: '100' });
+    if (muchos.ok) {
+      const lista = muchos.cuerpo?.contacts || muchos.cuerpo?.data || [];
+      const conClickId = lista.filter((c: any) => rutasDeClickId(c).length > 0);
+      const rutas = new Map<string, number>();
+      for (const c of conClickId) for (const r of rutasDeClickId(c)) rutas.set(r, (rutas.get(r) || 0) + 1);
+      pasos.push({
+        paso: '¿llega el gclid?',
+        contactos_mirados: lista.length,
+        con_click_id: conClickId.length,
+        // NULL y no 0% si la muestra vino vacía: no es "ninguno trae gclid",
+        // es "no pudimos mirar". La distinción decide dónde buscar el problema.
+        pct: lista.length ? +((100 * conClickId.length) / lista.length).toFixed(1) : null,
+        rutas_donde_aparece: [...rutas.entries()].map(([r, n]) => `${r} (${n})`),
+        con_attributions: lista.filter((c: any) => Array.isArray(c?.attributions) && c.attributions.length).length,
+        // Las claves de attributions dicen si GHL guarda el origen del clic.
+        claves_de_attributions: lista.find((c: any) => c?.attributions?.[0])
+          ? Object.keys(lista.find((c: any) => c?.attributions?.[0]).attributions[0]) : [],
+      });
+    }
+
     res.json({
       cuenta, location_id: locationId,
-      aviso: 'Formas y conteos solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
+      aviso: 'Formas, conteos y nombres de configuración solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
       pasos,
     });
   });

@@ -5972,6 +5972,15 @@ Reporte completo: ${url}`;
         nota: "Comparar contra funnel_stages de BHI: hoy declara 4 (Envio de formulario, Asesoria Agendada, Asesoria Realizada, Cliente Activo). Toda columna de ac\xE1 que NO est\xE9 ah\xED es una etapa que el webhook va a mandar a SIN_MAPEO."
       });
     }
+    const nombrePorStageId = /* @__PURE__ */ new Map();
+    if (pipes.ok) {
+      for (const p of pipes.cuerpo?.pipelines || pipes.cuerpo?.data || []) {
+        for (const s2 of p?.stages || []) {
+          if (s2?.id) nombrePorStageId.set(String(s2.id), String(s2.name ?? "(sin nombre)"));
+        }
+      }
+    }
+    const nombreEtapa = (id) => nombrePorStageId.get(String(id)) ?? `(id desconocido)`;
     const opos = anotar("oportunidades", await ghlGet("/opportunities/search", { location_id: locationId, limit: "20" }));
     if (opos.ok) {
       const lista = opos.cuerpo?.opportunities || opos.cuerpo?.data || [];
@@ -5985,16 +5994,65 @@ Reporte completo: ${url}`;
         en_la_muestra: lista.length,
         // Nombres de etapa y estados: configuración y enums, no datos de personas.
         por_estado: cuenta2((o) => o?.status),
-        por_etapa: cuenta2((o) => o?.pipelineStageName ?? o?.stageName ?? o?.pipelineStageId),
+        por_etapa: cuenta2((o) => o?.pipelineStageName ?? o?.stageName ?? nombreEtapa(o?.pipelineStageId)),
         // ¿Trae motivo de descarte en algún campo propio, sin abrir las notas?
         campos_de_motivo: lista.length ? Object.keys(lista[0] || {}).filter((k) => /reason|motivo|lost|disqualif|descart/i.test(k)) : [],
         rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : []
       });
     }
+    const idsDeDescarte = [...nombrePorStageId.entries()].filter(([, nombre]) => /descart|perdid|lost|no calific/i.test(nombre)).map(([id, nombre]) => ({ id, nombre }));
+    pasos.push({ paso: "columnas de descarte encontradas", columnas: idsDeDescarte.map((x) => x.nombre) });
+    for (const { id, nombre } of idsDeDescarte) {
+      const r = await ghlGet("/opportunities/search", { location_id: locationId, pipelineStageId: id, limit: "20" });
+      const lista = r.ok ? r.cuerpo?.opportunities || r.cuerpo?.data || [] : [];
+      pasos.push({
+        paso: `descarte \xB7 ${nombre}`,
+        ok: r.ok,
+        status: r.status,
+        error: r.ok ? void 0 : r.error,
+        total_declarado: r.ok ? r.cuerpo?.meta?.total ?? null : null,
+        en_la_muestra: lista.length,
+        // ¿Viene el motivo estructurado, y cuántos lo tienen?
+        con_lost_reason: lista.filter((o) => o?.lostReasonId).length,
+        campos_presentes: lista.length ? Object.keys(lista[0] || {}) : [],
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : []
+      });
+    }
+    for (const ruta of ["/opportunities/pipelines/lost-reasons", "/locations/" + locationId + "/lost-reasons"]) {
+      const r = await ghlGet(ruta, { locationId });
+      pasos.push({
+        paso: `cat\xE1logo de motivos \xB7 ${ruta}`,
+        ok: r.ok,
+        status: r.status,
+        error: r.ok ? void 0 : r.error,
+        // Los motivos son configuración de la cuenta, no datos de una persona.
+        motivos: r.ok ? r.cuerpo?.lostReasons || r.cuerpo?.data || r.cuerpo || null : void 0
+      });
+      if (r.ok) break;
+    }
+    const muchos = await ghlGet("/contacts/", { locationId, limit: "100" });
+    if (muchos.ok) {
+      const lista = muchos.cuerpo?.contacts || muchos.cuerpo?.data || [];
+      const conClickId = lista.filter((c) => rutasDeClickId(c).length > 0);
+      const rutas = /* @__PURE__ */ new Map();
+      for (const c of conClickId) for (const r of rutasDeClickId(c)) rutas.set(r, (rutas.get(r) || 0) + 1);
+      pasos.push({
+        paso: "\xBFllega el gclid?",
+        contactos_mirados: lista.length,
+        con_click_id: conClickId.length,
+        // NULL y no 0% si la muestra vino vacía: no es "ninguno trae gclid",
+        // es "no pudimos mirar". La distinción decide dónde buscar el problema.
+        pct: lista.length ? +(100 * conClickId.length / lista.length).toFixed(1) : null,
+        rutas_donde_aparece: [...rutas.entries()].map(([r, n]) => `${r} (${n})`),
+        con_attributions: lista.filter((c) => Array.isArray(c?.attributions) && c.attributions.length).length,
+        // Las claves de attributions dicen si GHL guarda el origen del clic.
+        claves_de_attributions: lista.find((c) => c?.attributions?.[0]) ? Object.keys(lista.find((c) => c?.attributions?.[0]).attributions[0]) : []
+      });
+    }
     res.json({
       cuenta,
       location_id: locationId,
-      aviso: "Formas y conteos solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
+      aviso: "Formas, conteos y nombres de configuraci\xF3n solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
       pasos
     });
   });
