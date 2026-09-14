@@ -826,7 +826,7 @@ async function coberturaDe(account: string, desde: string, hasta: string) {
 
       const { data, error } = await supabase
         .from('true_roas_events')
-        .select('monto')
+        .select('monto, currency')
         .ilike('client', client)
         .gte('event_date', firstDay);
 
@@ -835,8 +835,26 @@ async function coberturaDe(account: string, desde: string, hasta: string) {
         return res.json({ success: true, mtd_income: 0 });
       }
 
-      const totalIncome = (data || []).reduce((acc: number, curr: any) => acc + (Number(curr.monto) || 0), 0);
-      res.json({ success: true, mtd_income: totalIncome });
+      // Igual que /api/cierres: sin moneda declarada, este número no se puede mostrar.
+      // La app formatea con la moneda de la CUENTA, y los cierres de BHI vienen en USD
+      // contra una cuenta en CLP. Devolver el número pelado era pedirle a la pantalla
+      // que mintiera con una cifra verosímil.
+      const filasRoas = data || [];
+      const porMonedaRoas = filasRoas.reduce((acc: Record<string, number>, r: any) => {
+        const m = r.currency || 'sin_moneda';
+        acc[m] = (acc[m] || 0) + (Number(r.monto) || 0);
+        return acc;
+      }, {} as Record<string, number>);
+      const monedasRoas = Object.keys(porMonedaRoas);
+      const unaMoneda = monedasRoas.length === 1 ? monedasRoas[0] : null;
+      res.json({
+        success: true,
+        mtd_income: unaMoneda ? porMonedaRoas[unaMoneda] : null,
+        moneda: unaMoneda,
+        mtd_income_por_moneda: porMonedaRoas,
+        aviso: unaMoneda || !monedasRoas.length ? null
+          : `Hay ingresos en ${monedasRoas.join(', ')}. No se suman entre sí.`,
+      });
     } catch (e: any) {
       console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
         res.status(500).json({ error: e.message });
@@ -2529,9 +2547,33 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
       if (client) q = q.eq('client', client);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      const total = (data || []).reduce((a: number, r: any) => a + Number(r.monto || 0), 0);
-      const atribuido = (data || []).filter((r: any) => r.tipo === 'atribuido').reduce((a: number, r: any) => a + Number(r.monto || 0), 0);
-      res.json({ cierres: data || [], total, atribuido, sin_atribucion: total - atribuido });
+      // Sumar montos de monedas distintas da un número que no existe. Las etapas
+      // de BHI valen en USD y la cuenta factura en CLP: el `total` pelado que había
+      // acá lo iba a mostrar la app formateado como pesos. Se suma POR MONEDA, y el
+      // total plano solo sale cuando hay una sola — con dos o más es null, porque
+      // "no se puede saber con estos datos" es preferible a un número inventado.
+      const filas = data || [];
+      const porMoneda = (pred: (r: any) => boolean) => filas.filter(pred).reduce((acc: Record<string, number>, r: any) => {
+        const m = r.currency || 'sin_moneda';
+        acc[m] = (acc[m] || 0) + Number(r.monto || 0);
+        return acc;
+      }, {} as Record<string, number>);
+      const totales = porMoneda(() => true);
+      const atribuidos = porMoneda((r: any) => r.tipo === 'atribuido');
+      const monedas = Object.keys(totales);
+      const unaSola = monedas.length === 1 ? monedas[0] : null;
+      res.json({
+        cierres: filas,
+        moneda: unaSola,
+        totales, atribuidos,
+        // Compatibles con quien ya los leía, pero null si mezclaría monedas.
+        total: unaSola ? totales[unaSola] : null,
+        atribuido: unaSola ? (atribuidos[unaSola] || 0) : null,
+        sin_atribucion: unaSola ? totales[unaSola] - (atribuidos[unaSola] || 0) : null,
+        aviso: unaSola ? null : (monedas.length
+          ? `Hay cierres en ${monedas.join(', ')}. No se suman entre sí: mirá "totales" por moneda.`
+          : null),
+      });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

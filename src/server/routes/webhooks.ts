@@ -123,6 +123,13 @@ async function registrarHecho(opts: {
           gclid: clickId,
           click_id_type: clickIdType || 'gclid',
           monto,
+          // La moneda VIAJA CON EL MONTO. Antes se quedaba en `funnel_events` y
+          // acá entraba un número pelado: las etapas de BHI valen en USD y la
+          // cuenta factura en CLP, así que la app lo iba a formatear como pesos.
+          // Un cierre de 5.599 USD mostrado como $5.599 CLP no se ve roto: se ve
+          // como una cifra. La columna es NOT NULL a propósito — un monto sin su
+          // unidad tiene que ser imposible de escribir, no solo desaconsejado.
+          currency: etapa.currency,
           event_date: fecha
         },
         { onConflict: 'client,gclid,external_id' }
@@ -137,6 +144,7 @@ async function registrarHecho(opts: {
           external_id: externalId,
           nombre_tarea: nombre,
           monto,
+          currency: etapa.currency,
           motivo: 'El registro no trae click id. El cierre existe y el monto es real, pero no se puede atribuir a un clic de Google. Cuenta para el negocio, no para el ROAS.',
           event_date: fecha
         },

@@ -619,6 +619,13 @@ async function registrarHecho(opts) {
           gclid: clickId,
           click_id_type: clickIdType || "gclid",
           monto,
+          // La moneda VIAJA CON EL MONTO. Antes se quedaba en `funnel_events` y
+          // acá entraba un número pelado: las etapas de BHI valen en USD y la
+          // cuenta factura en CLP, así que la app lo iba a formatear como pesos.
+          // Un cierre de 5.599 USD mostrado como $5.599 CLP no se ve roto: se ve
+          // como una cifra. La columna es NOT NULL a propósito — un monto sin su
+          // unidad tiene que ser imposible de escribir, no solo desaconsejado.
+          currency: etapa.currency,
           event_date: fecha2
         },
         { onConflict: "client,gclid,external_id" }
@@ -633,6 +640,7 @@ async function registrarHecho(opts) {
           external_id: externalId,
           nombre_tarea: nombre,
           monto,
+          currency: etapa.currency,
           motivo: "El registro no trae click id. El cierre existe y el monto es real, pero no se puede atribuir a un clic de Google. Cuenta para el negocio, no para el ROAS.",
           event_date: fecha2
         },
@@ -2516,13 +2524,26 @@ function createApp() {
       if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
       const today = /* @__PURE__ */ new Date();
       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
-      const { data, error } = await supabase.from("true_roas_events").select("monto").ilike("client", client).gte("event_date", firstDay);
+      const { data, error } = await supabase.from("true_roas_events").select("monto, currency").ilike("client", client).gte("event_date", firstDay);
       if (error) {
         console.error("Error fetching true-roas:", error);
         return res.json({ success: true, mtd_income: 0 });
       }
-      const totalIncome = (data || []).reduce((acc, curr) => acc + (Number(curr.monto) || 0), 0);
-      res.json({ success: true, mtd_income: totalIncome });
+      const filasRoas = data || [];
+      const porMonedaRoas = filasRoas.reduce((acc, r) => {
+        const m = r.currency || "sin_moneda";
+        acc[m] = (acc[m] || 0) + (Number(r.monto) || 0);
+        return acc;
+      }, {});
+      const monedasRoas = Object.keys(porMonedaRoas);
+      const unaMoneda = monedasRoas.length === 1 ? monedasRoas[0] : null;
+      res.json({
+        success: true,
+        mtd_income: unaMoneda ? porMonedaRoas[unaMoneda] : null,
+        moneda: unaMoneda,
+        mtd_income_por_moneda: porMonedaRoas,
+        aviso: unaMoneda || !monedasRoas.length ? null : `Hay ingresos en ${monedasRoas.join(", ")}. No se suman entre s\xED.`
+      });
     } catch (e) {
       console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
       res.status(500).json({ error: e.message });
@@ -3971,9 +3992,27 @@ ${extra}` : system,
       if (client) q = q.eq("client", client);
       const { data, error } = await q;
       if (error) return res.status(500).json({ error: error.message });
-      const total = (data || []).reduce((a, r) => a + Number(r.monto || 0), 0);
-      const atribuido = (data || []).filter((r) => r.tipo === "atribuido").reduce((a, r) => a + Number(r.monto || 0), 0);
-      res.json({ cierres: data || [], total, atribuido, sin_atribucion: total - atribuido });
+      const filas = data || [];
+      const porMoneda = (pred) => filas.filter(pred).reduce((acc, r) => {
+        const m = r.currency || "sin_moneda";
+        acc[m] = (acc[m] || 0) + Number(r.monto || 0);
+        return acc;
+      }, {});
+      const totales = porMoneda(() => true);
+      const atribuidos = porMoneda((r) => r.tipo === "atribuido");
+      const monedas = Object.keys(totales);
+      const unaSola = monedas.length === 1 ? monedas[0] : null;
+      res.json({
+        cierres: filas,
+        moneda: unaSola,
+        totales,
+        atribuidos,
+        // Compatibles con quien ya los leía, pero null si mezclaría monedas.
+        total: unaSola ? totales[unaSola] : null,
+        atribuido: unaSola ? atribuidos[unaSola] || 0 : null,
+        sin_atribucion: unaSola ? totales[unaSola] - (atribuidos[unaSola] || 0) : null,
+        aviso: unaSola ? null : monedas.length ? `Hay cierres en ${monedas.join(", ")}. No se suman entre s\xED: mir\xE1 "totales" por moneda.` : null
+      });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
