@@ -1,6 +1,6 @@
 import { useCuentaActiva, useCuentas } from '../lib/useCuentas';
 import { fmtMoneda, fmtFechaCorta, fetchJSON, Collapsible, useJSON, Tablero } from './ui';
-import { Barcode, BarraApilada100, ColumnasApiladas100, IS_COLORES } from './graficos-pulse';
+import { Barcode, BarraApilada100, ColumnasApiladas100, IS_COLORES, medianaDe } from './graficos-pulse';
 import React, { useState, useEffect, useMemo } from 'react';
 import { decision, marginal } from '../lib/humano';
 import { Clock, Lightbulb, HelpCircle, ArrowRight, ExternalLink, Target, TrendingUp, Layers, Save } from 'lucide-react';
@@ -136,6 +136,29 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const headroom = objetivos.headroom?.[0];
   const proy = objetivos.proyeccion?.[0];
 
+  // Un porcentaje ausente no es cero: Google no reporta impression share con
+  // poco volumen, y las vistas lo propagan como NULL. null = "no se midió".
+  const pctOnulo = (v: any): number | null => (v == null || v === '' || !isFinite(Number(v)) ? null : Number(v));
+  const pctTxt = (v: any) => { const n = pctOnulo(v); return n == null ? 'sin dato' : `${n}%`; };
+  // Una franja de la barra de subasta. Si Google no la reportó va null y la
+  // barra la dibuja como hueco rayado: repartirla entre las otras era pintar
+  // una barra 100% "ganado" para una campaña con impression share 62.
+  const franja = (nombre: string, v: any, color: string) => {
+    const n = pctOnulo(v);
+    return { valor: n, color, titulo: n == null ? `${nombre}: no reportado` : `${nombre} ${n}%` };
+  };
+
+  // Sin los DOS porcentajes no hay veredicto de causa. Antes era
+  // `lost_is_rank_pct > lost_is_budget_pct ? 'ranking' : 'presupuesto'`: con
+  // ambos en null, `null > null` es false y la pantalla se plantaba en
+  // "presupuesto" sin evidencia, con Math.max(0,0) imprimiendo "0%".
+  const lostRank = pctOnulo(headroom?.lost_is_rank_pct);
+  const lostBudget = pctOnulo(headroom?.lost_is_budget_pct);
+  const causaPerdido = (lostRank == null || lostBudget == null) ? null : {
+    causa: lostRank === lostBudget ? 'presupuesto y ranking por igual' : lostRank > lostBudget ? 'ranking' : 'presupuesto',
+    pct: Math.max(lostRank, lostBudget),
+  };
+
   const saveTargets = async () => {
     if (!editTargets) return;
     setSavingTargets(true);
@@ -161,22 +184,35 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   const { data: isData } = useJSON<any>(zona !== 'memoria' && zona !== 'reportes' ? `/api/is-semana?client=${activeClient}` : null, null);
   const { data: localesRkData } = useJSON<any>(zona !== 'memoria' && zona !== 'reportes' ? `/api/locales-ranking?client=${activeClient}` : null, null);
   const gruposLocales = useMemo(() => {
-    // CPA ajustado 0 = grupo sin gasto (aperturas finalizadas, regla 9 de FM):
-    // esas campañas se juzgan por el evento, no por CPA — afuera del barcode.
-    const filas: any[] = (localesRkData?.locales || []).filter((l: any) => Number(l.cpa_ajustado) > 0);
+    // El grupo se arma con TODOS los locales, no con los que sobreviven al
+    // filtro: agrupar después de filtrar hacía que un grupo de 8 con 3 sin dato
+    // se rotulara "5 locales", que es una cuenta falsa del tamaño de la manada.
+    const todos: any[] = localesRkData?.locales || [];
     const por: Record<string, any[]> = {};
-    filas.forEach(l => { const g = l.grupo_par || 'sin grupo'; (por[g] = por[g] || []).push(l); });
-    return Object.entries(por).map(([grupo, locs]) => {
-      const vals = locs.map(f => Number(f.cpa_ajustado)).filter(v => isFinite(v)).sort((a, b) => a - b);
-      const mediana = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+    todos.forEach(l => { const g = l.grupo_par || 'sin grupo'; (por[g] = por[g] || []).push(l); });
+    return Object.entries(por).map(([grupo, delGrupo]) => {
+      // Tres estados, no dos. SIN DATO (la vista no pudo calcular el CPA) no es
+      // lo mismo que SIN GASTO (cpa_ajustado 0: aperturas finalizadas, regla 9
+      // de FM, que se juzgan por el evento y no por CPA). El filtro viejo
+      // ">0" los barría juntos y el comentario solo justificaba el segundo.
+      const num = (l: any) => (l.cpa_ajustado == null || !isFinite(Number(l.cpa_ajustado)) ? null : Number(l.cpa_ajustado));
+      const sinDato = delGrupo.filter(l => num(l) == null);
+      const sinGasto = delGrupo.filter(l => { const v = num(l); return v != null && v <= 0; });
+      const locs = delGrupo.filter(l => { const v = num(l); return v != null && v > 0; });
+      const mediana = medianaDe(locs.map(f => Number(f.cpa_ajustado)).sort((a, b) => a - b));
       // Se sale de la manada el que paga bien por encima de su grupo Y cuya
       // comparación se sostiene (apto_para_recomendar de la vista bayesiana).
       const locales = locs.map(f => ({
         ...f,
         fuera: Boolean(f.apto_para_recomendar) && mediana != null && Number(f.cpa_ajustado) > mediana * 1.5,
       }));
-      return { grupo, locales, mediana, comparable: locs.some(f => f.apto_para_recomendar) };
-    }).filter(g => g.locales.length >= 2).sort((a, b) => b.locales.length - a.locales.length);
+      // Lo que quedó afuera se dice, no se descuenta del total en silencio.
+      const afuera = [
+        sinDato.length ? `${sinDato.length} sin dato de CPA` : null,
+        sinGasto.length ? `${sinGasto.length} sin gasto en las 4 semanas` : null,
+      ].filter(Boolean).join(' · ');
+      return { grupo, locales, mediana, total: delGrupo.length, afuera, comparable: locs.some(f => f.apto_para_recomendar) };
+    }).filter(g => g.locales.length >= 2).sort((a, b) => b.total - a.total);
   }, [localesRkData]);
 
   useEffect(() => {
@@ -543,7 +579,10 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
             <div className="grid grid-cols-3 gap-3 text-[11px]">
               <div><span className="opacity-60 block">Del objetivo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.pct_del_objetivo ?? '—'}%</span></div>
               <div><span className="opacity-60 block">CPA vs máximo</span><span className="text-[#EDEFF3] font-semibold tabular">{headroom.cpa_pct_del_maximo ?? '—'}%</span></div>
-              <div><span className="opacity-60 block">Perdido por {headroom.lost_is_rank_pct > headroom.lost_is_budget_pct ? 'ranking' : 'presupuesto'}</span><span className="text-[#EDEFF3] font-semibold tabular">{Math.max(headroom.lost_is_budget_pct || 0, headroom.lost_is_rank_pct || 0)}%</span></div>
+              <div title={causaPerdido ? undefined : 'Google no reportó el impression share perdido en esta ventana. Sin los dos porcentajes no se puede decir cuál pesa más: un cero acá se leería como "no se pierde nada".'}>
+                <span className="opacity-60 block">{causaPerdido ? `Perdido por ${causaPerdido.causa}` : 'Perdido por presupuesto o ranking'}</span>
+                <span className="text-[#EDEFF3] font-semibold tabular">{causaPerdido ? `${causaPerdido.pct}%` : '—'}</span>
+              </div>
             </div>
             {headroom.objetivos_provisionales && (
               <p className="text-[11px] text-[#F5F7FA] opacity-60 flex items-center gap-1.5"><Clock size={11} /> Objetivos provisionales: pendiente confirmar con el cliente qué CPA tolera el negocio al volumen que quiere.</p>
@@ -568,13 +607,12 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
             {isData.campanas.filter((c: any) => Number(c.impr_share) > 0).map((c: any) => (
               <div key={c.campaign} className="grid grid-cols-[minmax(120px,220px)_minmax(0,1fr)_auto] items-center gap-3">
                 <span className="text-xs text-[#F5F7FA] truncate" title={c.campaign}>{c.campaign}</span>
-                <BarraApilada100 partes={[
-                  { valor: Number(c.impr_share) || 0, color: IS_COLORES.ganado, titulo: `ganado ${c.impr_share}%` },
-                  { valor: Number(c.lost_is_budget) || 0, color: IS_COLORES.budget, titulo: `perdido por presupuesto ${c.lost_is_budget}%` },
-                  { valor: Number(c.lost_is_rank) || 0, color: IS_COLORES.rank, titulo: `perdido por ranking ${c.lost_is_rank}%` },
-                ]} />
+                <BarraApilada100 partes={[franja('ganado', c.impr_share, IS_COLORES.ganado), franja('perdido por presupuesto', c.lost_is_budget, IS_COLORES.budget), franja('perdido por ranking', c.lost_is_rank, IS_COLORES.rank)]} />
                 <span className="text-[11px] tabular text-right whitespace-nowrap" style={{ color: '#ADADAD' }}>
                   <span className="text-[#EDEFF3]">{Math.round(Number(c.impr_share))}%</span> ganado
+                  {(pctOnulo(c.lost_is_budget) == null || pctOnulo(c.lost_is_rank) == null) && (
+                    <span title="Google no reporta el impression share perdido cuando el volumen es bajo. El resto de la barra no está medido: no se sabe si se perdió por plata o por calidad."> · resto sin dato</span>
+                  )}
                 </span>
               </div>
             ))}
@@ -584,11 +622,11 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               <p className="text-[11px] mb-1.5" style={{ color: '#ADADAD', letterSpacing: '0.3px' }}>La evolución, semana a semana</p>
               <ColumnasApiladas100 semanas={(isData.semanas || []).filter((s: any) => s.impr_share_promedio != null).map((s: any) => ({
                 etiqueta: fmtFechaCorta(s.week_start),
-                titulo: `semana del ${fmtFechaCorta(s.week_start)}: ganó ${s.impr_share_promedio}% · presupuesto ${s.perdido_presupuesto ?? '—'}% · ranking ${s.perdido_ranking ?? '—'}%`,
+                titulo: `semana del ${fmtFechaCorta(s.week_start)}: ganó ${pctTxt(s.impr_share_promedio)} · presupuesto ${pctTxt(s.perdido_presupuesto)} · ranking ${pctTxt(s.perdido_ranking)}`,
                 partes: [
-                  { valor: Number(s.impr_share_promedio) || 0, color: IS_COLORES.ganado },
-                  { valor: Number(s.perdido_presupuesto) || 0, color: IS_COLORES.budget },
-                  { valor: Number(s.perdido_ranking) || 0, color: IS_COLORES.rank },
+                  { valor: pctOnulo(s.impr_share_promedio), color: IS_COLORES.ganado },
+                  { valor: pctOnulo(s.perdido_presupuesto), color: IS_COLORES.budget },
+                  { valor: pctOnulo(s.perdido_ranking), color: IS_COLORES.rank },
                 ],
               }))} />
             </div>
@@ -597,6 +635,13 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.ganado }} /> ganado</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.budget }} /> perdido por presupuesto</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: IS_COLORES.rank }} /> perdido por ranking</span>
+            {/* El rayado solo aparece si alguna fila lo tiene: una referencia a
+                "sin dato" en una pantalla sin huecos es ruido. */}
+            {isData.campanas.some((c: any) => pctOnulo(c.lost_is_budget) == null || pctOnulo(c.lost_is_rank) == null) && (
+              <span className="flex items-center gap-1.5" title="Google no reporta impression share perdido con poco volumen. Ese tramo no está medido: no es cero.">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(245,247,250,0.20) 0 3px, rgba(245,247,250,0.05) 3px 6px)' }} /> sin dato
+              </span>
+            )}
             {isData.semana && <span className="ml-auto tabular">campañas: semana del {fmtFechaCorta(isData.semana)}</span>}
           </div>
         </div>
@@ -618,7 +663,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               return (
                 <div key={g.grupo} className={g.comparable ? '' : 'opacity-55'}>
                   <div className="flex items-baseline justify-between gap-3 mb-1">
-                    <span className="text-xs text-[#EDEFF3]">{g.grupo} <span className="tabular" style={{ color: '#ADADAD' }}>· {g.locales.length} local{g.locales.length !== 1 ? 'es' : ''}</span></span>
+                    <span className="text-xs text-[#EDEFF3]">{g.grupo} <span className="tabular" style={{ color: '#ADADAD' }}>· {g.total} local{g.total !== 1 ? 'es' : ''}{g.afuera ? `, ${g.locales.length} en el gráfico` : ''}</span></span>
                     {fuera.length > 0 && (
                       <span className="text-[11px] truncate" style={{ color: 'var(--acc-cyan)' }} title={fuera.map((l: any) => `${l.local} ${fmtMoney(l.cpa_ajustado)}`).join(' · ')}>
                         {fuera.map((l: any) => l.local).join(' · ')}
@@ -634,6 +679,12 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                       titulo: `${l.local} · CPA ajustado ${fmtMoney(l.cpa_ajustado)} · ${l.conv_4sem} conv y ${fmtMoney(l.gasto_4sem)} en 4 semanas${l.apto_para_recomendar ? '' : ` · ${l.lectura}`}`,
                     }))}
                   />
+                  {/* Lo que quedó afuera del eje se nombra: un local sin CPA
+                      calculable no es un local barato, y tampoco entra a la
+                      mediana que decide quién se salió de la manada. */}
+                  {g.afuera && (
+                    <p className="text-[10px] mt-1" style={{ color: '#ADADAD' }}>Afuera del gráfico: {g.afuera}.</p>
+                  )}
                   {!g.comparable && g.locales[0]?.lectura && (
                     <p className="text-[10px] mt-1" style={{ color: '#ADADAD' }}>{g.locales[0].lectura}</p>
                   )}
@@ -749,7 +800,13 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
             {[['CTR esperado', limitada.pct_gasto_ctr_bajo, 'Titulares más directos o concordancia más cerrada'], ['Relevancia del anuncio', limitada.pct_gasto_rel_baja, 'Anuncios que repitan la keyword'], ['Landing', limitada.pct_gasto_lp_baja, 'Solo el cliente puede cambiarla']].map(([n, v, r]) => (
               <div key={String(n)} className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)' }}>
                 <div className="text-[10px] text-[#F5F7FA] opacity-50">{n}</div>
-                <div className="text-lg tabular text-[#EDEFF3]">{v ?? 0}%<span className="text-[10px] opacity-50 ml-1">del gasto bajo el promedio</span></div>
+                {/* NULL acá es "no se pudo calcular" (la vista divide por
+                    NULLIF(sum(cost), 0)), no "0% del gasto": el cero se lee
+                    como "no hay problema" y es justo lo contrario. */}
+                <div className="text-lg tabular text-[#EDEFF3]" title={v == null ? 'Sin gasto con Quality Score en la última semana: el porcentaje no se pudo calcular. No es 0%.' : undefined}>
+                  {v == null ? '—' : `${v}%`}
+                  <span className="text-[10px] opacity-50 ml-1">{v == null ? 'no se pudo calcular' : 'del gasto bajo el promedio'}</span>
+                </div>
                 <div className="text-[10px] text-[#F5F7FA] opacity-50">{r}</div>
               </div>
             ))}

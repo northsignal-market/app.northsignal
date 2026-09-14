@@ -18,19 +18,53 @@ export const IS_COLORES = {
   rank: 'rgba(245, 247, 250, 0.30)',
 } as const;
 
+/** Una franja ausente NO es cero: `null` significa "no se midió". Google no
+ *  reporta impression share perdido con poco volumen, y repartir ese hueco
+ *  entre las franjas que sí vinieron es afirmar que se ganó lo que nadie midió. */
+const franjaValida = (v: number | null | undefined): number | null =>
+  (v == null || !isFinite(Number(v)) ? null : Math.max(0, Number(v)));
+
+// Lo no medido se raya, no se pinta: una textura que no se confunde con una serie.
+const RAYADO = 'repeating-linear-gradient(45deg, rgba(245,247,250,0.20) 0 3px, rgba(245,247,250,0.05) 3px 6px)';
+
+/** Mediana de verdad sobre una lista YA ordenada: con n par es el promedio del
+ *  par central, no el valor de arriba. Importa porque esta cifra es la raya de
+ *  referencia del barcode Y el umbral del ×1.5 que decide quién se salió de la
+ *  manada: quedarse con el mayor corría el umbral hacia arriba y tapaba casos.
+ *  La exporta para que quien calcula el umbral use exactamente la misma. */
+export const medianaDe = (ordenados: number[]): number | null => {
+  const n = ordenados.length;
+  if (!n) return null;
+  return n % 2 ? ordenados[(n - 1) / 2] : (ordenados[n / 2 - 1] + ordenados[n / 2]) / 2;
+};
+
 /** Barra horizontal apilada al 100%. La oración: "de cada 100 impresiones
- *  posibles, ganó X, perdió Y por presupuesto y Z por ranking". */
+ *  posibles, ganó X, perdió Y por presupuesto y Z por ranking".
+ *  Si falta alguna franja el eje deja de ser la suma de las partes y pasa a ser
+ *  el 0-100 real: lo que falta queda rayado en vez de estirar lo conocido. */
 export function BarraApilada100({ partes, alto = 10 }: {
-  partes: { valor: number; color: string; titulo?: string }[]; alto?: number;
+  partes: { valor: number | null | undefined; color: string; titulo?: string }[]; alto?: number;
 }) {
-  const total = partes.reduce((s, p) => s + Math.max(0, p.valor), 0);
-  if (total <= 0) return <div className="text-[10px]" style={LABEL}>—</div>;
+  const vals = partes.map(p => franjaValida(p.valor));
+  const faltan = partes.filter((_, i) => vals[i] == null);
+  const suma = vals.reduce((s: number, v) => s + (v ?? 0), 0);
+  if (vals.every(v => v == null)) return <div className="text-[10px]" style={LABEL}>sin dato</div>;
+  if (suma <= 0) return <div className="text-[10px]" style={LABEL}>{faltan.length ? 'sin dato' : '—'}</div>;
+  // Con alguna franja en null el denominador es 100 (o la suma, si se pasó por
+  // el promedio sin ponderar de la vista), nunca la suma de lo que sí vino.
+  const total = faltan.length ? Math.max(100, suma) : suma;
+  const hueco = total - suma;
+  const tituloHueco = `sin dato: ${faltan.map(p => p.titulo).filter(Boolean).join(' · ') || 'franja no reportada'}`;
+  const ultima = vals.reduce((acc: number, v, i) => (v == null ? acc : i), -1);
   return (
     <div className="w-full flex overflow-hidden" style={{ height: alto, borderRadius: 3, backgroundColor: 'var(--surface-2)' }}>
-      {partes.map((p, i) => (
+      {partes.map((p, i) => vals[i] == null ? null : (
         <div key={i} title={p.titulo}
-          style={{ width: `${(Math.max(0, p.valor) / total) * 100}%`, backgroundColor: p.color, borderRight: i < partes.length - 1 ? '1px solid var(--navy)' : undefined }} />
+          style={{ width: `${(vals[i]! / total) * 100}%`, backgroundColor: p.color, borderRight: (i < ultima || hueco > 0) ? '1px solid var(--navy)' : undefined }} />
       ))}
+      {hueco > 0 && (
+        <div title={tituloHueco} style={{ width: `${(hueco / total) * 100}%`, backgroundImage: RAYADO }} />
+      )}
     </div>
   );
 }
@@ -38,19 +72,28 @@ export function BarraApilada100({ partes, alto = 10 }: {
 /** Columnas apiladas 100% por semana: la evolución de las tres franjas.
  *  La oración: "lo perdido por presupuesto viene creciendo (o no)". */
 export function ColumnasApiladas100({ semanas, alto = 96 }: {
-  semanas: { etiqueta: string; partes: { valor: number; color: string }[]; titulo?: string }[]; alto?: number;
+  semanas: { etiqueta: string; partes: { valor: number | null | undefined; color: string }[]; titulo?: string }[]; alto?: number;
 }) {
   if (!semanas.length) return null;
   return (
     <div>
       <div className="flex items-end gap-[3px]" style={{ height: alto }}>
         {semanas.map((s, i) => {
-          const total = s.partes.reduce((a, p) => a + Math.max(0, p.valor), 0);
+          // Mismo criterio que la barra: una franja en null no se reparte entre
+          // las otras. Si falta alguna, la columna se mide sobre 100 y el resto
+          // queda rayado — "no reportado" tiene que verse distinto de "cero".
+          const vals = s.partes.map(p => franjaValida(p.valor));
+          const suma = vals.reduce((a: number, v) => a + (v ?? 0), 0);
+          const faltan = vals.some(v => v == null);
+          const total = faltan ? Math.max(100, suma) : suma;
           return (
             <div key={i} title={s.titulo} className="flex-1 min-w-0 h-full flex flex-col overflow-hidden" style={{ borderRadius: 2 }}>
-              {total <= 0 ? <div className="h-full" style={{ border: '1px dashed var(--border)', borderRadius: 2 }} title={`${s.etiqueta}: sin datos`} /> : s.partes.map((p, k) => (
-                <div key={k} style={{ height: `${(Math.max(0, p.valor) / total) * 100}%`, backgroundColor: p.color, borderTop: k > 0 ? '1px solid var(--navy)' : undefined }} />
-              ))}
+              {suma <= 0 ? <div className="h-full" style={{ border: '1px dashed var(--border)', borderRadius: 2 }} title={`${s.etiqueta}: sin datos`} /> : (<>
+                {faltan && <div style={{ height: `${((total - suma) / total) * 100}%`, backgroundImage: RAYADO }} title={`${s.etiqueta}: parte de la semana sin dato`} />}
+                {s.partes.map((p, k) => vals[k] == null ? null : (
+                  <div key={k} style={{ height: `${(vals[k]! / total) * 100}%`, backgroundColor: p.color, borderTop: (faltan || k > vals.findIndex(v => v != null)) ? '1px solid var(--navy)' : undefined }} />
+                ))}
+              </>)}
             </div>
           );
         })}
@@ -70,11 +113,12 @@ export function Barcode({ items, formato, alto = 30 }: {
   items: { id: string; valor: number; foco?: boolean; titulo?: string }[];
   formato: (v: number) => string; alto?: number;
 }) {
-  const vals = items.map(i => i.valor).filter(v => v != null && isFinite(v));
+  const dibujables = items.filter(i => i.valor != null && isFinite(Number(i.valor)));
+  const vals = dibujables.map(i => Number(i.valor));
   if (vals.length < 2) return <div className="text-[10px]" style={LABEL}>—</div>;
   const min = Math.min(...vals), max = Math.max(...vals);
   const orden = [...vals].sort((a, b) => a - b);
-  const mediana = orden[Math.floor(orden.length / 2)];
+  const mediana = medianaDe(orden) as number; // con 2+ valores nunca es null
   const span = max - min || 1;
   // Margen del 4% a cada lado para que las rayas extremas no se corten.
   const x = (v: number) => 4 + ((v - min) / span) * 92;
@@ -83,7 +127,7 @@ export function Barcode({ items, formato, alto = 30 }: {
       <div className="relative w-full" style={{ height: alto, backgroundColor: 'var(--surface-2)', borderRadius: 3 }}>
         <div className="absolute top-0 bottom-0" title={`mediana ${formato(mediana)}`}
           style={{ left: `${x(mediana)}%`, width: 1, backgroundColor: 'rgba(245,247,250,0.28)' }} />
-        {items.map(it => (
+        {dibujables.map(it => (
           <div key={it.id} title={it.titulo}
             className="absolute"
             style={{
