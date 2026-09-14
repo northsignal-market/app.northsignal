@@ -22,6 +22,7 @@ import { pedirJSON, motivoFallo } from '../lib/red';
 // Re-exportadas desde acá porque las vistas ya importan la red de './ui': el
 // lugar donde vive el código no tiene por qué ser el lugar donde se pide.
 export { pedirJSON, motivoFallo, FalloRed } from '../lib/red';
+import { faltaLaCuenta } from '../lib/red';
 // Acá vivía `GraficoSerie` y con él la única importación de recharts del arranque.
 // No tenía un solo call site: Datos y Semana traen su propio gráfico. Existir sin
 // usarse le costaba a la app 417 kB en la primera carga, porque este archivo es
@@ -492,10 +493,19 @@ export function useJSON<T>(url: string | null, fallback: T, opts?: {
   /** Primera consulta sin respuesta todavía. Con `url` null nunca está cargando. */
   cargando: boolean;
 } {
+  // Una URL con `client=` (o `account=`) VACÍO no es una consulta: es una pregunta
+  // mal formada. `useCuentaActiva` devuelve '' mientras /api/cuentas carga —por
+  // diseño, para no inventar una cuenta— y en ese render se disparaban nueve
+  // pedidos que el servidor rechaza con 400. Se veía como una pared de errores en
+  // la consola y, peor, dejaba a cada panel con el fallback puesto: un estado que
+  // no se distingue de "esta cuenta no tiene datos".
+  // No se pregunta hasta saber por quién. Cuando la cuenta llega, la URL cambia y
+  // react-query consulta sola.
+  const sinCuenta = url != null && faltaLaCuenta(url);
   const q = useQuery({
     queryKey: ['json', url],
     queryFn: () => pedirJSON<T>(url as string),
-    enabled: url != null,
+    enabled: url != null && !sinCuenta,
     refetchInterval: opts?.refetchMs,
     staleTime: opts?.staleMs,
     retry: false,
@@ -504,7 +514,8 @@ export function useJSON<T>(url: string | null, fallback: T, opts?: {
     data: (q.data ?? fallback) as T,
     refetch: q.refetch,
     error: q.isError ? motivoFallo(q.error) : null,
-    cargando: url != null && q.isPending,
+    // Sin cuenta todavía no se está cargando nada: se está esperando saber quién.
+    cargando: url != null && !sinCuenta && q.isPending,
   };
 }
 

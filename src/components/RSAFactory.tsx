@@ -39,7 +39,15 @@ export function RSAFactory() {
   // El alcance es explícito: si el store todavía no eligió cuenta, cae a la
   // primera cuenta real. Nunca se pide "todas" — mezclar cuentas acá es lo que
   // hacía aparecer grupos de Karedo con 360 seleccionado arriba.
-  const cuenta = useCuentaActiva(selectedClient) || selectedClient || '';
+  // `useCuentaActiva` resuelve la cuenta CONTRA LAS CUENTAS REALES y devuelve null
+  // cuando no puede: mientras cargan, o si no hay ninguna. El `|| selectedClient`
+  // que había acá anulaba justo esa validación —caía al valor sin validar
+  // precisamente cuando la validación había fallado—. Por ahí entraba 'Unknown',
+  // que es el centinela con que el servidor marca un accionable de Notion cuya
+  // cuenta NO pudo resolver (server.ts:96): un "no sé" que llegaba a la pantalla
+  // convertido en nombre de cuenta, y salía en catorce pedidos como si existiera.
+  // Ahora '' significa una sola cosa: todavía no hay cuenta, y no se pregunta.
+  const cuenta = useCuentaActiva(selectedClient) ?? '';
 
   const [oportunidades, setOportunidades] = useState<Oportunidad[]>([]);
   const [cargando, setCargando] = useState(true);

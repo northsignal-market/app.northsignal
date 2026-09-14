@@ -31,7 +31,15 @@ interface SemanaProps {
 export function Semana({ onOpenActionable }: SemanaProps) {
   const { selectedClient } = useAppStore();
   // La cuenta activa sale de las cuentas reales, no de un default cableado.
-  const activeClient = useCuentaActiva(selectedClient) || selectedClient || '';
+  // `useCuentaActiva` resuelve la cuenta CONTRA LAS CUENTAS REALES y devuelve null
+  // cuando no puede: mientras cargan, o si no hay ninguna. El `|| selectedClient`
+  // que había acá anulaba justo esa validación —caía al valor sin validar
+  // precisamente cuando la validación había fallado—. Por ahí entraba 'Unknown',
+  // que es el centinela con que el servidor marca un accionable de Notion cuya
+  // cuenta NO pudo resolver (server.ts:96): un "no sé" que llegaba a la pantalla
+  // convertido en nombre de cuenta, y salía en catorce pedidos como si existiera.
+  // Ahora '' significa una sola cosa: todavía no hay cuenta, y no se pregunta.
+  const activeClient = useCuentaActiva(selectedClient) ?? '';
   const { moneda } = useCuentas();
   const M = moneda(activeClient);   // USD · EUR · CLP, desde la ficha de la cuenta
 
@@ -65,15 +73,20 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [anotaciones, setAnotaciones] = useState<any[]>([]);
   const [errorAnotaciones, setErrorAnotaciones] = useState<string | null>(null);
 
-  useEffect(() => { fetchJSON<any>(`/api/plan?client=${activeClient}`, null).then(d => d && setPlan(d)); }, [activeClient]);
+  // `activeClient` es '' mientras /api/cuentas carga: eso es correcto —el sistema no
+  // inventa una cuenta— pero preguntar con la cuenta vacía sí era un error. Cada uno de
+  // estos pedidos volvía 400 y dejaba su panel con el fallback puesto, que en pantalla
+  // no se distingue de "esta cuenta no tiene datos". Sin cuenta, no se pregunta.
+  useEffect(() => { if (!activeClient) return; fetchJSON<any>(`/api/plan?client=${activeClient}`, null).then(d => d && setPlan(d)); }, [activeClient]);
   // La lectura del plan: los hechos vienen calculados de la base; acá solo frases.
   const { data: planLecturaData } = useJSON<PlanLectura | null>(`/api/plan-lectura?client=${activeClient}`, null);
   const lecturaPlan = useMemo(() => leerPlan(planLecturaData, hoyLocal(0)), [planLecturaData]);
-  useEffect(() => { fetchJSON<any>(`/api/pulso?client=${activeClient}&days=14`, null).then(d => d && setHallazgosSemana(d.pulsos || [])); }, [activeClient]);
-  useEffect(() => { fetchJSON<any>(`/api/conversiones-grupo?client=${activeClient}&days=14`, null).then(d => d && setConvGrupo(d)); }, [activeClient]);
-  useEffect(() => { fetchJSON<any>(`/api/hora-dia?client=${activeClient}`, null).then(d => d && setHoraDia(d)); }, [activeClient]);
+  useEffect(() => { if (!activeClient) return; fetchJSON<any>(`/api/pulso?client=${activeClient}&days=14`, null).then(d => d && setHallazgosSemana(d.pulsos || [])); }, [activeClient]);
+  useEffect(() => { if (!activeClient) return; fetchJSON<any>(`/api/conversiones-grupo?client=${activeClient}&days=14`, null).then(d => d && setConvGrupo(d)); }, [activeClient]);
+  useEffect(() => { if (!activeClient) return; fetchJSON<any>(`/api/hora-dia?client=${activeClient}`, null).then(d => d && setHoraDia(d)); }, [activeClient]);
 
   const fetchDailyOverview = async () => {
+    if (!activeClient) return;   // sin cuenta no hay pregunta que hacer
     setLoadingDaily(true);
     // Limpiar antes de pedir: al cambiar de cuenta, el gráfico mostraba la
     // anterior hasta que llegara la nueva respuesta (o para siempre si fallaba).
@@ -85,6 +98,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
     setLoadingDaily(false);
   };
   const fetchChanges = async () => {
+    if (!activeClient) return;
     setChangesList([]);
     const data = await fetchJSON<any>(`/api/todos_los_cambios?client=${activeClient}`, null);
     if (data?.changes) setChangesList(data.changes);
@@ -93,6 +107,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   // iguales, y el panel de abajo firmaba "las negativas están cubriendo" sin
   // haber podido mirar. Ese veredicto es el que hace que nadie revise.
   const fetchNewTerms = async () => {
+    if (!activeClient) return;
     setLoadingTerms(true);
     setNewTerms([]);
     setErrorTerms(null);

@@ -13,7 +13,7 @@
  * en esta app. La que más engaña es la cuarta: status 200 con HTML adentro.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { pedirJSON, motivoFallo, FalloRed } from './red';
+import { pedirJSON, motivoFallo, FalloRed, faltaLaCuenta } from './red';
 
 function respuesta(body: string, { status = 200, tipo = 'application/json' } = {}) {
   return {
@@ -117,5 +117,65 @@ describe('motivoFallo: siempre una frase imprimible', () => {
     for (const raro of [undefined, null, {}, 'texto suelto', 42]) {
       expect(motivoFallo(raro).length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * PREGUNTAR SIN CUENTA · el 14/9/2026 la consola era una pared de 400.
+ *
+ * Nueve endpoints salían con `client=` vacío en el primer render, mientras
+ * `/api/cuentas` todavía cargaba. El servidor los rechazaba, con razón. Lo grave
+ * no era el ruido: cada rechazo llegaba a su panel como un fallback —lista vacía,
+ * cero, guion— y en pantalla eso no se distingue de "esta cuenta no tiene datos".
+ * La app afirmaba un vacío cuando lo cierto era "todavía no sé de quién".
+ *
+ * El control cubre las dos mitades. La segunda importa tanto como la primera: una
+ * guarda demasiado ancha apaga la app entera y se ve igual de verde.
+ */
+describe('preguntar sin cuenta no es preguntar', () => {
+  it('reconoce la cuenta vacía esté donde esté en la query', () => {
+    for (const url of [
+      '/api/plan?client=',
+      '/api/anomalias?client=&days=14',
+      '/api/pulso?days=14&client=',
+      '/api/x?account=',
+      '/api/x?a=1&account=&b=2',
+    ]) {
+      expect(faltaLaCuenta(url), `${url} debería contar como sin cuenta`).toBe(true);
+    }
+  });
+
+  it('no confunde una cuenta real con una vacía', () => {
+    for (const url of [
+      '/api/plan?client=KAREDO',
+      '/api/anomalias?client=BHI&days=14',
+      '/api/ciclo?client=360',
+      '/api/x?client=FRESH_MONKEE',
+      '/api/alertas',            // sin parámetro de cuenta: no aplica
+      '/api/buscar?q=client=',   // "client=" adentro de OTRO valor
+      '/api/x?cliente=',         // otro parámetro que apenas se parece
+    ]) {
+      expect(faltaLaCuenta(url), `${url} NO debería contar como sin cuenta`).toBe(false);
+    }
+  });
+
+  it('pedirJSON no sale a la red, y dice por qué', async () => {
+    const espia = vi.fn(async () => respuesta('{}'));
+    vi.stubGlobal('fetch', espia);
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    const e = await falla(pedirJSON('/api/plan?client='));
+    expect(e.message).toMatch(/cuenta/i);
+    // status null = nunca llegó a haber servidor. Se distingue de un 400 real.
+    expect(e.status).toBeNull();
+    expect(espia, 'no debería haberse pedido nada').not.toHaveBeenCalled();
+  });
+
+  it('con cuenta de verdad sí pregunta — la guarda no puede apagar la app', async () => {
+    const espia = vi.fn(async () => respuesta('{"ok":true}'));
+    vi.stubGlobal('fetch', espia);
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    await expect(pedirJSON('/api/plan?client=KAREDO')).resolves.toEqual({ ok: true });
+    await expect(pedirJSON('/api/alertas')).resolves.toEqual({ ok: true });
+    expect(espia).toHaveBeenCalledTimes(2);
   });
 });

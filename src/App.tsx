@@ -23,6 +23,7 @@ import { Drawer } from './components/Drawer';
 import { ActionableDrawerContent } from './components/ActionableDrawerContent';
 import { useAppStore } from './store/useAppStore';
 import type { Actionable } from './types';
+import { useCuentaActiva } from './lib/useCuentas';
 
 // La moneda sale de la cuenta, no de un mapa cableado. Este mapa tenía tres
 // entradas y Fresh Monkee caía al 'CLP' por defecto: la app mostraba dólares
@@ -193,13 +194,19 @@ function App() {
   // La URL refleja donde estas. Con pushState y no replaceState: con replaceState
   // el boton atras del navegador no volvia a la pantalla anterior sino que SALIA
   // de la app, porque no habia historial que recorrer.
+  const cuentaEnUrl = useCuentaActiva(selectedClient);
   const ultimaUrl = React.useRef<string>('');
   useEffect(() => {
     if (!isAuthenticated) return;
     const url = new URL(window.location.href);
     url.searchParams.set('page', activeTab);
     if (activeTab === 'cuenta') url.searchParams.set('seg', segmento); else url.searchParams.delete('seg');
-    if (selectedClient) url.searchParams.set('cliente', selectedClient);
+    // Solo una cuenta QUE EXISTE va a la URL. `selectedClient` sale de la lista de
+    // briefs, y ahí puede venir 'Unknown': el centinela con que el servidor marca un
+    // accionable de Notion cuya cuenta no pudo resolver (server.ts:96). Escribirlo
+    // acá dejaba un link que reabre la app sobre una cuenta que no existe, y que
+    // Andrés puede copiar y mandar. Si no se puede resolver, no se escribe nada.
+    if (cuentaEnUrl) url.searchParams.set('cliente', cuentaEnUrl); else url.searchParams.delete('cliente');
     // El drawer vive en la URL: back lo cierra, un deep-link lo abre.
     if (selectedAction) url.searchParams.set('acc', selectedAction.id); else url.searchParams.delete('acc');
     const nueva = url.toString();
@@ -208,7 +215,7 @@ function App() {
     if (ultimaUrl.current) window.history.pushState({ page: activeTab }, '', nueva);
     else window.history.replaceState({ page: activeTab }, '', nueva);
     ultimaUrl.current = nueva;
-  }, [activeTab, segmento, selectedClient, selectedAction, isAuthenticated]);
+  }, [activeTab, segmento, cuentaEnUrl, selectedAction, isAuthenticated]);
 
   // El boton atras vuelve a la pantalla anterior en vez de salir de la app.
   useEffect(() => {
