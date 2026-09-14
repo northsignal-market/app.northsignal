@@ -289,14 +289,25 @@ export function Pista({ children, titulo = 'Cómo leer esto' }: { children: Reac
       <button type="button" aria-label={titulo}
         className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-80 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
         style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>i</button>
-      {/* El `absolute` vuelve a ser una clase. Estuvo un tiempo forzado en el
+      {/* `hidden` y no `invisible`. Un elemento con `visibility: hidden` SIGUE
+          generando caja y SIGUE contando para el overflow: este globo mide 280px y
+          el botón que lo ancla mide 15, así que aportaba 265px de ancho invisible a
+          todo contenedor que lo tuviera adentro. Medido en producción el 14/9/2026
+          con la ventana angosta: el contenido de Cuenta daba 847px contra 619
+          visibles, y los 228 de diferencia salían de acá. Eso es el "ancho
+          fantasma": una barra de scroll horizontal que aparece por algo que ni se ve.
+          Con `display: none` no hay caja, así que no hay nada que empujar. Se pierde
+          el fundido de entrada; un tooltip instantáneo es lo normal y el scroll
+          espurio se sufre todos los días.
+
+          El `absolute` vuelve a ser una clase. Estuvo un tiempo forzado en el
           style porque `.glass-dense` declaraba `position: relative` para todo
           el que usara ese vidrio y le ganaba a la utilidad: con el globo en
           flujo, sus 280px empujaban el título a otro renglón y lo truncaban.
           Ese `position` hoy está scopeado a `header.glass-dense` y además el
           bloque vive en `@layer components`, así que el markup manda. */}
       <span role="tooltip"
-        className="absolute pointer-events-none left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
+        className="absolute pointer-events-none left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed hidden group-hover:block group-focus-within:block glass-dense"
         style={{ color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
         {children}
       </span>

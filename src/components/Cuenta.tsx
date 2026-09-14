@@ -72,7 +72,13 @@ export function Cuenta({ segmento, onSegmento, onOpenActionable, briefId, onNavi
         )}
       </div>
       {/* Contenido */}
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+      {/* `overflow-x-clip` explícito: sin él, `overflow-y-auto` hace que el navegador
+          compute `overflow-x: auto` y este contenedor —el que scrollea el contenido de
+          Cuenta— se vuelve un scroller HORIZONTAL. Medido en producción: 847px de
+          contenido contra 619 visibles. Defensa en profundidad: la causa de esos 228px
+          era el tooltip de `Pista` (ya arreglada), pero cualquier cosa ancha que entre
+          mañana no tiene por qué colgar una barra acá. */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-clip custom-scrollbar">
         {segmento === 'semana' && <Semana onOpenActionable={(id: string) => { const f = actionables.find(a => a.id === id); if (f) onOpenActionable(f); }} />}
         {segmento === 'diagnostico' && <Clientes zona="diagnostico" onOpenActionable={onOpenActionable} onNavigateToBrief={onNavigateToBrief} />}
         {segmento === 'brief' && <Briefs initialBriefId={briefId} onOpenActionable={(id) => { const f = actionables.find(a => a.id === id); if (f) onOpenActionable(f); }} />}
