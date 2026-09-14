@@ -73,6 +73,7 @@ function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
   { name: 'completitud_de_cuenta', description: 'Que le falta a una cuenta para operar bien: doc maestro, reglas, nucleo, terminos protegidos, objetivo, datos frescos, destinatarios de reporte. Usar cuando pregunten si una cuenta esta lista, que falta cargar, o por que algo no funciona en una cuenta puntual.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'estado_de_los_flujos', description: 'Cada flujo de datos del sistema: quien lo escribe, cuando fue el ultimo dato, si esta vivo o cortado. Usar SIEMPRE antes de decir que un dato no existe: puede que el flujo que lo trae nunca se haya conectado, que es distinto de que no haya habido nada.', input_schema: { type: 'object', properties: {}, required: [] } },
   { name: 'salud_del_sistema', description: 'Estado del sistema: fallas, cosas para mirar, tareas que dejaron de correr. Usar cuando pregunten si algo anda mal, por que algo no corrio, o para un chequeo general.', input_schema: { type: 'object', properties: {}, required: [] } },
+  { name: 'keyword_por_etapa', description: 'Que produce cada keyword de verdad: cuantos leads trae, cuantos se ganan, cuantos se descartan Y POR QUE. Cruza los leads del CRM (GoHighLevel) con la keyword que los trajo, resuelta contra click_view de Google. Usar cuando pregunten que keyword conviene, cual pausar, de donde vienen los buenos o los malos leads. CUIDADO: una conversion de Google es un formulario llenado, no un negocio — el 14/9/2026 la keyword que mas convertia segun Google traia gente buscando seguro de VIAJE y se descartaba entera. Mirar SIEMPRE descartados_sin_motivo antes de concluir: una keyword con todos sus descartes ahi todavia no se puede juzgar.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'por_que_limitada', description: 'Descompone por que una cuenta pierde subastas: CTR esperado, relevancia del anuncio o experiencia de landing, ponderado por gasto, con las peores keywords. Usar cuando pregunten por que no escala, por que se pierde cuota, o que hacer para mejorar.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'buscar_accionable', description: 'Busca accionables de una cuenta por palabras del título o del "por qué", en cualquier estado. Usar cuando pregunten por un accionable puntual ("la propuesta de agrupar campañas", "el de las negativas") y haga falta el detalle completo.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM }, texto: { type: 'string', description: 'Palabras a buscar, por ejemplo "agrupar campañas" o "negativas competidores"' } }, required: ['cuenta', 'texto'] } },
   { name: 'propuestas_estrategicas', description: 'Propuestas estratégicas de una cuenta con su estado, qué se propuso, qué se hizo realmente y el resultado esperado. Usar cuando pregunten por una propuesta o una estrategia, que NO son accionables.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
@@ -104,7 +105,11 @@ Las cuentas activas hoy son: ${listaCuentas || 'ninguna cargada'}. Esa lista sal
 
 QUÉ PODÉS HACER
 
-Antes de decir que algo no existe, mirá si el flujo que lo trae está vivo con estado_de_los_flujos. Caso concreto y activo: los webhooks de cierres reales nunca recibieron un evento, así que v_cierres_totales y v_win_rates_reales están vacías y van a seguir así hasta que se conecte GoHighLevel y Asana. Eso no es "no hubo cierres": es un flujo sin conectar, y decirlo mal lleva a la conclusión opuesta.
+Antes de decir que algo no existe, mirá si el flujo que lo trae está vivo con estado_de_los_flujos. Un flujo sin conectar NO es "no hubo nada": son cosas distintas y decirlo mal lleva a la conclusión opuesta.
+
+ESTADO AL 14/9/2026, que cambió: BHI YA tiene sus leads de GoHighLevel en 'ghl_leads', con la keyword que los trajo y el motivo del descarte. Se consultan con keyword_por_etapa. Los webhooks de cierres (v_cierres_totales, v_win_rates_reales) siguen sin recibir un evento, así que esas dos siguen vacías — son otra cosa.
+
+Y lo que se aprendió ese día, que vale para cualquier cuenta con CRM: UNA CONVERSIÓN DE GOOGLE ES UN FORMULARIO LLENADO, NO UN NEGOCIO. En BHI la keyword con más conversiones según Google traía gente buscando seguro de VIAJE —'iclick travel', 'chapka', 'terrawind'— y los cuatro leads se descartaron por producto equivocado. Sin cruzar contra el CRM, esa keyword se ve como la mejor de la cuenta. Antes de recomendar sobre una keyword mirá keyword_por_etapa, y si los descartes están sin clasificar, decilo en vez de concluir.
 
 Responder con datos. Todo número, nombre de campaña, keyword o fecha sale de una herramienta. Si no lo trajiste de una herramienta, no lo digas: "no lo tengo, lo busco" es una respuesta correcta y "creo que era alrededor de" no lo es. Cuando una herramienta devuelve vacío, mirá si trae una explicación del porqué antes de concluir nada: no es lo mismo "no hay datos" que "todavía no se puede saber".
 
@@ -326,6 +331,22 @@ Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas 
         } else if (tu.name === 'salud_del_sistema') {
           const { data: s } = await supabase.rpc('get_salud_sistema');
           out = s || { error: 'no disponible' };
+        } else if (tu.name === 'keyword_por_etapa') {
+          const { data: kw } = await supabase.from('v_keyword_por_etapa').select('*').eq('account', inp.cuenta)
+            .order('leads', { ascending: false });
+          const filas = kw || [];
+          const sinMotivo = filas.reduce((a: number, r: any) => a + Number(r.descartados_sin_motivo || 0), 0);
+          const leads = filas.reduce((a: number, r: any) => a + Number(r.leads || 0), 0);
+          out = {
+            cuenta: inp.cuenta, keywords: filas, leads_totales: leads,
+            descartes_sin_clasificar: sinMotivo,
+            // El aviso viaja CON el dato. Un agente que recibe 28 leads y no sabe
+            // que son 28 saca conclusiones de 28 como si fueran 2.800.
+            como_leer: leads < 100
+              ? `Solo ${leads} leads en total: ninguna diferencia entre keywords es significativa todavia. Las reglas de esta cuenta dicen que un movimiento semanal casi nunca lo es. Lo que SI se puede leer es el MOTIVO del descarte cuando varios coinciden: cuatro notas distintas diciendo lo mismo es un mecanismo, una tasa con n=5 es ruido.`
+              : 'Mirar descartados_sin_motivo por keyword antes de concluir.',
+            ojo: 'Una conversion de Google es un formulario llenado, no un negocio. Esta vista dice que paso DESPUES.',
+          };
         } else if (tu.name === 'por_que_limitada') {
           const { data: p } = await supabase.from('v_por_que_limitada').select('*').eq('account', inp.cuenta).maybeSingle();
           out = p || { cuenta: inp.cuenta, nota: 'Sin datos de cuota perdida para esta cuenta en el periodo.' };
