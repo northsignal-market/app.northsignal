@@ -56,6 +56,7 @@ declare
   viejo  text;
   nuevo  text;
   marca  text := 'select sum(conversions) into conv90 from keywords_daily';
+  antes  int;
 begin
   select pg_get_functiondef(p.oid) into def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -72,6 +73,11 @@ begin
     return;
   end if;
 
+  -- Cuantas veces aparece el patron ANTES de tocar nada: el parche tiene que
+  -- sacar exactamente una.
+  antes := (length(def) - length(replace(def, 'into conv90 from keywords_daily', '')))
+           / length('into conv90 from keywords_daily');
+
   ini := position(marca in def);
   if ini = 0 then
     raise exception 'No encontre el bloque I3 (la consulta a keywords_daily). Alguien lo cambio: revisar a mano.';
@@ -85,6 +91,9 @@ begin
   end if;
 
   viejo := substring(def from ini for rel + 6);
+  -- `position` devuelve la PRIMERA ocurrencia. I3 viene antes que I4 en la
+  -- funcion, pero eso es un orden que alguien puede cambiar sin darse cuenta, asi
+  -- que se comprueba en vez de confiarse (la comprobacion de abajo lo hace).
 
   -- Comprobacion de que se agarro lo que se cree: el bloque TIENE que nombrar el
   -- invariante. Sin esto, un `position` que apunte mal reemplazaria otra cosa.
@@ -112,8 +121,15 @@ begin
   if position('No hay historia semanal de' in def) = 0 then
     raise exception 'El parche se ejecuto pero el texto nuevo no quedo. Revisar a mano.';
   end if;
-  if position('into conv90 from keywords_daily' in def) > 0 then
-    raise exception 'El parche se ejecuto pero la consulta vieja a keywords_daily sigue ahi. Revisar a mano.';
+  -- Se cuenta, no se busca. El primer intento preguntaba si el patron seguia en
+  -- la funcion ENTERA y abortaba con razon: aparece DOS veces. La otra es de
+  -- I4_concordancia_keyword_principal, que no es este arreglo — y que ademas
+  -- lleva 'bloquea' FALSE, o sea que avisa y no aprueba nada. Su fallo abierto
+  -- es una advertencia que no sale; el de I3 es una pausa que se autoriza. No se
+  -- tocan juntos.
+  if (length(def) - length(replace(def, 'into conv90 from keywords_daily', '')))
+     / length('into conv90 from keywords_daily') <> antes - 1 then
+    raise exception 'Se esperaba que quedara exactamente una consulta vieja a keywords_daily (la de I4) y quedaron otras. Revisar a mano.';
   end if;
 
   raise notice 'I3 parcheado: historia semanal de 91 dias, y bloquea cuando no hay con que decidir.';
