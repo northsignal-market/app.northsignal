@@ -5029,7 +5029,11 @@ Reporte completo: ${url}`;
   });
   app2.get("/api/relaciones-abiertas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { data } = await supabase.from("accionable_relaciones").select("a, b, motivo").eq("resuelta", false).eq("severidad", "bloquea");
+    const { data, error } = await supabase.from("accionable_relaciones").select("a, b, motivo").eq("resuelta", false).eq("severidad", "bloquea");
+    if (error) {
+      console.error(`[500] /api/relaciones-abiertas \u2014 ${error.message}`);
+      return res.status(500).json({ error: error.message });
+    }
     const m = {};
     for (const r of data || []) {
       m[r.a] = r.motivo;
@@ -5190,7 +5194,8 @@ Reporte completo: ${url}`;
   });
   app2.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
-    const { data } = await supabase.rpc("get_briefing");
+    const { data, error } = await supabase.rpc("get_briefing");
+    if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
   app2.get("/api/ciclo", async (req, res) => {

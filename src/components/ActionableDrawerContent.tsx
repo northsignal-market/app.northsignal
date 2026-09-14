@@ -206,7 +206,10 @@ export function ActionableDrawerContent({
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usar_accion: true, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
-      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) recargarContexto(); } else { setEjecutado(modo); if (j.avisos?.length) avisar(String(j.avisos.join(' · ')).slice(0, 300), 'info', 'Encolado con avisos'); }
+      // `j.modo_real`, no `modo`. El servidor degrada a 'simular' fuera de producción
+      // y devuelve cuál aplicó: con el modo PEDIDO la pantalla decía "Aprobado. El
+      // script lo aplica en Google Ads dentro de la próxima hora" sin aplicar nada.
+      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) recargarContexto(); } else { setEjecutado(j.modo_real || modo); if (j.degradado) avisar(j.motivo_degradado || 'Se encoló como simulación: este entorno no escribe en Google Ads.', 'info', 'Encolado como simulación'); if (j.avisos?.length) avisar(String(j.avisos.join(' · ')).slice(0, 300), 'info', 'Encolado con avisos'); }
     } finally { setEjecutando(false); }
   };
   const [logValorAnterior, setLogValorAnterior] = useState('');

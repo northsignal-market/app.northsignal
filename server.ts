@@ -3529,7 +3529,13 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   });
   app.get("/api/relaciones-abiertas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data } = await supabase.from('accionable_relaciones').select('a, b, motivo').eq('resuelta', false).eq('severidad', 'bloquea');
+    // 500 y no un {} con status 200. Un objeto vacío se lee "no hay conflictos
+    // abiertos", que es lo contrario de "no se pudo saber si los hay" — y acá el
+    // hueco no baja un número: habilita una escritura en Google Ads. La Bandeja ya
+    // falla cerrada ante el error (fix del 14/9), pero el endpoint seguía mintiendo
+    // y puede tener otros consumidores.
+    const { data, error } = await supabase.from('accionable_relaciones').select('a, b, motivo').eq('resuelta', false).eq('severidad', 'bloquea');
+    if (error) { console.error(`[500] /api/relaciones-abiertas — ${error.message}`); return res.status(500).json({ error: error.message }); }
     const m: Record<string, string> = {}; for (const r of data || []) { m[r.a] = r.motivo; if (!String(r.b).startsWith('keyword:')) m[r.b] = r.motivo; }
     res.json(m);
   });
@@ -3727,7 +3733,11 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // Briefing: lo que hay para vos hoy. Lo lee el script de briefing (mail) y la app.
   app.get("/api/briefing", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
-    const { data } = await supabase.rpc('get_briefing');
+    // El `error` se mira. Antes se descartaba y salía 200 con cuerpo null, que el
+    // cliente no puede distinguir de "no hay nada que reportar" — y de ahí salía el
+    // KPI "Datos" en verde por no haber podido preguntar.
+    const { data, error } = await supabase.rpc('get_briefing');
+    if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   });
   // Calibracion e impacto: el ciclo cerrado visible

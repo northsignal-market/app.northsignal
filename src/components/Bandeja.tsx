@@ -463,9 +463,20 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                     <span className="text-[#FAFAFA] tabular">{ciclo.global.aciertos} de {ciclo.global.n}</span>
                   </div>
                 )}
+                {/* `impactos.length` contaba TODAS las filas, incluidas las
+                    'PENDIENTE: menos de 7 dias consolidados despues' y las
+                    'SIN METRICA', bajo el rótulo "con resultado". Y el servidor las
+                    topea en 10, así que el número nunca podía pasar de ahí: se dice
+                    cuando toca el tope en vez de presentarlo como el total. */}
                 <div className="flex items-center justify-between gap-3">
                   <span style={LABEL}>Cambios con resultado a 14 días</span>
-                  <span className="text-[#FAFAFA] tabular">{ciclo.impactos?.length || 0}</span>
+                  <span className="text-[#FAFAFA] tabular">
+                    {!ciclo?.impactos ? '—' : (() => {
+                      const conResultado = ciclo.impactos.filter((i: any) =>
+                        i?.veredicto && !/^(PENDIENTE|SIN METRICA)/.test(String(i.veredicto)));
+                      return `${conResultado.length} de ${ciclo.impactos.length}${ciclo.impactos.length >= 10 ? '+ traídos' : ''}`;
+                    })()}
+                  </span>
                 </div>
               </div>
               <details className="mt-3">
