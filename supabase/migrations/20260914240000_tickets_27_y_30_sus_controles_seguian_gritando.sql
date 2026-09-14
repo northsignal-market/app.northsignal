@@ -48,7 +48,7 @@ update public.relaciones_verdad
 -- El mutante de la relacion, probado el 12/9, decia: "el sql nuevo da 0 en 360
 -- CON LA VISTA ABSTENIENDOSE (verde legitimo)". O sea que estaba verde porque
 -- 360 no tenia curva de simulacion, no porque el veredicto estuviera guardado.
--- La migracion 20260914170000 reescribio la vista, apareciо la curva, y el
+-- La migracion 20260914170000 reescribio la vista, aparecio la curva, y el
 -- veredicto salio sin ninguna guarda de evidencia.
 --
 -- Y la prueba de que la guarda faltaba esta en la rama de al lado, en la MISMA
