@@ -194,11 +194,14 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
   }, []);
 
   const currentInfo = useMemo(() => {
+    // El campo es `moneda`: es lo que devuelve /api/notion/clients (server.ts:424).
+    // Antes el respaldo declaraba `currency`, que no existe en ninguno de los dos
+    // lados, así que la ficha nunca mostró la moneda de Notion. Zona horaria no la
+    // emite ese endpoint: la única fuente es useCuentas.
     return clientsInfo.find(c => c.name.toLowerCase() === activeClient.toLowerCase()) || {
       id: 'default',
       name: activeClient,
-      currency: monedaDe(activeClient),
-      timezone: zonaDe(activeClient),
+      moneda: monedaDe(activeClient),
       created_at: new Date().toISOString()
     };
   }, [clientsInfo, activeClient]);
@@ -690,10 +693,10 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
           <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}>
             <div className="text-[11px] text-[#F5F7FA] opacity-60">Moneda Operativa</div>
             <div className="text-base font-bold text-[#EDEFF3] mt-0.5">
-              {currentInfo.currency || monedaDe(activeClient)}
+              {currentInfo.moneda || monedaDe(activeClient)}
             </div>
             <div className="text-[10px] text-[#F5F7FA] opacity-50 mt-1">
-              Zona: {currentInfo.timezone || zonaDe(activeClient)}
+              Zona: {zonaDe(activeClient)}
             </div>
           </div>
 

@@ -3,7 +3,11 @@ import { useCuentaActiva } from '../lib/useCuentas';
 import { ChevronLeft, ChevronRight, Calendar, ArrowRight, Clock, RefreshCw, Check } from 'lucide-react';
 import { fetchJSON, fmtFechaCorta } from './ui';
 import { useAppStore } from '../store/useAppStore';
-import type { NotionBrief } from '../types';
+// El tipo sale de donde sale el dato: `notionBriefs` del store lo llena
+// /api/notion/briefs. Antes se importaba un `NotionBrief` homónimo de ../types
+// que en realidad era `Brief`, con otros campos; por eso leer una columna
+// inexistente acá daba verde.
+import type { NotionBrief } from '../store/useAppStore';
 
 interface BriefsProps {
   onOpenActionable?: (actionId: string) => void;
@@ -62,8 +66,9 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
   const hasNewer = currentIndex > 0;
   const hasOlder = currentIndex !== -1 && currentIndex < clientBriefs.length - 1;
 
-  // Extract provisional days note if any
-  const provisionalDays = selectedBrief?.provisional_days || 0;
+  // El servidor emite `dias_provisionales` (server.ts:980). `provisional_days`
+  // no existía en ningún lado: el badge de atribución pendiente no se mostró nunca.
+  const provisionalDays = selectedBrief?.dias_provisionales || 0;
 
   // Accionables del brief. El || con cliente hacía que "vinculados a este
   // período" mostrara TODOS los de la cuenta, de cualquier semana. Si el brief
@@ -146,7 +151,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                 >
                   <div className="flex items-center justify-between text-[11px] text-[#F5F7FA] opacity-60 mb-1">
                     <span className="tabular font-medium">
-                      {(() => { const f = brief.date || (brief as any).semana || (brief as any).week || (brief as any).created_at; return f ? new Date(f).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sin fecha'; })()}
+                      {(() => { const f = brief.semana || brief.created_at; return f ? new Date(f).toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sin fecha'; })()}
                     </span>
                     {i === 0 && (
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#0062CC] text-[#EDEFF3]">
@@ -182,7 +187,7 @@ export function Briefs({ onOpenActionable, initialBriefId }: BriefsProps) {
                   </span>
                   <span className="text-xs text-[#F5F7FA] opacity-70 tabular flex items-center gap-1">
                     <Calendar size={12} />
-                    {selectedBrief.date || (selectedBrief as any).semana || (selectedBrief as any).week || ((selectedBrief as any).created_at ? fmtFechaCorta((selectedBrief as any).created_at) : 'Semana activa')}
+                    {selectedBrief.semana || (selectedBrief.created_at ? fmtFechaCorta(selectedBrief.created_at) : 'Semana activa')}
                   </span>
                   {provisionalDays > 0 && (
                     <span className="px-2 py-0.5 rounded text-[11px] text-[#F5F7FA] opacity-75" style={{ border: '1px solid var(--border-strong)' }}>

@@ -12,28 +12,28 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
  * y hay un botón para reintentar sin recargar todo.
  *
  * Va como clase porque React no tiene equivalente en función: los límites de error
- * solo existen con getDerivedStateFromError y componentDidCatch. El tipado va suelto
- * porque este proyecto no tiene @types/react instalado.
+ * solo existen con getDerivedStateFromError y componentDidCatch.
  */
-const Base: any = (React as any).Component;
+interface LimiteProps { children: React.ReactNode; nombre?: string }
+interface LimiteState { error: Error | null }
 
-class Limite extends Base {
-  constructor(props: any) {
+class Limite extends React.Component<LimiteProps, LimiteState> {
+  constructor(props: LimiteProps) {
     super(props);
-    (this as any).state = { error: null };
-    (this as any).reintentar = (this as any).reintentar.bind(this);
+    this.state = { error: null };
+    this.reintentar = this.reintentar.bind(this);
   }
 
-  static getDerivedStateFromError(error: any) { return { error }; }
+  static getDerivedStateFromError(error: Error): LimiteState { return { error }; }
 
-  componentDidCatch(error: any, info: any) {
-    console.error(`[render] ${(this as any).props?.nombre || 'componente'} falló:`, error, info?.componentStack);
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[render] ${this.props?.nombre || 'componente'} falló:`, error, info?.componentStack);
   }
 
-  reintentar() { (this as any).setState({ error: null }); }
+  reintentar() { this.setState({ error: null }); }
 
   render() {
-    const self = this as any;
+    const self = this;
     if (!self.state?.error) return self.props.children;
     return (
       <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3 p-8 text-center">

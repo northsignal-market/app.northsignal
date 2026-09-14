@@ -70,7 +70,11 @@ export interface Brief {
   dias_provisionales?: number;
 }
 
-export type NotionBrief = Brief;
+// Acá vivía `export type NotionBrief = Brief`. No era el brief de Notion: era un
+// segundo nombre para `Brief`, mientras el `NotionBrief` real —el que describe lo
+// que devuelve /api/notion/briefs— está en store/useAppStore.ts. Briefs.tsx
+// importaba este y leía campos que su objeto nunca tuvo. Dos tipos con el mismo
+// nombre es la trampa; no la repongas.
 
 export interface DailyMetric {
   account: string;

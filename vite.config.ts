@@ -1,11 +1,23 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+// defineConfig sale de 'vitest/config' —superset del de vite— para poder declarar
+// la sección `test` acá y no partir la configuración en dos archivos.
+import {configDefaults, defineConfig} from 'vitest/config';
 
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+
+    test: {
+      // Los worktrees de .claude/ son copias del repo: traen su propio
+      // formato.test.ts y red.test.ts. Sin esto `npm run verificar` corría los 22
+      // tests reales MÁS 22 copias congeladas MÁS los de un trabajo ajeno a medio
+      // hacer, y se ponía rojo por algo que no tocaste. Peor todavía: una copia
+      // vieja que pasa puede tapar que la de verdad fallaría. El gate de la regla
+      // 5 solo sirve si mide este árbol y nada más.
+      exclude: [...configDefaults.exclude, '**/.claude/**'],
+    },
 
     resolve: {
       alias: {

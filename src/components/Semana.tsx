@@ -306,12 +306,12 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 tardar en atribuirse y Google las cuenta el día del clic.
               </Pista>
             </div>
-            <Chips
+            <Chips<typeof lens>
               opciones={[
                 { id: 'gasto_cpa', label: 'Gasto y CPA' },
                 { id: 'conv_clics', label: 'Conversiones y clics' },
                 { id: 'ctr_cpc', label: 'CTR y CPC' },
-              ]}
+              ] as const}
               valor={lens}
               onChange={setLens}
             />

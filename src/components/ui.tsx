@@ -512,8 +512,11 @@ export function Collapsible({ titulo, resumen, abiertoInicial = false, children 
 // FILTROS
 // ================================================================
 /** Filtro segmentado: una opción activa, estilo píldora. */
+/** `opciones` va readonly para que el llamador pueda pasarlo `as const` y los `id`
+ *  entren como literales: así T queda en la unión real y no en `string`, y agregar
+ *  una opción que el estado no contempla da error de tipos en vez de pasar callado. */
 export function Chips<T extends string>({ opciones, valor, onChange }: {
-  opciones: { id: T; label: string; title?: string }[]; valor: T; onChange: (v: T) => void;
+  opciones: readonly { id: T; label: string; title?: string }[]; valor: T; onChange: (v: T) => void;
 }) {
   return (
     <div className="flex p-0.5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
