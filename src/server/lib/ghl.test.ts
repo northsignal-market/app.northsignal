@@ -164,3 +164,51 @@ describe('el cliente de GHL no puede escribir', () => {
     expect(codigo(), 'un spread de init dejaría entrar cualquier método').not.toMatch(/\.\.\.init/);
   });
 });
+
+/**
+ * UN UUID NO ES UN CLICK ID.
+ *
+ * El sondeo real de BHI (14/9/2026) señaló `pipelineStageId`, `pipelineStageUId`
+ * y `relations[0].associationId` como lugares donde "aparece un click id". Son
+ * identificadores internos de GoHighLevel. La heurística pedía 30+ caracteres del
+ * alfabeto [A-Za-z0-9_-], y un UUID de 36 los cumple.
+ *
+ * Importa porque esta función contesta "¿dónde llega el gclid?", y de esa
+ * respuesta depende si el problema de atribución es el formulario o la keyword.
+ * Tres campos señalados de más mandan a revisar el lugar equivocado — y peor,
+ * hacen PARECER que la atribución está resuelta cuando no llegó ningún gclid.
+ */
+describe('rutasDeClickId no confunde identificadores internos', () => {
+  const UUIDS = [
+    '253af773-84dd-4e0c-bf4f-81ca6b03eff1',
+    '2f36bf61-f2dc-4195-9a3c-b2c36568195d',
+    'fa820836-a640-4c17-bc5d-35373dd7bdd0',
+  ];
+
+  it('los UUID de GHL no se cuentan como click id', () => {
+    for (const u of UUIDS) {
+      expect(rutasDeClickId({ pipelineStageId: u }), `${u} no es un click id`).toEqual([]);
+    }
+  });
+
+  // El caso exacto del sondeo: una oportunidad sin gclid, llena de UUIDs.
+  it('una oportunidad sin gclid no señala ninguna ruta', () => {
+    const oportunidad = {
+      id: 'aBcD1234efGh5678ijKl',
+      pipelineStageId: UUIDS[0],
+      pipelineStageUId: UUIDS[1],
+      relations: [{ associationId: UUIDS[2] }],
+      lostReasonId: null,
+      monetaryValue: 560,
+    };
+    expect(rutasDeClickId(oportunidad)).toEqual([]);
+  });
+
+  // Y no puede apagarse: un gclid de verdad se sigue encontrando.
+  it('un gclid real se encuentra igual', () => {
+    const gclid = 'Cj0KCQjw8JPVBhD-ARIsAO691sEqoMxbykhe_5SoGtnK4uqvTsKi3tN6_atiVmKNQJbIMjwQ_JTmne0aAmvBEALw_wcB';
+    expect(rutasDeClickId({ attributions: [{ value: gclid }] }).length).toBeGreaterThan(0);
+    // Aunque el campo se llame feo, por el nombre:
+    expect(rutasDeClickId({ customFields: [{ gclid: 'corto' }] }).length).toBeGreaterThan(0);
+  });
+});

@@ -963,8 +963,10 @@ function formaDe(v, profundidad = 0) {
       return typeof v;
   }
 }
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function pareceClickId(s2) {
-  return s2.length >= 30 && /^[A-Za-z0-9_-]+$/.test(s2);
+  if (UUID.test(s2)) return false;
+  return s2.length >= 40 && /^[A-Za-z0-9_-]+$/.test(s2);
 }
 function rutasDeClickId(v, ruta = "", out = [], profundidad = 0) {
   if (profundidad > 5 || out.length >= 12) return out;

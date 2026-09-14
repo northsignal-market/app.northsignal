@@ -105,8 +105,10 @@ export function formaDe(v: unknown, profundidad = 0): any {
 }
 
 /** ¿Parece un click id de Google? Los gclid son largos y de un alfabeto acotado. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function pareceClickId(s: string): boolean {
-  return s.length >= 30 && /^[A-Za-z0-9_-]+$/.test(s);
+  if (UUID.test(s)) return false;
+  return s.length >= 40 && /^[A-Za-z0-9_-]+$/.test(s);
 }
 
 /**
