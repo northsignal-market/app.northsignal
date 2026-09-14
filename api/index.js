@@ -275,15 +275,15 @@ function Reporte({ r, R }) {
   const { Document, Page, Text, View, Image } = R;
   const t = T[r.idioma];
   const m = r.metricas;
-  const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, 2)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
-  const lbl = { cost: t.inv, clicks: t.clics, impressions: t.impr, conversions: t.conv, cpa: t.cpa, ctr: t.ctr };
-  const orden = ["cost", "clicks", "impressions", "conversions", "cpa", "ctr"].filter((k) => m[k]?.actual != null);
+  const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" || k === "impr_share" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, k === "ctr" ? 2 : 1)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
+  const lbl = { cost: t.inv, clicks: t.clics, conversions: t.conv, cpa: t.cpa, ctr: t.ctr, impr_share: t.imprShare };
+  const orden = ["cost", "clicks", "conversions", "cpa", "ctr", "impr_share"].filter((k) => m[k]?.actual != null);
   const totales = orden.map((k) => `${lbl[k]}: ${kpi(k)}`).join("  |  ");
   const deltas = r.periodo_anterior_completo ? ["cost", "conversions", "cpa"].map((k) => {
     const d = delta(m[k]?.actual ?? null, m[k]?.anterior ?? null);
     return d ? `${lbl[k]} ${d}` : "";
   }).filter(Boolean).join("  |  ") : "";
-  const hoy = fecha((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), r.idioma);
+  const hoy = fecha((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), r.locale);
   const Pie = () => /* @__PURE__ */ jsx(Text, { style: s.pie, fixed: true, render: ({ pageNumber, totalPages }) => `${t.pag} ${pageNumber} ${t.de} ${totalPages} - NorthSignal` });
   return /* @__PURE__ */ jsx(Document, { title: `${r.titulo || t.titulo} - ${r.nombre_cliente}`, author: "NorthSignal", children: /* @__PURE__ */ jsxs(Page, { size: "A4", orientation: "landscape", style: s.page, wrap: true, children: [
     /* @__PURE__ */ jsx(Pie, {}),
@@ -301,9 +301,9 @@ function Reporte({ r, R }) {
           " | ",
           t.periodo,
           ": ",
-          fecha(r.periodo_desde, r.idioma),
+          fecha(r.periodo_desde, r.locale),
           " - ",
-          fecha(r.periodo_hasta, r.idioma),
+          fecha(r.periodo_hasta, r.locale),
           " | ",
           t.fecha,
           ": ",
@@ -451,12 +451,12 @@ var init_reporte_pdf = __esm({
       pie: { position: "absolute", bottom: 18, left: 42, fontSize: 8, color: PIE }
     };
     T = {
-      es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo." },
-      en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", impr: "Impr", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown." }
+      es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", imprShare: "Cuota impr.", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo; de los grupos, a lo sumo los 12 de mayor inversi\xF3n." },
+      en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", imprShare: "Impr. share", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend." }
     };
     money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
     num = (v, l, d = 1) => v == null ? "-" : new Intl.NumberFormat(l, { maximumFractionDigits: d }).format(v);
-    fecha = (iso, idioma) => (/* @__PURE__ */ new Date(iso + "T12:00:00")).toLocaleDateString(idioma === "en" ? "en-GB" : "es-CL");
+    fecha = (iso, locale) => (/* @__PURE__ */ new Date(iso + "T12:00:00")).toLocaleDateString(locale || void 0);
     delta = (a, b) => a == null || b == null || b === 0 ? "" : `${a - b >= 0 ? "+" : ""}${((a - b) / b * 100).toFixed(1)}%`;
     logoCache = null;
   }
@@ -1302,6 +1302,17 @@ var GLOSARIO = {
 
 // src/server/lib/asistente.ts
 var anthropic2 = process.env.ANTHROPIC_API_KEY ? new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+var PESO_PRIORIDAD = {
+  [NOTION_PRIORITIES.URGENTE]: 4,
+  [NOTION_PRIORITIES.ALTA]: 3,
+  [NOTION_PRIORITIES.MEDIA]: 2,
+  [NOTION_PRIORITIES.BAJA]: 1
+};
+var menosDias = (iso, n) => {
+  const t = /* @__PURE__ */ new Date(`${iso}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - n);
+  return t.toISOString().slice(0, 10);
+};
 var MAPA_APP = `
 SECCIONES DE LA APP (men\xFA izquierdo, cinco \xEDtems):
 - Bandeja: la pantalla de inicio. Arriba, Novedades: comentarios y ediciones de los agentes en accionables, propuestas nuevas, tickets respondidos, ejecuciones autom\xE1ticas; se marcan vistas al abrir. Debajo, una cola con lo que espera el criterio de Andr\xE9s, en orden: pide acci\xF3n hoy, listos para ejecutar, esperan confirmaci\xF3n, reportes para aprobar. Cada fila se abre ah\xED. Cuando est\xE1 vac\xEDa dice "Nada te espera". Debajo, colapsados: ayer en cada cuenta (una l\xEDnea por cuenta) y qu\xE9 pas\xF3 despu\xE9s (impacto de cambios a 14 d\xEDas, predicciones acertadas o falladas).
@@ -1319,13 +1330,13 @@ REGLAS DE ESTADO DE ACCIONABLES: Propuesto = listo para ejecutar. Bloqueado = es
 function construirHerramientas(cuentas) {
   const ENUM = cuentas;
   return [
-    { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 d\xEDas, conversiones, plan de la semana vigente, \xFAltimo pulso diario. Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
+    { name: "estado_cuenta", description: 'Resumen actual de una cuenta: veredicto de headroom, gasto, conversiones y CPA de 7 y 14 d\xEDas, plan de la semana vigente, \xFAltimo pulso diario. Cada ventana viene con las fechas que abarca, cu\xE1ntos d\xEDas ten\xEDan dato y cu\xE1les todav\xEDa maduran: cit\xE1 esa ventana, no "los \xFAltimos 14 d\xEDas". Usar cuando pregunten "c\xF3mo va X" o "qu\xE9 dice el plan de X".', input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "accionables_abiertos", description: "Lista los accionables Propuestos y Bloqueados de una cuenta con t\xEDtulo, prioridad, naturaleza y por qu\xE9. Usar cuando pregunten qu\xE9 hay pendiente o qu\xE9 hacer.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "explicar_accionable", description: "Todo el razonamiento detras de un accionable: quien lo propuso, con que evidencia, que invariantes toca, si se puede ejecutar y por que no, y que paso con cambios parecidos. Usar SIEMPRE que pregunten por que se propuso algo, si conviene hacerlo, o que pasa si lo hago.", input_schema: { type: "object", properties: { notion_id: { type: "string", description: "El id del accionable. Si no lo tenes, buscalo primero con buscar_accionable." } }, required: ["notion_id"] } },
     { name: "ejecutar_accionable", description: 'Encola un accionable para que el ejecutor lo aplique en Google Ads. SOLO usar cuando Andres lo pide explicitamente ("ejecutalo", "dale", "hacelo"). Nunca por iniciativa propia. Antes de llamarla, explicar que va a hacer y esperar confirmacion en el mismo mensaje.', input_schema: { type: "object", properties: { notion_id: { type: "string" }, modo: { type: "string", enum: ["simular", "ejecutar"], description: "simular muestra que haria sin tocar nada; ejecutar lo aplica de verdad" } }, required: ["notion_id", "modo"] } },
     { name: "dejar_nota_para_agente", description: "Deja una nota que el agente de esa cuenta va a leer en su proxima corrida. Usar cuando Andres pregunta algo que el agente deberia investigar, da una instruccion que cambia como analizar, o corrige algo que el agente asumio mal. Asi la conversacion no muere aca.", input_schema: { type: "object", properties: { contenido: { type: "string", description: "Que tiene que saber el agente, en una o dos frases claras" }, cuenta: { type: "string", enum: ENUM }, para: { type: "string", enum: ["semanal", "pulso", "mensual", "cualquiera"] }, tipo: { type: "string", enum: ["pregunta", "instruccion", "contexto", "correccion"] } }, required: ["contenido"] } },
     { name: "que_pregunte_andres", description: "Las notas que Andres ya dejo para los agentes y todavia no fueron atendidas. Usar cuando pregunte si ya avis\xF3 algo, o para no repetir una nota que ya existe.", input_schema: { type: "object", properties: {}, required: [] } },
-    { name: "consultar_datos", description: "Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos.", input_schema: { type: "object", properties: { vista: { type: "string", description: "Nombre exacto de la vista, tal como aparece en que_datos_hay" }, cuenta: { type: "string", enum: ENUM }, limite: { type: "number" } }, required: ["vista"] } },
+    { name: "consultar_datos", description: 'Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos. Devuelve el orden con el que vinieron las filas y avisa si se truncaron: si dice que no hay orden determinista, no las presentes como "los datos".', input_schema: { type: "object", properties: { vista: { type: "string", description: "Nombre exacto de la vista, tal como aparece en que_datos_hay" }, cuenta: { type: "string", enum: ENUM }, limite: { type: "number" } }, required: ["vista"] } },
     { name: "que_datos_hay", description: "Catalogo de las 119 vistas y funciones del sistema con para que sirve cada una y que cuidado tener. Usar cuando pregunten donde esta un dato, si existe algo, o cuando haga falta explorar mas alla de lo obvio.", input_schema: { type: "object", properties: { buscar: { type: "string", description: 'Palabra a buscar, por ejemplo "conversiones" o "landing". Vacio devuelve el catalogo entero.' } }, required: [] } },
     { name: "completitud_de_cuenta", description: "Que le falta a una cuenta para operar bien: doc maestro, reglas, nucleo, terminos protegidos, objetivo, datos frescos, destinatarios de reporte. Usar cuando pregunten si una cuenta esta lista, que falta cargar, o por que algo no funciona en una cuenta puntual.", input_schema: { type: "object", properties: { cuenta: { type: "string", enum: ENUM } }, required: ["cuenta"] } },
     { name: "estado_de_los_flujos", description: "Cada flujo de datos del sistema: quien lo escribe, cuando fue el ultimo dato, si esta vivo o cortado. Usar SIEMPRE antes de decir que un dato no existe: puede que el flujo que lo trae nunca se haya conectado, que es distinto de que no haya habido nada.", input_schema: { type: "object", properties: {}, required: [] } },
@@ -1406,22 +1417,63 @@ Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene regla
       try {
         const inp = tu.input;
         if (tu.name === "estado_cuenta") {
-          const [h, s7, plan, pulso] = await Promise.all([
+          const [h, vent, plan, pulso] = await Promise.all([
             supabase2.from("v_headroom").select("*").eq("account", inp.cuenta).maybeSingle(),
-            supabase2.from("v_serie_diaria").select("date,gasto,conversiones,cpa,madurez").eq("account", inp.cuenta).order("date", { ascending: false }).limit(14),
+            supabase2.rpc("ventana_metrica", { p_account: inp.cuenta, p_tipo: "diaria_real" }),
             supabase2.from("plan_semanal").select("semana,contexto,indicadores,hipotesis").eq("account", inp.cuenta).order("semana", { ascending: false }).limit(1).maybeSingle(),
             supabase2.from("pulso_diario").select("fecha,nivel,hallazgo_principal,resumen").eq("account", inp.cuenta).order("fecha", { ascending: false }).limit(1).maybeSingle()
           ]);
-          const d = s7.data || [];
-          const sum = (arr, k) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
-          const c7 = d.slice(0, 7), c14 = d;
-          out = { headroom: h.data, ultimos_7d: { gasto: sum(c7, "gasto"), conversiones: sum(c7, "conversiones"), cpa: sum(c7, "conversiones") ? sum(c7, "gasto") / sum(c7, "conversiones") : null }, ultimos_14d: { gasto: sum(c14, "gasto"), conversiones: sum(c14, "conversiones"), cpa: sum(c14, "conversiones") ? sum(c14, "gasto") / sum(c14, "conversiones") : null }, plan: plan.data, ultimo_pulso: pulso.data };
+          const v = Array.isArray(vent.data) ? vent.data[0] : vent.data;
+          if (!v?.hasta) {
+            out = {
+              headroom: h.data,
+              plan: plan.data,
+              ultimo_pulso: pulso.data,
+              ventana: null,
+              nota: `No pude establecer la ventana real de la capa diaria de ${inp.cuenta} (ventana_metrica no devolvi\xF3 nada), as\xED que no hay gasto, conversiones ni CPA de 7 ni de 14 d\xEDas. Con estos datos no se puede saber; decilo as\xED.`
+            };
+          } else {
+            const hasta = String(v.hasta).slice(0, 10);
+            const desde14 = menosDias(hasta, 13), desde7 = menosDias(hasta, 6);
+            const { data: dias } = await supabase2.from("v_serie_diaria").select("date,gasto,conversiones,cpa,madurez").eq("account", inp.cuenta).gte("date", desde14).lte("date", hasta).order("date", { ascending: false });
+            const d = dias || [];
+            const sum = (arr, k) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
+            const c7 = d.filter((r) => String(r.date).slice(0, 10) >= desde7), c14 = d;
+            const resumen = (arr, desde, declarados) => ({
+              ventana: `${desde} a ${hasta}`,
+              dias_declarados: declarados,
+              dias_con_dato: arr.length,
+              gasto: sum(arr, "gasto"),
+              conversiones: sum(arr, "conversiones"),
+              cpa: sum(arr, "conversiones") ? sum(arr, "gasto") / sum(arr, "conversiones") : null,
+              // Las conversiones de los días recientes todavía maduran, y Google
+              // las atribuye al día del clic: sumarlas sin decirlo es afirmar
+              // una caída que puede no existir.
+              dias_que_todavia_maduran: arr.filter((r) => r.madurez && r.madurez !== "consolidado").map((r) => `${String(r.date).slice(0, 10)} (${r.madurez})`)
+            });
+            out = {
+              headroom: h.data,
+              ultimos_7d: resumen(c7, desde7, 7),
+              ultimos_14d: resumen(c14, desde14, 14),
+              plan: plan.data,
+              ultimo_pulso: pulso.data,
+              nota_ventana: `Las ventanas se cuentan desde ${hasta}, el \xFAltimo d\xEDa que la capa diaria tiene para ${inp.cuenta} (ventana_metrica, fuente ${v.fuente || "capa diaria"}). Si dias_con_dato es menor que dias_declarados, el total sum\xF3 solo esos d\xEDas: dec\xED la ventana real, no "los \xFAltimos 14 d\xEDas".`,
+              nota_madurez: "En los d\xEDas provisionales o madurando el gasto ya es definitivo y las conversiones no. Nunca cierres un veredicto de CPA sobre ellos."
+            };
+          }
         } else if (tu.name === "accionables_abiertos") {
-          const { data: acc } = await supabase2.from("accionables_espejo").select("titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, url").eq("account", inp.cuenta).in("estado", ["Propuesto", "Bloqueado", "Aprobado", "En curso"]).order("prioridad", { ascending: true }).limit(30);
+          const TOPE = 30, TRAER = 200;
+          const { data: acc } = await supabase2.from("accionables_espejo").select("titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, url").eq("account", inp.cuenta).in("estado", ["Propuesto", "Bloqueado", "Aprobado", "En curso"]).limit(TRAER);
+          const ordenados = [...acc || []].sort((a, b) => (PESO_PRIORIDAD[b.prioridad] || 0) - (PESO_PRIORIDAD[a.prioridad] || 0) || String(a.vence || "9999-12-31").localeCompare(String(b.vence || "9999-12-31")) || String(a.titulo || "").localeCompare(String(b.titulo || "")));
+          const visibles = ordenados.slice(0, TOPE);
+          const sinPrioridad = ordenados.filter((x) => !PESO_PRIORIDAD[x.prioridad]).length;
           out = {
             cuenta: inp.cuenta,
-            cuantos: (acc || []).length,
-            accionables: (acc || []).map((x) => ({
+            cuantos: ordenados.length,
+            se_muestran: visibles.length,
+            orden: "Por prioridad real (Urgente, Alta, Media, Baja; sin prioridad o con una etiqueta desconocida van al final), despu\xE9s por vencimiento m\xE1s cercano.",
+            sin_prioridad: sinPrioridad,
+            accionables: visibles.map((x) => ({
               titulo: x.titulo,
               estado: x.estado,
               prioridad: x.prioridad,
@@ -1436,7 +1488,7 @@ Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene regla
               por_que_manual: x.accion_valida ? null : x.accion_error || "sin acci\xF3n estructurada",
               url: x.url
             })),
-            nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Pod\xE9s citar t\xEDtulos y el "por qu\xE9" textual.' : "Esta cuenta no tiene accionables abiertos ahora mismo."
+            nota: !ordenados.length ? "Esta cuenta no tiene accionables abiertos ahora mismo." : 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Pod\xE9s citar t\xEDtulos y el "por qu\xE9" textual.' + (ordenados.length > visibles.length ? ` Hay ${ordenados.length} abiertos y viajan los ${visibles.length} de mayor prioridad: no digas que son todos.` : "") + (sinPrioridad ? ` ${sinPrioridad} no tienen prioridad cargada y quedaron al final: eso es un dato faltante, no una prioridad baja.` : "") + ((acc || []).length >= TRAER ? ` La consulta se cort\xF3 en ${TRAER} filas en la base: puede haber m\xE1s abiertos que ni se contaron.` : "")
           };
         } else if (tu.name === "explicar_accionable") {
           const { data: exp } = await supabase2.rpc("explicar_accionable", { p_notion_id: inp.notion_id });
@@ -1483,10 +1535,28 @@ Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene regla
           if (!existe) {
             out = { error: `La vista "${inp.vista}" no existe. Mir\xE1 que_datos_hay para el cat\xE1logo.` };
           } else {
-            let q = supabase2.from(inp.vista).select("*").limit(Math.min(inp.limite || 30, 100));
+            const tope = Math.min(Math.max(Number(inp.limite) || 30, 1), 100);
+            const { data: muestra } = await supabase2.from(inp.vista).select("*").limit(1);
+            const cols = Object.keys((muestra || [])[0] || {});
+            const CANDIDATAS = ["fecha", "date", "week_start", "semana", "corrida", "detectado", "creada_el", "ejecutado_el", "ultima_edicion", "sincronizado", "created_at", "id"];
+            const orden = CANDIDATAS.find((c) => cols.includes(c)) || null;
+            let q = supabase2.from(inp.vista).select("*").limit(tope + 1);
+            if (orden) q = q.order(orden, { ascending: false });
             if (inp.cuenta) q = q.eq("account", inp.cuenta);
             const { data: filas2, error: e } = await q;
-            out = e ? { error: e.message, nota: "Puede que esa vista no filtre por cuenta." } : { vista: inp.vista, filas: filas2 || [], cuantas: (filas2 || []).length };
+            if (e) out = { error: e.message, nota: "Puede que esa vista no filtre por cuenta." };
+            else {
+              const hay = filas2 || [];
+              const visibles = hay.slice(0, tope);
+              out = {
+                vista: inp.vista,
+                cuantas: visibles.length,
+                orden: orden ? `${orden} descendente: lo m\xE1s reciente primero.` : 'SIN ORDEN DETERMINISTA: esta vista no expone ninguna columna de fecha ni de id, as\xED que estas filas son una muestra arbitraria. No las leas como "las primeras", "las \xFAltimas" ni como el total.',
+                truncado: hay.length > tope,
+                filas: visibles,
+                nota: hay.length > tope ? `Se cort\xF3 en ${tope} filas y hay m\xE1s. Lo que ves no es el total: no sumes ni saques promedios sobre esto.` : void 0
+              };
+            }
           }
         } else if (tu.name === "que_datos_hay") {
           const { data: dic } = await supabase2.rpc("diccionario_datos");
@@ -1533,7 +1603,14 @@ Si la pregunta toca varias cuentas, contest\xE1 por cuenta: cada una tiene regla
       } catch (e) {
         out = { error: e.message };
       }
-      results.push({ type: "tool_result", tool_use_id: tu.id, content: typeof out === "string" ? out : JSON.stringify(out).slice(0, 6e3) });
+      const cuerpo = typeof out === "string" ? out : JSON.stringify(out);
+      const CAP = 6e3;
+      results.push({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: cuerpo.length > CAP ? cuerpo.slice(0, CAP) + `
+[CORTADO: la herramienta devolvi\xF3 ${cuerpo.length} caracteres y viajan los primeros ${CAP}, as\xED que este JSON est\xE1 incompleto. Lo que falta NO es un vac\xEDo: ped\xED lo mismo m\xE1s acotado antes de concluir nada.]` : cuerpo
+      });
     }
     msgs.push({ role: "user", content: results });
   }
@@ -1766,15 +1843,16 @@ var CLIENT_RULES = {
   KAREDO: {
     currency: "EUR",
     locale: "de-DE",
-    dailyBudget: 135,
     forbiddenMetrics: ["conv_value", "roas", "all_conversions"],
     aiContext: `
 CUENTA: Karedo GmbH \xB7 SaaS B2B de software para tutela legal \xB7 Alemania \xB7 EUR
-Presupuesto: 135 EUR/d\xEDa \xB7 Solo Search
+Solo Search \xB7 Presupuesto diario: el de cuentas.presupuesto_diario, no hay otro.
+Los anuncios van en alem\xE1n.
 
 REGLAS QUE NO POD\xC9S VIOLAR:
 - NUNCA menciones ROAS ni valor de conversi\xF3n. El valor est\xE1 fijado
   arbitrariamente en 20 EUR por registro: cualquier ROAS derivado no significa nada.
+  Esta cuenta se juzga por CPA.
 - Las conversiones son DIRECCIONALES. Enhanced Conversions tiene 0-15% de
   coincidencia y dispara al hacer clic en "Registrieren", no al completar el
   registro. La direcci\xF3n del error es DESCONOCIDA: no afirmes que est\xE1n
@@ -1788,17 +1866,20 @@ REGLAS QUE NO POD\xC9S VIOLAR:
   BHI: {
     currency: "CLP",
     locale: "es-CL",
-    dailyBudget: 2e4,
     forbiddenMetrics: ["conv_value", "roas"],
     aiContext: `
 CUENTA: Best Health International \xB7 Asesor\xEDa en salud internacional \xB7 Chile \xB7 CLP
-Presupuesto: 20.000 CLP/d\xEDa \xB7 Solo Search \xB7 ABC1 en cinco comunas de Santiago
+Solo Search \xB7 ABC1 en cinco comunas de Santiago
+Presupuesto diario: el de cuentas.presupuesto_diario, no hay otro.
 
 REGLAS QUE NO POD\xC9S VIOLAR:
 - RIESGO REGULATORIO: el DFL 251 Art. 46 proh\xEDbe a aseguradoras offshore vender
   o intermediar seguros en Chile. Nunca uses ni sugieras las palabras vender,
   contratar, cotizar, p\xF3liza, precios, su seguro ni opciones de cobertura. El
-  vocabulario es de asesor\xEDa, orientaci\xF3n y acompa\xF1amiento.
+  vocabulario es de asesor\xEDa, orientaci\xF3n y acompa\xF1amiento. La lista vigente de
+  palabras prohibidas est\xE1 en cuentas.reglas_dominio.
+- Nada de copy generado autom\xE1ticamente: ac\xE1 el texto lo mira un humano por
+  regulaci\xF3n CMF, no por gusto.
 - Cualquier se\xF1al de AI Max, recursos generados autom\xE1ticamente o auto-apply es
   un problema de CUMPLIMIENTO LEGAL, no de rendimiento.
 - Las conversiones de Google NO son la fuente de verdad del negocio. El pipeline
@@ -1811,15 +1892,16 @@ REGLAS QUE NO POD\xC9S VIOLAR:
   "360": {
     currency: "CLP",
     locale: "es-CL",
-    dailyBudget: 21e3,
     forbiddenMetrics: ["conv_value", "roas", "all_conversions"],
     aiContext: `
 CUENTA: 360 Producciones \xB7 Productora de eventos corporativos \xB7 Chile \xB7 CLP
-Presupuesto: 21.000 CLP/d\xEDa \xB7 Solo Search \xB7 Ticket de 3 a 25 millones CLP
+Solo Search \xB7 Ticket de 3 a 25 millones CLP
+Presupuesto diario: el de cuentas.presupuesto_diario, no hay otro.
 
 REGLAS QUE NO POD\xC9S VIOLAR:
 - Los montos de negocio salen del campo Monto de Asana, NUNCA de Google Ads. El
   valor de conversi\xF3n est\xE1 inflado por una regla de 1,5x.
+- Los cierres llegan por CRM: sin ese dato, un cierre no existe para el an\xE1lisis.
 - NUNCA uses all_conversions. Suma clics a WhatsApp, mail y llamadas que no son
   negocio: en una semana medida fueron 4 conversiones reales contra 10 totales.
 - El Quality Score est\xE1 limitado por la landing, no por los anuncios. Es un techo
@@ -1827,10 +1909,48 @@ REGLAS QUE NO POD\xC9S VIOLAR:
 - Volumen bajo: unos 14 formularios y 0,5 cierres al mes.
 - En julio de 2026 un paquete de recomendaciones autom\xE1ticas de Google revirti\xF3
   meses de trabajo sin ser detectado. Cualquier cambio auto-aplicado es cr\xEDtico.`
+  },
+  // Faltaba entera, y era la peor ausencia posible: sin ella el pulso de la
+  // cuenta de 46 locales corría con las reglas no negociables EN BLANCO,
+  // incluida la única que no se puede violar acá. Lo de abajo sale de CLAUDE.md;
+  // todo número operativo (presupuesto por local, objetivo, los grupos de pares)
+  // sale de la base, y por eso no está escrito acá.
+  FRESH_MONKEE: {
+    currency: "USD",
+    locale: "en-US",
+    aiContext: `
+CUENTA: Fresh Monkee \xB7 Cadena de batidos \xB7 Estados Unidos \xB7 USD \xB7 46 locales
+Perfil de an\xE1lisis: cadena. Cada local es un negocio con su propio presupuesto.
+Presupuesto diario: el de cuentas.presupuesto_diario. Cu\xE1nto le toca a cada
+local sale de la base, no de ac\xE1: si no lo ten\xE9s, dec\xED que no lo pod\xE9s saber.
+
+REGLAS QUE NO POD\xC9S VIOLAR:
+- EL PRESUPUESTO DE UN LOCAL NO SE MUEVE A OTRO. Nunca propongas financiar un
+  local con lo que le sobra a otro, ni "reasignar entre locales", ni un tope
+  com\xFAn: no es una optimizaci\xF3n, es plata de otro due\xF1o.
+- Un local se compara SOLO contra su grupo de pares. Nunca contra el promedio de
+  la cadena, contra el mejor local ni contra un local de otro grupo. Si no sab\xE9s
+  a qu\xE9 grupo pertenece, no lo compares con nada.
+- El radio de la acci\xF3n tiene que ser el radio de la evidencia: un veredicto
+  calculado sobre un local no autoriza un cambio a nivel cuenta ni sobre otro
+  local. Vale para negativas, pausas y presupuestos.
+- Con 46 locales, un promedio de la cadena casi nunca significa algo: el n\xFAmero
+  que sirve es por local o por grupo de pares.
+- Si hay visitas a tienda, son MODELADAS por Google. Que no aparezcan no es
+  cero, y no se suman a las conversiones como si fueran del mismo tipo.
+- Qu\xE9 m\xE9tricas no valen en esta cuenta (por ejemplo si el valor de conversi\xF3n
+  est\xE1 cargado de verdad) no se puede saber desde este archivo: sale de
+  cuentas.reglas_dominio y del doc maestro. No supongas que todas sirven.`
   }
 };
 function getClientContext(client) {
-  return CLIENT_RULES[client]?.aiContext || "Sin contexto espec\xEDfico de negocio.";
+  const reglas = CLIENT_RULES[client]?.aiContext;
+  if (reglas) return reglas;
+  return `SIN REGLAS DE DOMINIO PARA ${client}.
+No es que esta cuenta no tenga reglas: es que no llegaron ni de cuentas.reglas_dominio
+ni del respaldo del repo. Trabaj\xE1 como si hubiera restricciones que no ves: no propongas
+cambios de presupuesto, de puja ni de copy, y dec\xED expl\xEDcitamente que faltan las reglas
+de la cuenta antes de cualquier recomendaci\xF3n.`;
 }
 
 // server.ts
@@ -2054,13 +2174,15 @@ function createApp() {
   });
   app2.get("/api/daily/overview", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
-    const client = req.query.client || "360";
+    const client = req.query.client || "";
+    if (!client) return res.status(400).json({ error: "falta client" });
     try {
       const { data: pulses, error: pulseErr } = await supabase.from("v_pulso_hoy").select("*");
       if (pulseErr) console.error("Pulse error:", pulseErr);
       const pulse = pulses?.find((p) => p.account?.toLowerCase() === client.toLowerCase()) || null;
-      const { data: dailySeries, error: serieErr } = await supabase.from("v_serie_diaria").select("*").eq("account", client).order("date", { ascending: true }).limit(28);
+      const { data: dailyDesc, error: serieErr } = await supabase.from("v_serie_diaria").select("*").eq("account", client).order("date", { ascending: false }).limit(28);
       if (serieErr) console.error("Serie error:", serieErr);
+      const dailySeries = (dailyDesc || []).slice().reverse();
       const { data: diaConCambios, error: cambiosErr } = await supabase.from("v_dia_con_cambios").select("*").eq("account", client).order("date", { ascending: false }).limit(14);
       if (cambiosErr) console.error("Cambios error:", cambiosErr);
       const { data: newTerms, error: termsErr } = await supabase.from("v_terminos_nuevos").select("*").eq("account", client).order("gasto_acumulado", { ascending: false }).limit(10);
@@ -2101,7 +2223,8 @@ function createApp() {
   });
   app2.get("/api/daily/terminos_nuevos", async (req, res) => {
     try {
-      const client = req.query.client || req.query.account || "360";
+      const client = req.query.client || req.query.account || "";
+      if (!client) return res.status(400).json({ error: "falta client" });
       if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
       const { data: newTerms, error: termsErr } = await supabase.from("v_terminos_nuevos").select("*").ilike("account", client).order("gasto_acumulado", { ascending: false }).limit(20);
       if (termsErr) {
@@ -2256,7 +2379,7 @@ function createApp() {
             const why = props["Por que"]?.rich_text?.map((rt) => rt.plain_text).join("") || "";
             const where = props.Donde?.rich_text?.map((rt) => rt.plain_text).join("") || "";
             const status2 = props.Estado?.select?.name || NOTION_STATES.PROPUESTO;
-            const priority = props.Prioridad?.select?.name || "Medium";
+            const priority = props.Prioridad?.select?.name || "Media";
             const revision_ia = props["Revision IA"]?.select?.name || NOTION_REVISION_IA.SIN_REVISAR;
             const punto_disputa = props["Punto en disputa"]?.rich_text?.map((rt) => rt.plain_text).join("") || "";
             const decision_final = props["Decision final"]?.rich_text?.map((rt) => rt.plain_text).join("") || "";
@@ -2581,7 +2704,7 @@ function createApp() {
       client,
       title: props.Accion?.title?.map((rt) => rt.plain_text).join("") || "Untitled",
       status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
-      priority: props.Prioridad?.select?.name || "Medium",
+      priority: props.Prioridad?.select?.name || "Media",
       why: texto(props["Por que"]),
       where: texto(props.Donde),
       tags: props.Etiquetas?.multi_select?.map((ms) => ms.name) || props.Tags?.multi_select?.map((ms) => ms.name) || [],
@@ -4179,7 +4302,7 @@ ${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
     if (!r) return res.status(404).json({ error: "no encontrado" });
     const { data: cuenta } = await supabase.from("cuentas").select("*").eq("account", r.account).single();
     const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
-    const { data: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
+    const { count: anteriorCount } = await supabase.from("v_serie_diaria").select("date", { count: "exact", head: true }).eq("account", r.account).gte("date", new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt("date", r.periodo_desde);
     const bloquesR = await bloquesDe(r);
     const input = {
       account: r.account,
@@ -4254,13 +4377,16 @@ ${secciones.sigue}` : ""].filter(Boolean).join("\n\n");
       const resumen = bloques.slice(0, 2).map((b) => `*${b.etiqueta}*
 ${b.texto || ""}${(b.vinetas || []).map((v) => "\n\u2022 " + v).join("")}`).join("\n\n");
       const m = r.metricas || {};
+      const moneda = (v) => v == null ? "-" : new Intl.NumberFormat(cuenta.locale || void 0, { style: "currency", currency: cuenta.moneda, maximumFractionDigits: 0 }).format(Number(v));
+      const num2 = (v) => v == null ? "-" : new Intl.NumberFormat(cuenta.locale || void 0, { maximumFractionDigits: 1 }).format(Number(v));
+      const gasto = moneda(m.cost?.actual), convs = num2(m.conversions?.actual), cpa = moneda(m.cpa?.actual);
       const texto = r.idioma === "en" ? `*Weekly report \xB7 ${r.periodo_desde} to ${r.periodo_hasta}*
-Spend ${m.gasto?.actual ?? "-"} \xB7 Conversions ${m.conversiones?.actual ?? "-"} \xB7 CPA ${m.cpa?.actual ?? "-"}
+Spend ${gasto} \xB7 Conversions ${convs} \xB7 CPA ${cpa}
 
 ${resumen}
 
 Full report: ${url}` : `*Reporte semanal \xB7 ${r.periodo_desde} al ${r.periodo_hasta}*
-Inversi\xF3n ${m.gasto?.actual ?? "-"} \xB7 Conversiones ${m.conversiones?.actual ?? "-"} \xB7 CPA ${m.cpa?.actual ?? "-"}
+Inversi\xF3n ${gasto} \xB7 Conversiones ${convs} \xB7 CPA ${cpa}
 
 ${resumen}
 
@@ -4839,11 +4965,11 @@ Reporte completo: ${url}`;
     if (notion) {
       try {
         await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: "En curso" } } } });
-        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica (${modo === "ejecutar" ? "real" : "simulaci\xF3n"}). El script ejecutor lo aplica en la pr\xF3xima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(" | ")}`.slice(0, 900) : ""}` } }] });
+        await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}] Aprobado para ejecuci\xF3n autom\xE1tica (${modoReal === "ejecutar" ? "real" : "simulaci\xF3n"}${modoReal !== modo ? `, degradado desde "${modo}": ${afuera.motivo || "este entorno no escribe en Google Ads"}` : ""}). El script ejecutor lo aplica en la pr\xF3xima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(" | ")}`.slice(0, 900) : ""}` } }] });
       } catch {
       }
     }
-    res.json({ ...data, avisos });
+    res.json({ ...data, avisos, modo_pedido: modo, modo_real: modoReal, degradado: modoReal !== modo, motivo_degradado: modoReal !== modo ? afuera.motivo || "este entorno no escribe en Google Ads" : null });
   });
   app2.get("/api/acciones-aprobadas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -4974,6 +5100,18 @@ Reporte completo: ${url}`;
     const { data, error } = await supabase.rpc("marcar_grupo_leido", { p_cuenta: cuenta, p_tipo: tipo, p_actor: actor, p_dia: dia });
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, marcadas: data });
+  });
+  app2.post("/api/alertas/grupo/silenciar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    const { ids, dias, por_que } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Faltan ids" });
+    const { error } = await supabase.from("alertas").update({
+      estado: "silenciada",
+      silenciada_hasta: new Date(Date.now() + (Number(dias) || 7) * 864e5).toISOString().slice(0, 10),
+      silenciada_por_que: por_que || null
+    }).in("id", ids);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, silenciadas: ids.length });
   });
   app2.post("/api/alertas/grupo/resolver", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
@@ -5597,7 +5735,12 @@ Reporte completo: ${url}`;
               await supabase.from("campaign_daily").update({
                 cost: v.cost,
                 conversions: v.conv,
-                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : 0
+                // NULL, no 0. El CPA canónico devuelve NULL con cero conversiones
+                // A PROPÓSITO (metrica_cpa, y get_reporte_datos hace
+                // `cost / nullif(conversions, 0)`). Este cron ESCRIBE, así que un 0
+                // acá deshacía esa decisión todas las mañanas: `cost_per_conv = 0`
+                // se lee "conversiones gratis", que es lo contrario de "no hubo".
+                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : null
               }).eq("account", cta.account).eq("date", b.date).eq("campaign", b.campaign);
             }
           }
@@ -5632,7 +5775,7 @@ Reporte completo: ${url}`;
           semanas.push(f(d));
         }
         let compS = 0, corrS = 0, compA = 0, corrA = 0, insA = 0, cerosA = 0, maxCs = 0;
-        let moneda = cta.currency || null;
+        let moneda = cta.moneda || null;
         if (!moneda) {
           const { data: mon } = await supabase.from("conversion_actions").select("currency").eq("account", cta.account).not("currency", "is", null).limit(1);
           moneda = mon?.[0]?.currency || null;
@@ -5657,16 +5800,23 @@ Reporte completo: ${url}`;
                 conversions: cv,
                 all_conversions: acv,
                 conv_value: val,
-                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : 0,
-                conv_rate: clicks > 0 ? +(cv / clicks * 100).toFixed(2) : 0,
+                // Los tres van NULL cuando el denominador es cero, no 0. Un CPA 0 se
+                // lee "conversiones gratis", un ROAS 0 se lee "no devolvió nada" y
+                // un conv_rate 0 se lee "nadie convirtió": los tres son afirmaciones
+                // distintas de "no se puede calcular". Es la misma decisión que ya
+                // toma el SQL del repo con `nullif(...)`.
+                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : null,
+                conv_rate: clicks > 0 ? +(cv / clicks * 100).toFixed(2) : null,
                 // porcentaje: la convención de la tabla
-                roas: cost > 0 ? +(val / cost).toFixed(2) : 0
+                roas: cost > 0 ? +(val / cost).toFixed(2) : null
               }).eq("account", cta.account).eq("week_start", w).eq("campaign", b.campaign);
             }
           }
-          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}'`);
           const va = /* @__PURE__ */ new Map();
+          const campanasEnApi = /* @__PURE__ */ new Set();
           for (const r of apiA) {
+            if (r.campaign?.name) campanasEnApi.add(r.campaign.name);
             if (!r.campaign?.name || !r.segments?.conversionActionName) continue;
             va.set(`${r.campaign.name}\xA7${r.segments.conversionActionName}`, {
               cat: r.segments?.conversionActionCategory || "DEFAULT",
@@ -5682,6 +5832,7 @@ Reporte completo: ${url}`;
             const v = va.get(`${b.campaign}\xA7${b.conversion_action}`);
             compA++;
             if (!v) {
+              if (!campanasEnApi.has(b.campaign)) continue;
               if (Number(b.conversions) || Number(b.all_conversions) || Number(b.conv_value) || Number(b.all_conv_value)) {
                 corrA++;
                 cerosA++;
@@ -5900,12 +6051,21 @@ Reporte completo: ${url}`;
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const client = req.query.client;
     const days = Number(req.query.days) || 7;
-    let q = supabase.from("pulso_diario").select("*").order("fecha", { ascending: false }).limit(days * 3);
+    const desde = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    let q = supabase.from("pulso_diario").select("*").gte("fecha", desde).order("fecha", { ascending: false }).limit(1e3);
     if (client) q = q.eq("account", client);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    const costoMes = (data || []).filter((p) => new Date(p.fecha) >= new Date(Date.now() - 30 * 864e5)).reduce((a, p) => a + Number(p.costo_usd || 0), 0);
-    res.json({ pulsos: data || [], costo_ultimos_30d_usd: Number(costoMes.toFixed(4)) });
+    let q30 = supabase.from("pulso_diario").select("costo_usd").gte("fecha", new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)).limit(2e3);
+    if (client) q30 = q30.eq("account", client);
+    const { data: d30, error: e30 } = await q30;
+    const costoMes = e30 ? null : (d30 || []).reduce((a, p) => a + Number(p.costo_usd || 0), 0);
+    res.json({
+      pulsos: data || [],
+      // null y no 0: un costo que no se pudo consultar no es un costo de cero.
+      costo_ultimos_30d_usd: costoMes == null ? null : Number(costoMes.toFixed(4)),
+      costo_ultimos_30d_falla: e30?.message || null
+    });
   });
   app2.all("/api/cron/mantenimiento", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

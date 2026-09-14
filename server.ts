@@ -312,8 +312,14 @@ export function createApp() {
 
   app.get("/api/daily/overview", async (req, res) => {
     if (!supabase) return res.status(500).json({ error: 'Supabase credentials missing' });
-    const client = (req.query.client as string) || '360';
-    
+    // Sin cliente se devuelve 400, como TODOS los demás endpoints. Antes caía a
+    // '360': `Semana.tsx` devuelve '' mientras /api/cuentas carga (por diseño de
+    // useCuentas), así que en el primer render —y de forma permanente si
+    // /api/cuentas falla— el gráfico de tendencia y los 5 KPIs mostraban datos de
+    // 360 bajo el nombre de otra cuenta en el header.
+    const client = (req.query.client as string) || '';
+    if (!client) return res.status(400).json({ error: 'falta client' });
+
     try {
       // 1. Pulso hoy
       const { data: pulses, error: pulseErr } = await supabase.from('v_pulso_hoy').select('*');
@@ -321,13 +327,21 @@ export function createApp() {
       const pulse = pulses?.find((p: any) => p.account?.toLowerCase() === client.toLowerCase()) || null;
 
       // 2. Serie diaria (ultimos 28 dias para soportar comparacion semanal)
-      const { data: dailySeries, error: serieErr } = await supabase
+      // `ascending: false` + limit = los 28 MÁS NUEVOS. Con `true` eran los 28 más
+      // VIEJOS: mientras campaign_daily tuvo menos de 28 fechas distintas daba lo
+      // mismo, pero la tabla crece un día por día y mantenimiento_semanal declara
+      // que la capa diaria "NUNCA se borra (archivo permanente)". El día que pasara
+      // de 28 fechas, esta consulta iba a devolver los primeros días históricos y
+      // NINGUNO del rango elegido, sin error. Se reordena acá para que el resto del
+      // handler siga viendo la serie cronológica.
+      const { data: dailyDesc, error: serieErr } = await supabase
         .from('v_serie_diaria')
         .select('*')
         .eq('account', client)
-        .order('date', { ascending: true })
+        .order('date', { ascending: false })
         .limit(28);
       if (serieErr) console.error("Serie error:", serieErr);
+      const dailySeries = (dailyDesc || []).slice().reverse();
 
       // 3. Dia con cambios (ultimos 14 dias con delta_cpa y cambios)
       const { data: diaConCambios, error: cambiosErr } = await supabase
@@ -403,7 +417,10 @@ export function createApp() {
 
   app.get("/api/daily/terminos_nuevos", async (req, res) => {
     try {
-      const client = (req.query.client as string) || (req.query.account as string) || '360';
+      // Mismo motivo que /api/daily/overview: sin cliente se devuelve 400, no se
+      // sirven las búsquedas nuevas de 360 bajo el nombre de otra cuenta.
+      const client = (req.query.client as string) || (req.query.account as string) || '';
+      if (!client) return res.status(400).json({ error: 'falta client' });
       if (!supabase) return res.status(500).json({ error: 'Supabase credentials missing' });
 
       const { data: newTerms, error: termsErr } = await supabase
@@ -611,7 +628,7 @@ export function createApp() {
             const why = props['Por que']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '';
             const where = props.Donde?.rich_text?.map((rt: any) => rt.plain_text).join('') || '';
             const status = props.Estado?.select?.name || NOTION_STATES.PROPUESTO;
-            const priority = props.Prioridad?.select?.name || 'Medium';
+            const priority = props.Prioridad?.select?.name || 'Media';
             const revision_ia = props['Revision IA']?.select?.name || NOTION_REVISION_IA.SIN_REVISAR;
             const punto_disputa = props['Punto en disputa']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '';
             const decision_final = props['Decision final']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '';
@@ -1035,7 +1052,7 @@ export function createApp() {
       client: client,
       title: props.Accion?.title?.map((rt: any) => rt.plain_text).join('') || 'Untitled',
       status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
-      priority: props.Prioridad?.select?.name || 'Medium',
+      priority: props.Prioridad?.select?.name || 'Media',
       why: texto(props['Por que']),
       where: texto(props.Donde),
       tags: props.Etiquetas?.multi_select?.map((ms: any) => ms.name) || props.Tags?.multi_select?.map((ms: any) => ms.name) || [],
@@ -2846,7 +2863,13 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       if (!r) return res.status(404).json({ error: 'no encontrado' });
       const { data: cuenta } = await supabase.from('cuentas').select('*').eq('account', r.account).single();
       const dias = (new Date(r.periodo_hasta).getTime() - new Date(r.periodo_desde).getTime()) / 864e5 + 1;
-      const { data: anteriorCount } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', r.account)
+      // Con `head: true` supabase-js devuelve el número en `count` y deja `data` en
+      // null. Destructurar `data` daba siempre null → `?? 0` → 0 >= dias es false →
+      // `periodo_anterior_completo` era SIEMPRE false → reporte-pdf dejaba `deltas`
+      // vacío y el renglón "Inversión +12,3% · Conversiones −4,1% vs período
+      // anterior" no salió en ningún reporte, nunca. Este mismo archivo lo hace bien
+      // 200 líneas antes (`const { count: nDias } = ...`).
+      const { count: anteriorCount } = await supabase.from('v_serie_diaria').select('date', { count: 'exact', head: true }).eq('account', r.account)
         .gte('date', new Date(new Date(r.periodo_desde).getTime() - dias * 864e5).toISOString().slice(0, 10)).lt('date', r.periodo_desde);
       const bloquesR = await bloquesDe(r);
       const input: ReporteInput = {
@@ -2909,7 +2932,17 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       const bloques = await bloquesDe(r);
       const resumen = bloques.slice(0, 2).map((b: any) => `*${b.etiqueta}*\n${b.texto || ''}${(b.vinetas || []).map((v: string) => '\n• ' + v).join('')}`).join('\n\n');
       const m = r.metricas || {};
-      const texto = r.idioma === 'en' ? `*Weekly report · ${r.periodo_desde} to ${r.periodo_hasta}*\nSpend ${m.gasto?.actual ?? '-'} · Conversions ${m.conversiones?.actual ?? '-'} · CPA ${m.cpa?.actual ?? '-'}\n\n${resumen}\n\nFull report: ${url}` : `*Reporte semanal · ${r.periodo_desde} al ${r.periodo_hasta}*\nInversión ${m.gasto?.actual ?? '-'} · Conversiones ${m.conversiones?.actual ?? '-'} · CPA ${m.cpa?.actual ?? '-'}\n\n${resumen}\n\nReporte completo: ${url}`;
+      // `get_reporte_datos` construye cost / conversions / cpa / ctr / clicks /
+      // impr_share. Esto leía `m.gasto` y `m.conversiones`, que no existen: al
+      // cliente le llegaba literal "Inversión - · Conversiones - · CPA 23100". Las
+      // dos primeras siempre en guion, y el CPA —el único número del mensaje— salía
+      // CRUDO: el mismo 23100 son pesos chilenos en BHI y dólares en Fresh Monkee.
+      const moneda = (v: any) => v == null ? '-' :
+        new Intl.NumberFormat(cuenta.locale || undefined, { style: 'currency', currency: cuenta.moneda, maximumFractionDigits: 0 }).format(Number(v));
+      const num = (v: any) => v == null ? '-' :
+        new Intl.NumberFormat(cuenta.locale || undefined, { maximumFractionDigits: 1 }).format(Number(v));
+      const gasto = moneda(m.cost?.actual), convs = num(m.conversions?.actual), cpa = moneda(m.cpa?.actual);
+      const texto = r.idioma === 'en' ? `*Weekly report · ${r.periodo_desde} to ${r.periodo_hasta}*\nSpend ${gasto} · Conversions ${convs} · CPA ${cpa}\n\n${resumen}\n\nFull report: ${url}` : `*Reporte semanal · ${r.periodo_desde} al ${r.periodo_hasta}*\nInversión ${gasto} · Conversiones ${convs} · CPA ${cpa}\n\n${resumen}\n\nReporte completo: ${url}`;
       const rs = await fetch(hook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: texto }) });
       if (!rs.ok) return res.status(500).json({ error: 'Slack respondió ' + rs.status });
       await supabase.from('reportes_cliente').update({ estado: 'enviado', enviado_el: new Date().toISOString(), enviado_a: 'slack' }).eq('id', r.id);
@@ -3431,8 +3464,14 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Estado en Notion: En curso
-    if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modo === 'ejecutar' ? 'real' : 'simulación'}). El script ejecutor lo aplica en la próxima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(' | ')}`.slice(0, 900) : ''}` } }] }); } catch {} }
-    res.json({ ...data, avisos });
+    // El rastro de auditoría escribe el modo REAL, no el pedido. Antes decía
+    // "(real)" en Notion sobre una corrida que se había degradado a simulación:
+    // el registro afirmaba que se tocó Google Ads cuando no se tocó nada.
+    if (notion) { try { await notion.pages.update({ page_id: req.params.id, properties: { Estado: { select: { name: 'En curso' } } } }); await notion.comments.create({ parent: { page_id: req.params.id }, rich_text: [{ text: { content: `[APP ${new Date().toISOString().slice(0, 10)}] Aprobado para ejecución automática (${modoReal === 'ejecutar' ? 'real' : 'simulación'}${modoReal !== modo ? `, degradado desde "${modo}": ${afuera.motivo || 'este entorno no escribe en Google Ads'}` : ''}). El script ejecutor lo aplica en la próxima hora.${avisos.length ? ` Avisos (no bloquean): ${avisos.join(' | ')}`.slice(0, 900) : ''}` } }] }); } catch {} }
+    // `modo_real` y `degradado` van explícitos para que la pantalla no tenga que
+    // suponer: decía "Aprobado. El script lo aplica en Google Ads dentro de la
+    // próxima hora" usando el modo PEDIDO, fuera de producción, sin aplicar nada.
+    res.json({ ...data, avisos, modo_pedido: modo, modo_real: modoReal, degradado: modoReal !== modo, motivo_degradado: modoReal !== modo ? (afuera.motivo || 'este entorno no escribe en Google Ads') : null });
   });
   app.get("/api/acciones-aprobadas", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
@@ -3579,6 +3618,25 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     const { data, error } = await supabase.rpc('marcar_grupo_leido', { p_cuenta: cuenta, p_tipo: tipo, p_actor: actor, p_dia: dia });
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, marcadas: data });
+  });
+
+  /** Silenciar un grupo entero. `v_alertas_agrupadas` entrega `ids` (el array de
+   *  todas las alertas del grupo) y NO entrega `id`: la UI llamaba
+   *  `/api/alertas/undefined/silenciar`, que pegaba `.eq('id','undefined')` contra
+   *  un bigint y devolvía 500. Andrés tipeaba el motivo en un prompt() y se
+   *  descartaba. Silenciar solo al representante dejaría las otras 15 gritando,
+   *  así que se silencian por `ids`, que es el radio del grupo que se ve. */
+  app.post("/api/alertas/grupo/silenciar", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    const { ids, dias, por_que } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Faltan ids' });
+    const { error } = await supabase.from('alertas').update({
+      estado: 'silenciada',
+      silenciada_hasta: new Date(Date.now() + (Number(dias) || 7) * 864e5).toISOString().slice(0, 10),
+      silenciada_por_que: por_que || null
+    }).in('id', ids);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, silenciadas: ids.length });
   });
 
   app.post("/api/alertas/grupo/resolver", async (req, res) => {
@@ -4296,7 +4354,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
               if (++corregidas > TOPE_CORRECCIONES) break;
               await supabase.from('campaign_daily').update({
                 cost: v.cost, conversions: v.conv,
-                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : 0,
+                // NULL, no 0. El CPA canónico devuelve NULL con cero conversiones
+                // A PROPÓSITO (metrica_cpa, y get_reporte_datos hace
+                // `cost / nullif(conversions, 0)`). Este cron ESCRIBE, así que un 0
+                // acá deshacía esa decisión todas las mañanas: `cost_per_conv = 0`
+                // se lee "conversiones gratis", que es lo contrario de "no hubo".
+                cost_per_conv: v.conv > 0 ? +(v.cost / v.conv).toFixed(2) : null,
               }).eq('account', cta.account).eq('date', b.date).eq('campaign', b.campaign);
             }
           }
@@ -4322,7 +4385,10 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         const semanas: string[] = [];
         for (let i = 1; i <= 4; i++) { const d = new Date(lunesActual); d.setUTCDate(lunesActual.getUTCDate() - 7 * i); semanas.push(f(d)); }
         let compS = 0, corrS = 0, compA = 0, corrA = 0, insA = 0, cerosA = 0, maxCs = 0;
-        let moneda: string | null = cta.currency || null;
+        // `cta.moneda`, que es lo que selecciona cuentasActivas(). `cta.currency` era
+        // SIEMPRE undefined, así que este camino caía siempre a la consulta de abajo
+        // teniendo la moneda real a un campo de distancia.
+        let moneda: string | null = cta.moneda || null;
         if (!moneda) {
           const { data: mon } = await supabase.from('conversion_actions').select('currency').eq('account', cta.account).not('currency', 'is', null).limit(1);
           moneda = mon?.[0]?.currency || null;
@@ -4343,15 +4409,29 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
               const cost = Number(b.cost) || 0, clicks = Number(b.clicks) || 0;
               await supabase.from('campaign').update({
                 conversions: cv, all_conversions: acv, conv_value: val,
-                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : 0,
-                conv_rate: clicks > 0 ? +((cv / clicks) * 100).toFixed(2) : 0,   // porcentaje: la convención de la tabla
-                roas: cost > 0 ? +(val / cost).toFixed(2) : 0,
+                // Los tres van NULL cuando el denominador es cero, no 0. Un CPA 0 se
+                // lee "conversiones gratis", un ROAS 0 se lee "no devolvió nada" y
+                // un conv_rate 0 se lee "nadie convirtió": los tres son afirmaciones
+                // distintas de "no se puede calcular". Es la misma decisión que ya
+                // toma el SQL del repo con `nullif(...)`.
+                cost_per_conv: cv > 0 ? +(cost / cv).toFixed(2) : null,
+                conv_rate: clicks > 0 ? +((cv / clicks) * 100).toFixed(2) : null,   // porcentaje: la convención de la tabla
+                roas: cost > 0 ? +(val / cost).toFixed(2) : null,
               }).eq('account', cta.account).eq('week_start', w).eq('campaign', b.campaign);
             }
           }
-          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}' AND campaign.status IN ('ENABLED','PAUSED')`);
+          // Sin filtro de status. Con `IN ('ENABLED','PAUSED')` una campaña REMOVED
+          // quedaba fuera del resultado, ninguna fila suya aparecía, y el `if (!v)`
+          // de abajo lo leía como "sus métricas reales hoy son cero": se le
+          // escribían ceros a cuatro semanas de historia por haberla eliminado.
+          const apiA = await gadsSearch(cta.cid, `SELECT campaign.name, segments.conversion_action_name, segments.conversion_action_category, metrics.conversions, metrics.all_conversions, metrics.conversions_value, metrics.all_conversions_value FROM campaign WHERE segments.date BETWEEN '${w}' AND '${wEnd}'`);
           const va = new Map<string, any>();
+          // Qué campañas contestó la API, más allá del par exacto. Es la diferencia
+          // entre "esta campaña no tuvo esta conversión" (dato) y "de esta campaña
+          // no vino nada" (hueco). Sin esto, los dos se veían igual.
+          const campanasEnApi = new Set<string>();
           for (const r of apiA) {
+            if (r.campaign?.name) campanasEnApi.add(r.campaign.name);
             if (!r.campaign?.name || !r.segments?.conversionActionName) continue;
             va.set(`${r.campaign.name}§${r.segments.conversionActionName}`, {
               cat: r.segments?.conversionActionCategory || 'DEFAULT',
@@ -4365,7 +4445,12 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
             const v = va.get(`${b.campaign}§${b.conversion_action}`);
             compA++;
             if (!v) {
-              // la API ya no reporta el par: sus métricas reales hoy son cero
+              // La campaña entera no vino: no hay señal, no se toca. Es el MISMO
+              // criterio que la capa diaria de este handler ("la campaña no vino en
+              // la API: sin más señal, no se toca"). Antes había dos criterios
+              // opuestos para la misma ausencia en el mismo cron.
+              if (!campanasEnApi.has(b.campaign)) continue;
+              // La campaña SÍ vino pero sin este par: eso sí es un cero medido.
               if (Number(b.conversions) || Number(b.all_conversions) || Number(b.conv_value) || Number(b.all_conv_value)) {
                 corrA++; cerosA++;
                 await supabase.from('conversion_actions').update({ conversions: 0, all_conversions: 0, conv_value: 0, all_conv_value: 0 }).eq('account', cta.account).eq('week_start', w).eq('campaign', b.campaign).eq('conversion_action', b.conversion_action);
@@ -4581,12 +4666,30 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const client = req.query.client as string;
     const days = Number(req.query.days) || 7;
-    let q = supabase.from('pulso_diario').select('*').order('fecha', { ascending: false }).limit(days * 3);
+    // El `.limit()` es de FILAS, y hay una fila por cuenta por día. El `days * 3`
+    // asumía 3 cuentas y hay 4 —el mismo supuesto que useCuentas.ts documenta como
+    // la causa de que Fresh Monkee desapareciera de varias pantallas—, así que el
+    // corte caía dentro del rango pedido. Se filtra por FECHA, que es lo que se
+    // declara, y el límite queda como tope de seguridad con margen.
+    const desde = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    let q = supabase.from('pulso_diario').select('*').gte('fecha', desde).order('fecha', { ascending: false }).limit(1000);
     if (client) q = q.eq('account', client);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    const costoMes = (data || []).filter((p: any) => new Date(p.fecha) >= new Date(Date.now() - 30 * 864e5)).reduce((a: number, p: any) => a + Number(p.costo_usd || 0), 0);
-    res.json({ pulsos: data || [], costo_ultimos_30d_usd: Number(costoMes.toFixed(4)) });
+
+    // El costo de 30 días se consulta aparte: filtrar 30 días dentro de una lista
+    // pedida para `days` (7 por defecto) devolvía la suma de 7 días rotulada como
+    // de 30. Sistemáticamente subestimado, y nada lo decía.
+    let q30 = supabase.from('pulso_diario').select('costo_usd').gte('fecha', new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)).limit(2000);
+    if (client) q30 = q30.eq('account', client);
+    const { data: d30, error: e30 } = await q30;
+    const costoMes = e30 ? null : (d30 || []).reduce((a: number, p: any) => a + Number(p.costo_usd || 0), 0);
+    res.json({
+      pulsos: data || [],
+      // null y no 0: un costo que no se pudo consultar no es un costo de cero.
+      costo_ultimos_30d_usd: costoMes == null ? null : Number(costoMes.toFixed(4)),
+      costo_ultimos_30d_falla: e30?.message || null
+    });
   });
 
   // Mantenimiento semanal: retención por tabla. Vercel Cron, lunes 06:00 UTC.
