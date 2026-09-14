@@ -398,8 +398,24 @@ function App() {
           </div>
         </header>
 
-        {/* Main View Area */}
-        <main className="flex-1 overflow-y-auto relative custom-scrollbar">
+        {/* Main View Area
+            `overflow-x-clip` va EXPLÍCITO. Por el spec de CSS, si un eje no es
+            `visible` el otro se computa `auto`: con solo `overflow-y-auto`, el
+            overflow-x de `main` era `auto` — o sea que main era un contenedor de
+            scroll HORIZONTAL sin que nadie lo hubiera pedido. Cualquier cosa que se
+            pasara de ancho (un tooltip absoluto de 280px cerca del borde, una tabla)
+            le colgaba una barra horizontal abajo, que queda fija ahí mientras se
+            scrollea en vertical.
+            Y como `body` tiene overflow-x: hidden, `document.scrollWidth` NO lo ve:
+            por eso el ancho fantasma no aparecía en ninguna medición de la página.
+            Medido: un elemento oculto 200px fuera de main -> main.scrollWidth 1062
+            contra clientWidth 862, y document.scrollWidth en 0.
+            Se escribe `clip` y el navegador lo computa `hidden`, porque el spec dice
+            que `clip` frente a un `auto` en el otro eje se resuelve así. No es un
+            error: lo que importa es que ya no se dibuja barra. Lo que de verdad
+            necesita ancho —la tabla de conversiones por grupo— ya declara su propio
+            `overflow-x-auto` y sigue scrolleando adentro de su caja. */}
+        <main className="flex-1 overflow-y-auto overflow-x-clip relative custom-scrollbar">
           <React.Suspense fallback={<div className="p-8 text-xs text-[#F5F7FA] opacity-60">Cargando…</div>}>
           {/* Cada pantalla con su propio límite: si una falla, las demás siguen. */}
           {activeTab === 'bandeja' && (

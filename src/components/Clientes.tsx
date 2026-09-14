@@ -85,13 +85,18 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
 
   const descargarDoc = () => {
     if (!docMaestro) return;
-    const blob = new Blob([docMaestro.markdown], { type: 'text/markdown' });
+    const blob = new Blob([docMaestro.markdown || ''], { type: 'text/markdown' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = `DOC_MAESTRO_${activeClient}_${new Date().toISOString().slice(0,10)}.md`; a.click();
   };
 
   // Render markdown mínimo: encabezados, negrita, código, tablas, listas
-  const md = (t: string) => {
+  // Recibe `unknown` a propósito: el tipo de `docMaestro` DECLARA markdown:string,
+  // pero el endpoint puede devolver null y con `strict` apagado el typecheck no dice
+  // nada. Un `t.split` sobre null acá tumbaba la pantalla Cuenta ENTERA —Semana
+  // incluida—, no solo esta pestaña.
+  const md = (entrada: unknown) => {
+    const t = typeof entrada === 'string' ? entrada : '';
     const esc = (x: string) => x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const inline = (x: string) => esc(x)
       .replace(/\*\*(.+?)\*\*/g, '<strong class="text-[#EDEFF3]">$1</strong>')
@@ -866,10 +871,12 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
         {!docMaestro ? (
           <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
         ) : vistaDoc === 'ensamblado' ? (
-          <div className="max-h-[70vh] overflow-y-auto custom-scrollbar pr-2" dangerouslySetInnerHTML={{ __html: md(docMaestro.markdown) }} />
+          typeof docMaestro.markdown === 'string' && docMaestro.markdown.trim()
+            ? <div className="max-h-[70vh] overflow-y-auto custom-scrollbar pr-2" dangerouslySetInnerHTML={{ __html: md(docMaestro.markdown) }} />
+            : <p className="text-xs text-[#F5F7FA] opacity-60 italic py-3">El documento llegó sin contenido. No es que esté vacío: es que el campo <code>markdown</code> no vino.</p>
         ) : (
           <div className="space-y-3">
-            {docMaestro.secciones.map(sec => (
+            {(docMaestro.secciones || []).map(sec => (
               <div key={sec.seccion} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--surface-2)', border: editandoSeccion === sec.seccion ? '1px solid var(--primary)' : '1px solid transparent' }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-[#EDEFF3] uppercase tracking-wider">{sec.seccion}</span>
