@@ -6309,7 +6309,12 @@ Reporte completo: ${url}`;
     let q = supabase.from("v_ghl_estado").select("*");
     if (cuenta) q = q.eq("account", cuenta);
     const { data: estados, error } = await q;
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      const faltaLaVista = error?.code === "42P01" || /does not exist|no existe/i.test(String(error.message));
+      return res.status(faltaLaVista ? 503 : 500).json({
+        error: faltaLaVista ? "Falta la migraci\xF3n del panel de CRM (20260914250000): las vistas v_ghl_estado y v_ghl_pipeline no existen todav\xEDa. Correr `supabase db push`." : error.message
+      });
+    }
     if (!estados?.length) return res.json({ cuentas: [], usa_ghl: false });
     const { data: pipelines } = await supabase.from("v_ghl_pipeline").select("*").order("orden");
     const armar = (estado) => {

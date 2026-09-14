@@ -4914,7 +4914,20 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     let q = supabase.from('v_ghl_estado').select('*');
     if (cuenta) q = q.eq('account', cuenta);
     const { data: estados, error } = await q;
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      // Una vista que no existe y una base caída dan las dos un 500, y mandan a
+      // lugares opuestos: una se arregla corriendo una migración, la otra no se
+      // arregla mirando el código. PostgREST devuelve 42P01 cuando la relación no
+      // existe; se traduce a algo accionable en vez de dejar "el servidor
+      // respondió 500", que es cierto y no dice qué hacer.
+      const faltaLaVista = (error as any)?.code === '42P01'
+        || /does not exist|no existe/i.test(String(error.message));
+      return res.status(faltaLaVista ? 503 : 500).json({
+        error: faltaLaVista
+          ? 'Falta la migración del panel de CRM (20260914250000): las vistas v_ghl_estado y v_ghl_pipeline no existen todavía. Correr `supabase db push`.'
+          : error.message,
+      });
+    }
     // Ninguna cuenta con GHL no es un error: es que ninguna lo usa todavía.
     if (!estados?.length) return res.json({ cuentas: [], usa_ghl: false });
 
