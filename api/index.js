@@ -5236,9 +5236,21 @@ Reporte completo: ${url}`;
         ultima_edicion: page.last_edited_time,
         sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
         url: page.url,
-        accion: parsed.accion || null,
-        accion_valida: !!parsed.accion,
-        accion_error: parsed.error || null
+        accion: parsed.accion || null
+        // NO se escribe `accion_valida` ni `accion_error` acá, y es a propósito.
+        //
+        // Este cron corre cada 30 minutos y solo sabe si el JSON parsea.
+        // `sincronizarEspejo` corre una vez por día y hace la validación de
+        // verdad: resuelve la keyword contra la base y corre verificar_invariantes.
+        // Cuando los dos escribían la columna, el veredicto bueno —"keyword X no
+        // encontrada activa en BHI", "INVARIANTE: ..."— volvía a `true` con el
+        // error en null dentro de la media hora, y quedaba así 23 horas y media
+        // de cada 24. O sea que la app volvía a ofrecer el botón de ejecutar
+        // sobre un accionable que la validación había rechazado, y el motivo
+        // desaparecía de la pantalla.
+        //
+        // El trabajo de este cron es la frescura de los campos de Notion, no
+        // revalidar. Un veredicto que se borra solo es peor que no tenerlo.
       });
     }
     if (!filas.length) return 0;
