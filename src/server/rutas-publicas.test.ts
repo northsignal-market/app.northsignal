@@ -52,6 +52,24 @@ describe('rutas del servidor vs los rewrites de Vercel', () => {
     expect(tapadas, 'Hay rutas del servidor que Vercel no le entrega').toEqual([]);
   });
 
+  it('los rewrites solo usan claves que Vercel acepta', () => {
+    // El 14/9/2026 agregué un `_comentario` explicativo adentro de una regla de
+    // rewrite. JSON no tiene comentarios y el esquema de Vercel no admite claves
+    // extra: el deploy falló ANTES de construir, sin logs de build, y producción
+    // se quedó dos commits atrás mostrando un estado viejo que parecía el último.
+    // Un vercel.json inválido no rompe nada local —ni tsc, ni tests, ni build—:
+    // se ve recién en el panel de Vercel, o no se ve.
+    const PERMITIDAS = new Set(['source', 'destination', 'has', 'missing', 'statusCode', 'permanent']);
+    const vercel = JSON.parse(fs.readFileSync(VERCEL, 'utf8'));
+    const invalidas: string[] = [];
+    for (const r of (vercel.rewrites || [])) {
+      for (const k of Object.keys(r)) {
+        if (!PERMITIDAS.has(k)) invalidas.push(`rewrite "${r.source}" tiene la clave "${k}"`);
+      }
+    }
+    expect(invalidas, 'Vercel rechaza el vercel.json entero y el deploy falla sin logs').toEqual([]);
+  });
+
   it('las rutas de la SPA siguen yendo al index.html', () => {
     const vercel = JSON.parse(fs.readFileSync(VERCEL, 'utf8'));
     const rewrites: { source: string; destination: string }[] = vercel.rewrites || [];

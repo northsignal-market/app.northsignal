@@ -15,7 +15,6 @@
       "destination": "/api/index"
     },
     {
-      "_comentario": "La página del reporte al cliente la sirve el servidor, no la SPA. Sin esta regla la caía el catch-all de abajo y Vercel devolvía el index.html de la app: el link que se le manda al cliente mostraba la pantalla de login en vez de su reporte. Verificado en producción el 14/9/2026 contra /r/9byru… — 200 OK sirviendo el index de la SPA. Va ANTES del catch-all: Vercel aplica la primera que matchea.",
       "source": "/r/(.*)",
       "destination": "/api/index"
     },
