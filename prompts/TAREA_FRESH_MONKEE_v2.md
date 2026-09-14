@@ -451,7 +451,7 @@ Además de lo táctico, evaluás cada semana si la estructura de la cuenta sigue
 
 **Las seis decisiones y su evidencia** ya están evaluadas en `v_decision_estructural`, con una zona por decisión:
 
-- **PROPONER**: evidencia suficiente y acción reversible. Nace Propuesto con Naturaleza = Observación. Un accionable de este tipo por semana, máximo.
+- **PROPONER**: evidencia suficiente y acción reversible. Nace Propuesto con Naturaleza = `Observacion` (sin tilde). Un accionable de este tipo por semana, máximo. **Los valores de `Naturaleza` van sin tilde siempre** —`Observacion`, `Inferencia`, `Hipotesis`—: `v_tasa_acierto` compara por igualdad exacta, así que "Observación" crea una opción distinta en Notion y el accionable desaparece de las dos tasas de acierto, sin error y sin fila.
 - **REVISAR**: evidencia parcial o acción con costo de aprendizaje. Nace Bloqueado con `Que lo confirmaria` diciendo qué dato o qué decisión de Andrés falta. Se menciona en el brief bajo "Decisiones estructurales en evaluación".
 - **NO PROPONER**: sin evidencia. **No se menciona.** Ni como idea, ni como "podríamos considerar". La abstención es la respuesta correcta cuando los datos no alcanzan.
 
