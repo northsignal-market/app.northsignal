@@ -1,7 +1,7 @@
 import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
-import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular, Fallo, pedirJSON, motivoFallo } from './ui';
+import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular, Fallo, pedirJSON, motivoFallo, Tablero, Panel } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
 
@@ -47,8 +47,18 @@ const GRUPOS: { id: string; label: string; ayuda: string }[] = [
   { id: 'g-salud', label: 'Salud', ayuda: 'Si los datos están al día y cuadran' },
   { id: 'g-aprendizaje', label: 'Aprendizaje', ayuda: 'Qué tan bien analiza el sistema y cómo se corrige' },
   { id: 'g-automatizacion', label: 'Automatización', ayuda: 'Alertas, qué puede hacer solo, ejecuciones y cambios' },
+  { id: 'g-crm', label: 'CRM', ayuda: 'Qué llega de GoHighLevel y si el sistema lo entiende' },
   { id: 'g-soporte', label: 'Soporte', ayuda: 'Tickets para Claude y tu bitácora' },
 ];
+
+/** La ayuda de un grupo POR ID, nunca por indice.
+ *
+ *  Al meter 'g-crm' antes de 'g-soporte' se corrieron todos los indices y los
+ *  subtitulos quedaron cruzados: CRM decia "Tickets para Claude" y Soporte decia
+ *  "Que llega de GoHighLevel". Un array indexado por posicion desde cinco lugares
+ *  distintos se rompe cada vez que alguien agrega uno en el medio, y el sintoma
+ *  —una etiqueta equivocada— no rompe nada, solo miente. */
+const ayudaDe = (id: string) => GRUPOS.find(g => g.id === id)?.ayuda ?? '';
 
 /** Regla 11 (informe 14): una lista que crece no se muestra entera de entrada.
  *  Tope 6 + "ver los N": el recorte es de presentación — el dato ya vino. */
@@ -504,7 +514,7 @@ export function Sistema() {
         <div className="min-w-0 space-y-9">
 
           {/* ==================== SALUD ==================== */}
-          <GrupoSistema id="g-salud" label="Salud" ayuda={GRUPOS[0].ayuda}>
+          <GrupoSistema id="g-salud" label="Salud" ayuda={ayudaDe('g-salud')}>
           {/* Agentes, cada uno contra SU cadencia. El latido dice que el proceso
               corrió; "en silencio" es el estado más peligroso porque no grita —
               por eso los silencios vienen primero y el marco se tiñe. */}
@@ -666,88 +676,6 @@ export function Sistema() {
               </table>
             </div>
           </div>
-
-          {/* CONEXIÓN CON EL CRM.
-              Tres decisiones, y las tres son para que el panel no mienta:
-              (1) los dos caminos van SEPARADOS — la API y el webhook están hoy en
-                  estados opuestos y un solo semáforo los aplastaría;
-              (2) no dice "en vivo": dice de cuándo es el dato, porque la ingesta
-                  es horaria y un dato de hace 50 minutos presentado como actual es
-                  la mentira verosímil de siempre;
-              (3) las etapas SIN DECLARAR se muestran aunque tengan cero leads: son
-                  las que mandarían sus eventos a SIN_MAPEO si el webhook arranca. */}
-          {ghlFalla && <Fallo que="el estado de GoHighLevel" motivo={ghlFalla} onReintentar={cargarTodo} />}
-          {ghl?.usa_ghl && (ghl.cuentas || []).map((g: any) => (
-            <div key={g.cuenta} id={`crm-${g.cuenta}`} data-toc={`CRM · ${g.cuenta}`} data-grupo="g-salud"
-                 className="p-5 rounded-2xl space-y-3"
-                 style={{ backgroundColor: 'transparent', border: `1px solid ${g.api?.al_dia ? 'var(--border)' : 'var(--bad)'}` }}>
-              <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
-                <h2 className="text-[15px] font-medium text-[#EDEFF3]">CRM · {g.cuenta} <span className="opacity-50 font-normal">GoHighLevel</span></h2>
-                <span className="text-[11px] tabular text-[#F5F7FA] opacity-70">
-                  {g.api?.minutos_desde != null ? `dato de hace ${g.api.minutos_desde} min` : 'sin ingesta'}
-                </span>
-              </div>
-
-              {/* Los dos caminos. Nunca un solo verde. */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.api?.al_dia ? '#4ADE80' : 'var(--bad)' }} />
-                    <span className="text-xs font-medium text-[#EDEFF3]">Lectura por API</span>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-60 ml-auto">cada hora</span>
-                  </div>
-                  <p className="text-[11px] text-[#F5F7FA] opacity-70 leading-relaxed">{g.api?.lectura}</p>
-                </div>
-                <div className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.webhook?.conectado ? '#4ADE80' : 'var(--border-strong)' }} />
-                    <span className="text-xs font-medium text-[#EDEFF3]">Webhook</span>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-60 ml-auto">al momento</span>
-                  </div>
-                  <p className="text-[11px] text-[#F5F7FA] opacity-70 leading-relaxed">{g.webhook?.lectura}</p>
-                </div>
-              </div>
-
-              {/* Los números, con su denominador. pct_atribuido es sobre los que
-                  TUVIERON clic, no sobre todos los leads: un lead orgánico sin
-                  keyword no es una falla de atribución. */}
-              <div className="flex flex-wrap gap-4 text-xs px-1">
-                <span className="text-[#F5F7FA]"><span className="text-[#EDEFF3] font-medium tabular">{g.leads?.total ?? '—'}</span> leads</span>
-                <span className="text-[#F5F7FA]"><span className="text-[#EDEFF3] font-medium tabular">{g.leads?.con_click_id ?? '—'}</span> con clic</span>
-                <span className="text-[#F5F7FA]">
-                  <span className="text-[#EDEFF3] font-medium tabular">{g.leads?.pct_atribuido != null ? `${g.leads.pct_atribuido}%` : '—'}</span> con keyword
-                  <span className="opacity-50"> (de los que tuvieron clic)</span>
-                </span>
-                <span className="text-[#F5F7FA]">
-                  <span className="text-[#EDEFF3] font-medium tabular">{g.leads?.descartados_con_motivo ?? '—'}/{g.leads?.descartados ?? '—'}</span> descartes con motivo
-                </span>
-              </div>
-
-              {/* EL RIESGO. Una etapa sin declarar manda sus eventos a SIN_MAPEO. */}
-              {g.etapas?.sin_declarar > 0 && (
-                <p className="text-[11px] leading-relaxed px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', color: '#fca5a5' }}>
-                  {g.etapas.lectura}
-                </p>
-              )}
-
-              <div className="space-y-0.5">
-                {(g.etapas?.detalle || []).map((e: any) => (
-                  <div key={e.etapa} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="w-5 text-[10px] tabular text-[#F5F7FA] opacity-50 shrink-0">{e.orden}</span>
-                    <span className="flex-1 truncate text-[#F5F7FA]">{e.etapa}</span>
-                    {/* Declarada o no: es lo que decide si el webhook la entiende. */}
-                    <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded"
-                          style={{ color: e.declarada ? '#4ADE80' : '#fca5a5', backgroundColor: 'var(--surface-1)' }}>
-                      {e.declarada ? `declarada${e.valor != null ? ` · ${e.valor} ${e.moneda ?? ''}` : ''}` : 'SIN DECLARAR'}
-                    </span>
-                    <span className="w-24 text-right text-[11px] tabular text-[#F5F7FA] opacity-70 shrink-0">
-                      {Number(e.leads) > 0 ? `${e.leads} lead${Number(e.leads) === 1 ? '' : 's'}` : '—'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
 
           {/* Webhook health */}
           <div id="webhooks" data-toc="Webhooks" data-grupo="g-salud" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
@@ -920,7 +848,7 @@ export function Sistema() {
           </GrupoSistema>
 
           {/* ==================== APRENDIZAJE ==================== */}
-          <GrupoSistema id="g-aprendizaje" label="Aprendizaje" ayuda={GRUPOS[1].ayuda}>
+          <GrupoSistema id="g-aprendizaje" label="Aprendizaje" ayuda={ayudaDe('g-aprendizaje')}>
           {aprendido && (<>
           <div id="lecciones" data-toc="Lecciones" data-grupo="g-aprendizaje" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1237,7 +1165,7 @@ export function Sistema() {
           </GrupoSistema>
 
           {/* ==================== AUTOMATIZACIÓN ==================== */}
-          <GrupoSistema id="g-automatizacion" label="Automatización" ayuda={GRUPOS[2].ayuda} n={nAutomatizacion}>
+          <GrupoSistema id="g-automatizacion" label="Automatización" ayuda={ayudaDe('g-automatizacion')} n={nAutomatizacion}>
           {/* Alertas — lo urgente, arriba del grupo */}
           <div id="alertas" data-toc="Alertas" data-grupo="g-automatizacion" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1406,7 +1334,124 @@ export function Sistema() {
           </GrupoSistema>
 
           {/* ==================== SOPORTE ==================== */}
-          <GrupoSistema id="g-soporte" label="Soporte" ayuda={GRUPOS[3].ayuda} n={nSoporte}>
+          {/* CRM · lo que llega de GoHighLevel y si el sistema lo entiende.
+              Grupo propio y no un recuadro dentro de Salud: Andrés lo mira para
+              confirmar que está al día, y enterrado entre nueve tarjetas hay que
+              buscarlo.
+
+              Cuatro decisiones del lenguaje:
+              (1) UN protagonista luminoso — la atribución en cifra-luz. El resto
+                  son cifras planas: la regla es un héroe por vista.
+              (2) Tablero/Panel para componer en 2D, no una pila de recuadros.
+              (3) Los DOS nombres de cada etapa, el de GHL y el de Google. Decir
+                  solo "declarada" es jerga nuestra: no se puede contrastar contra
+                  lo que se ve en el CRM.
+              (4) Ningún título repite lo que ya dice el grupo. */}
+          <GrupoSistema id="g-crm" label="CRM" ayuda={ayudaDe('g-crm')}
+            n={ghl?.usa_ghl ? (ghl.cuentas || []).reduce((a: number, g: any) => a + (g.etapas?.sin_declarar || 0), 0) : undefined}>
+            {ghlFalla && <Fallo que="el estado de GoHighLevel" motivo={ghlFalla} onReintentar={cargarTodo} />}
+            {!ghlFalla && ghl && !ghl.usa_ghl && (
+              <p className="text-[11px] text-[#F5F7FA] opacity-60 italic">
+                Ninguna cuenta tiene GoHighLevel vinculado todavía. Esto es un vacío legítimo, no una falla:
+                el vínculo se declara cargando <span className="tabular">ghl_location_id</span> en la cuenta.
+              </p>
+            )}
+            {ghl?.usa_ghl && (ghl.cuentas || []).map((g: any) => (
+              <Tablero key={g.cuenta}>
+
+                {/* EL HÉROE. La atribución es el número que dice si todo lo demás
+                    sirve: sin keyword, un lead no se puede atribuir a nada. Y el
+                    denominador va escrito al lado porque es sobre los que TUVIERON
+                    clic — con "de 28" diría 71% donde la atribución es perfecta. */}
+                <Panel col={4} hero titulo={`${g.cuenta} · atribución`}
+                  nota="de los leads que llegaron por un clic pago">
+                  <div className="flex items-baseline gap-2">
+                    <span className="cifra-luz text-4xl font-medium tabular leading-none">
+                      {g.leads?.pct_atribuido != null ? `${g.leads.pct_atribuido}%` : '—'}
+                    </span>
+                    <span className="text-xs text-[#F5F7FA] opacity-60">
+                      {g.leads?.con_keyword ?? '—'} de {g.leads?.con_click_id ?? '—'}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1 text-[11px] text-[#F5F7FA] opacity-70">
+                    <div className="flex justify-between"><span>leads en el CRM</span><span className="tabular">{g.leads?.total ?? '—'}</span></div>
+                    <div className="flex justify-between"><span>sin clic (orgánicos o manuales)</span>
+                      <span className="tabular">{g.leads?.total != null && g.leads?.con_click_id != null ? g.leads.total - g.leads.con_click_id : '—'}</span></div>
+                    <div className="flex justify-between">
+                      <span>descartes con motivo</span>
+                      {/* Quebrado y no porcentaje: los que faltan no son descartes
+                          sin motivo, son descartes que no se pudieron clasificar. */}
+                      <span className="tabular">{g.leads?.descartados_con_motivo ?? '—'}/{g.leads?.descartados ?? '—'}</span>
+                    </div>
+                  </div>
+                </Panel>
+
+                {/* LOS DOS CAMINOS. Nunca un solo semáforo: hoy están en estados
+                    opuestos y aplastarlos haría creer que los cambios llegan al
+                    momento cuando llegan cada hora. */}
+                <Panel col={8} titulo="Cómo llegan los datos"
+                  derecha={<span className="text-[11px] tabular text-[#F5F7FA] opacity-70">
+                    {g.api?.minutos_desde != null ? `dato de hace ${g.api.minutos_desde} min` : 'sin ingesta'}</span>}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      { t: 'Lectura por API', cad: 'cada hora', on: g.api?.al_dia, txt: g.api?.lectura },
+                      { t: 'Webhook', cad: 'al momento', on: g.webhook?.conectado, txt: g.webhook?.lectura },
+                    ].map(c => (
+                      <div key={c.t} className="p-3 rounded-xl space-y-1" style={{ backgroundColor: 'var(--surface-2)' }}>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.on ? '#4ADE80' : 'var(--border-strong)' }} />
+                          <span className="text-xs font-medium text-[#EDEFF3]">{c.t}</span>
+                          <span className="text-[10px] text-[#F5F7FA] opacity-60 ml-auto">{c.cad}</span>
+                        </div>
+                        <p className="text-[11px] text-[#F5F7FA] opacity-70 leading-relaxed">{c.txt}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                {/* EL PIPELINE, con los dos nombres. La columna de la izquierda es
+                    lo que Andrés ve en GoHighLevel; la del medio, cómo se llama esa
+                    misma etapa en Google Ads. Cuando falta la del medio, el webhook
+                    no la entiende — y eso se dice con la consecuencia, no con la
+                    palabra "declarada". */}
+                <Panel col={12} titulo={`Pipeline · ${(g.etapas?.detalle || [])[0]?.pipeline || 'sin nombre'}`}
+                  nota="izquierda: la columna en GoHighLevel · derecha: cómo la llama Google Ads">
+                  {g.etapas?.sin_declarar > 0 && (
+                    <p className="text-[11px] leading-relaxed px-3 py-2 rounded-lg mb-2"
+                       style={{ backgroundColor: 'var(--surface-2)', color: '#fca5a5' }}>{g.etapas.lectura}</p>
+                  )}
+                  <div className="space-y-0.5">
+                    {(g.etapas?.detalle || []).map((e: any) => (
+                      <div key={e.etapa} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs"
+                           style={{ backgroundColor: 'var(--surface-2)' }}>
+                        <span className="w-5 text-[10px] tabular text-[#F5F7FA] opacity-50 shrink-0">{e.orden}</span>
+                        <span className="w-44 truncate text-[#EDEFF3] shrink-0">{e.etapa}</span>
+                        <span className="w-4 text-center text-[#F5F7FA] opacity-30 shrink-0">→</span>
+                        <span className="flex-1 truncate text-[11px]"
+                              style={{ color: e.accion_en_google ? '#F5F7FA' : '#fca5a5' }}>
+                          {e.accion_en_google || 'el sistema no la entiende · sus eventos irían a SIN_MAPEO'}
+                        </span>
+                        <span className="w-24 text-right text-[11px] tabular text-[#F5F7FA] opacity-70 shrink-0">
+                          {e.valor != null ? `${e.valor} ${e.moneda ?? ''}` : ''}
+                        </span>
+                        <span className="w-32 text-right text-[11px] tabular shrink-0">
+                          {Number(e.leads) > 0 ? (
+                            <span className="text-[#F5F7FA] opacity-80">
+                              {e.leads} lead{Number(e.leads) === 1 ? '' : 's'}
+                              {Number(e.ganados) > 0 && <span style={{ color: '#4ADE80' }}> · {e.ganados} ✓</span>}
+                              {Number(e.descartados) > 0 && <span style={{ color: '#fca5a5' }}> · {e.descartados} ✗</span>}
+                            </span>
+                          ) : <span className="text-[#F5F7FA] opacity-35">sin leads</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </Tablero>
+            ))}
+          </GrupoSistema>
+
+          <GrupoSistema id="g-soporte" label="Soporte" ayuda={ayudaDe('g-soporte')} n={nSoporte}>
           {/* Tickets */}
           <div id="tickets" data-toc="Tickets para Claude" data-grupo="g-soporte" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
             <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
