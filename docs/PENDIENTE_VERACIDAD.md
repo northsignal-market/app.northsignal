@@ -1052,40 +1052,38 @@ vuelve a lo que declara.
 
 ## 11 · Lo que queda abierto
 
-Seis cosas. Tres necesitan una decisión tuya, tres son trabajo.
+Todo lo que se podía resolver desde el repo está resuelto. **Lo que queda necesita
+credenciales o una decisión, y las dos cosas son de Andrés.**
 
-**Necesitan que decidas:**
+### Necesita credenciales (yo no las tengo)
 
-1. **El backfill de `naturaleza`** (ver el encabezado). Primero corré el informe.
-   `--normalizar` arregla tildes y **no inventa nada**: es la misma clasificación
-   escrita como el consumidor la espera. `--completar=<valor>` le pone valor a los
-   que no tienen ninguno, y **eso sí es decidir una clasificación que nadie hizo**.
-2. **§7.3 · KAREDO no puede recibir su reporte en alemán.** El idioma es binario
-   `'es' | 'en'`. Antes de tocar: `select account, idioma_reporte, locale from
-   cuentas where activa`. Al 13/9 KAREDO decía `en`, que puede ser deliberado
-   (anuncios en alemán, reporte al cliente en inglés). Si lo es, no es un bug: es
-   una limitación a documentar. Si no, la parte cara no es el PDF —son los prompts
-   que generan los bloques, que tienen que escribir en alemán.
-3. **§9 · Hay dos corpus de prompts** (`prompts/` y `docs/prompts/out/`) con cifras
-   contradictorias y nada declara cuál carga Cowork. Los de `docs/prompts/out/`
-   están verificados contra la base; los de `prompts/` tienen números viejos
-   ("Con 71 locales" cuando son 46). **Decidí cuál es la fuente y borrá el otro.**
-   (La regla de la tilde se aplicó a los dos, así que esto no bloquea nada.)
+1. **El backfill de `naturaleza`.** Es la pregunta abierta más grande y sigue **sin
+   confirmar**: si los agentes venían escribiendo `Observación` con tilde, sus
+   accionables están afuera de las dos tasas de acierto. Un comando que no escribe
+   nada: `node scripts/naturaleza-notion.mjs`. Después, `--normalizar --aplicar`
+   arregla tildes (no inventa nada); `--completar=<valor>` es decidir una
+   clasificación que nadie hizo.
+2. **Las siete sospechas de §10.** La más concreta:
+   `select count(*), sum(cost) from campaign_daily where status <> 'ENABLED'` dice
+   cuánto gasto histórico estuvo invisible hasta el arreglo de §3.6.
+3. **Dos consultas de una línea:**
+   `select account, locale, idioma_reporte from cuentas where activa;`
+   Un `locale` NULL hace fallar el PDF entero en `money()`.
+4. **El historial de migraciones.** Las del 14/9 se aplicaron con SQL directo, así
+   que el remoto tiene los cambios pero no los tiene registrados:
+   `supabase migration repair --status applied 20260914120000 20260914130000 20260914140000 20260914150000 20260914160000 20260914170000`
 
-**Trabajo pendiente:**
+### Necesita una decisión
 
-4. **§3.3 · `v_decision_estructural` pide 28 días a una capa que no los tiene**, y
-   después hace `testeabilidad(conv_28d / 4.0, 4)`. La misma tarjeta se contradice:
-   dice "42 conv en 13 días consolidados" arriba y "con 42 conv en 28d… Mínimo
-   100/mes" abajo, renderizado verbatim desde la vista. El umbral es inalcanzable
-   por construcción. **No lo toqué porque arreglarlo es decidir qué ventana debe
-   usar esa decisión, y eso cambia qué se propone.**
-5. **§10 · Las siete sospechas**, que necesitan la base de producción. La más
-   concreta: `select count(*), sum(cost) from campaign_daily where status <> 'ENABLED'`
-   dice cuánto gasto histórico estuvo invisible hasta el arreglo de §3.6.
-6. **Lo que apareció al arreglar, y no estaba en la auditoría** (ver §12).
-
----
+5. **¿KAREDO pasa a alemán?** El camino **ya existe** (`4b2f27c` en adelante): el
+   PDF, la página pública y el prompt que escribe los bloques soportan `de`, y un
+   idioma desconocido cae a castellano en vez de romper. Lo único que falta es
+   `update cuentas set idioma_reporte = 'de' where account = 'KAREDO'` — y esa es
+   una decisión comercial, no técnica. Puede que `en` sea deliberado.
+6. **¿Se borra `prompts/`?** Ya no es ambiguo: `prompts/LEEME_CORPUS_SUPERADO.md`
+   declara con evidencia que la fuente es `docs/prompts/out/`. Borrarlo es
+   `git rm -r prompts/`; queda en el historial igual. Lo dejé sin borrar porque
+   destruir contenido que no escribí no me corresponde decidirlo.
 
 ## 12 · ~~Encontrado al arreglar~~ · CERRADO el 14/9 (`4b2f27c`)
 

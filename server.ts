@@ -141,13 +141,19 @@ export function createApp() {
     }
     await registrarIntento(supabase, ip, '/r', true);
     await supabase.from('reportes_cliente').update({ vistas: (r as any).vistas ? (r as any).vistas + 1 : 1, visto_el: (r as any).visto_el || new Date().toISOString() }).eq('token', req.params.token);
-    const en = r.idioma === 'en';
-    const t = en ? { titulo: 'Performance Report', periodo: 'Period', inv: 'Spend', conv: 'Conversions', cpa: 'CPA', clics: 'Clicks', ctr: 'CTR', vs: 'vs previous period', camp: 'Campaigns', grp: 'Ad groups', pdf: 'Download PDF', by: 'Prepared by' } : { titulo: 'Reporte de rendimiento', periodo: 'Período', inv: 'Inversión', conv: 'Conversiones', cpa: 'CPA', clics: 'Clics', ctr: 'CTR', vs: 'vs período anterior', camp: 'Campañas', grp: 'Grupos de anuncios', pdf: 'Descargar PDF', by: 'Preparado por' };
+    // La página que ve el cliente, en los mismos tres idiomas que el PDF. Un código
+    // desconocido cae a castellano en vez de dejar el HTML con `undefined`.
+    const TR: Record<string, any> = {
+      es: { titulo: 'Reporte de rendimiento', periodo: 'Período', inv: 'Inversión', conv: 'Conversiones', cpa: 'CPA', clics: 'Clics', ctr: 'CTR', vs: 'vs período anterior', camp: 'Campañas', grp: 'Grupos de anuncios', pdf: 'Descargar PDF', by: 'Preparado por', imprShare: 'Cuota de impresiones' },
+      en: { titulo: 'Performance Report', periodo: 'Period', inv: 'Spend', conv: 'Conversions', cpa: 'CPA', clics: 'Clicks', ctr: 'CTR', vs: 'vs previous period', camp: 'Campaigns', grp: 'Ad groups', pdf: 'Download PDF', by: 'Prepared by', imprShare: 'Impression share' },
+      de: { titulo: 'Leistungsbericht', periodo: 'Zeitraum', inv: 'Ausgaben', conv: 'Conversions', cpa: 'CPA', clics: 'Klicks', ctr: 'CTR', vs: 'ggü. Vorzeitraum', camp: 'Kampagnen', grp: 'Anzeigengruppen', pdf: 'PDF herunterladen', by: 'Erstellt von', imprShare: 'Impressionsanteil' },
+    };
+    const t = TR[String(r.idioma || 'es')] || TR.es;
     const { data: cuenta } = await supabase.from('cuentas').select('moneda, locale').eq('account', r.account).single();
     const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' = 'num') => v == null ? '—' : tipo === 'moneda' ? new Intl.NumberFormat(cuenta?.locale || 'es-CL', { style: 'currency', currency: cuenta?.moneda || 'CLP', maximumFractionDigits: cuenta?.moneda === 'EUR' ? 2 : 0 }).format(Number(v)) : tipo === 'pct' ? Number(v).toFixed(2) + '%' : new Intl.NumberFormat(cuenta?.locale || 'es-CL', { maximumFractionDigits: 1 }).format(Number(v));
     const delta = (k: string) => { const m = r.metricas?.[k]; if (!m || m.anterior == null || m.actual == null || !m.anterior) return ''; const d = (m.actual - m.anterior) / m.anterior * 100; const bueno = k === 'cpa' ? d < 0 : d > 0; return `<span style="font-size:12px;color:${bueno ? '#1a7f37' : '#b42318'}">${d > 0 ? '+' : ''}${d.toFixed(0)}% ${t.vs}</span>`; };
     const kpis = (r.reporte_plantilla?.kpis || ['gasto', 'conversiones', 'cpa', 'clics']) as string[];
-    const kpiNombre: Record<string, string> = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: en ? 'Impression share' : 'Cuota de impresiones' };
+    const kpiNombre: Record<string, string> = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: t.imprShare };
     const kpiHtml = kpis.map(k => `<div style="flex:1;min-width:120px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">${kpiNombre[k] || k}</div><div style="font-size:22px;font-weight:600;color:#111827;margin:4px 0 2px">${fmt(r.metricas?.[k]?.actual, k === 'gasto' || k === 'cpa' ? 'moneda' : k === 'ctr' || k === 'cuota_impresiones' ? 'pct' : 'num')}</div>${delta(k)}</div>`).join('');
     const esc = (x: any) => String(x ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c]);
     const bloques = (r.bloques || []).map((b: any) => `<section style="margin:22px 0"><h2 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 8px">${esc(b.etiqueta)}</h2>${b.texto ? `<p style="margin:0 0 8px;line-height:1.55">${esc(b.texto).replace(/\n\n/g, '</p><p style="margin:0 0 8px;line-height:1.55">')}</p>` : ''}${b.vinetas?.length ? `<ul style="margin:0;padding-left:18px;line-height:1.55">${b.vinetas.map((v: string) => `<li style="margin:4px 0">${esc(v)}</li>`).join('')}</ul>` : ''}</section>`).join('');
@@ -213,6 +219,17 @@ export function createApp() {
 
 
 
+
+/** Idiomas en los que puede salir un reporte al cliente. `cuentas.idioma_reporte`
+ *  manda; esto solo traduce el código a algo que el modelo y el PDF entienden.
+ *  KAREDO opera en mercado alemán (locale de-DE) y hasta el 14/9/2026 no había
+ *  camino a alemán: el tipo era binario. Un idioma desconocido cae a castellano. */
+const IDIOMAS_REPORTE: Record<string, { nombre: string; etiquetas: string }> = {
+  es: { nombre: 'español', etiquetas: 'Contexto:, Observaciones:, Cambios aplicados:, Puntos de atención:, Próximos pasos:' },
+  en: { nombre: 'inglés',  etiquetas: 'Context:, Observations:, Changes applied:, Points of attention:, Next steps:' },
+  de: { nombre: 'alemán',  etiquetas: 'Kontext:, Beobachtungen:, Umgesetzte Änderungen:, Zu beachten:, Nächste Schritte:' },
+};
+const idiomaReporte = (cod: string | null | undefined) => IDIOMAS_REPORTE[String(cod || 'es')] || IDIOMAS_REPORTE.es;
 
   // Las columnas que el panel de Integridad dibuja. El panel mostró "0 filas /
   // Consistente" para las cuatro cuentas hasta el 13 sep 2026 porque leía nombres
@@ -2689,7 +2706,7 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
   async function bloquesDe(r: any): Promise<any[]> {
     if (Array.isArray(r.bloques) && r.bloques.length) return r.bloques;
     const pdf = await cargarPdf();
-    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === 'en' ? 'Changes applied' : 'Cambios aplicados'}:\n${r.que_cambiamos}` : '', r.que_sigue ? `${r.idioma === 'en' ? 'Next steps' : 'Próximos pasos'}:\n${r.que_sigue}` : ''].filter(Boolean).join('\n\n');
+    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${({ en: 'Changes applied', de: 'Umgesetzte Änderungen' } as any)[r.idioma] || 'Cambios aplicados'}:\n${r.que_cambiamos}` : '', r.que_sigue ? `${({ en: 'Next steps', de: 'Nächste Schritte' } as any)[r.idioma] || 'Próximos pasos'}:\n${r.que_sigue}` : ''].filter(Boolean).join('\n\n');
     const b = pdf.parsearBloques(textoCompleto || '');
     if (b.length && supabase) await supabase.from('reportes_cliente').update({ bloques: b }).eq('id', r.id);
     return b;
@@ -2712,7 +2729,7 @@ Escribí el RSA. Antes de devolver, contá los caracteres de cada línea y reesc
       supabase!.from('accionables_espejo').select('titulo, ejecutado_el, por_que').eq('account', r.account).eq('estado', 'Hecho').gte('ejecutado_el', r.periodo_desde).lte('ejecutado_el', r.periodo_hasta),
       supabase!.rpc('get_estado_cuenta', { p_account: r.account }),
     ]);
-    const idioma = r.idioma === 'en' ? 'inglés' : 'español';
+    const idioma = idiomaReporte(r.idioma).nombre;
     const otras = (r.bloques || []).filter((b: any) => b.etiqueta !== etiqueta).map((b: any) => `${b.etiqueta}: ${b.texto || ''} ${(b.vinetas || []).map((v: string) => '- ' + v).join(' ')}`).join('\n');
     const prompt = `Reescribí SOLO la sección "${etiqueta}" del reporte al cliente ${cuenta.nombre_cliente}, período ${r.periodo_desde} a ${r.periodo_hasta}, en ${idioma}, primera persona del singular.
 ${instruccion ? 'INSTRUCCIÓN DE ANDRÉS: ' + instruccion : ''}
@@ -2748,8 +2765,8 @@ Devolvé SOLO JSON: {"texto": "<párrafo o vacío>", "vinetas": ["...", "..."]}`
       supabase!.from('accionables_espejo').select('titulo, ejecutado_el, por_que').eq('account', account).eq('estado', 'Hecho').gte('ejecutado_el', desde).lte('ejecutado_el', hasta),
       supabase!.rpc('get_estado_cuenta', { p_account: account }),
     ]);
-    const idioma = cuenta.idioma_reporte === 'en' ? 'inglés' : 'español';
-    const etiquetas = cuenta.idioma_reporte === 'en' ? 'Context:, Observations:, Changes applied:, Points of attention:, Next steps:' : 'Contexto:, Observaciones:, Cambios aplicados:, Puntos de atención:, Próximos pasos:';
+    const idioma = idiomaReporte(cuenta.idioma_reporte).nombre;
+    const etiquetas = idiomaReporte(cuenta.idioma_reporte).etiquetas;
     const prompt = `Escribí la sección de reporte al cliente para ${cuenta.nombre_cliente}, período ${desde} a ${hasta}, en ${idioma}, primera persona del singular (sos el media buyer de NorthSignal).
 
 ESTRUCTURA: bloques con etiqueta en su propia línea seguida de dos puntos y viñetas con guion debajo. Etiquetas exactas: ${etiquetas}. Contexto solo si afecta la lectura. Entre dos y cinco viñetas en Observaciones. Cada bloque con el largo que necesita; las viñetas no miden todas igual.

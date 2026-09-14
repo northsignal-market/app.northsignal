@@ -273,7 +273,7 @@ async function rp() {
 }
 function Reporte({ r, R }) {
   const { Document, Page, Text, View, Image } = R;
-  const t = T[r.idioma];
+  const t = T[r.idioma] || T.es;
   const m = r.metricas;
   const kpi = (k) => k === "cost" || k === "cpa" ? money(m[k]?.actual, r.moneda, r.locale) : k === "ctr" || k === "impr_share" ? m[k]?.actual == null ? "-" : `${num(m[k].actual, r.locale, k === "ctr" ? 2 : 1)}%` : num(m[k]?.actual, r.locale, k === "conversions" ? 2 : 0);
   const lbl = { cost: t.inv, clicks: t.clics, conversions: t.conv, cpa: t.cpa, ctr: t.ctr, impr_share: t.imprShare };
@@ -452,6 +452,7 @@ var init_reporte_pdf = __esm({
     };
     T = {
       es: { titulo: "Reporte de Rendimiento", cliente: "Cliente", periodo: "Per\xEDodo", fecha: "Fecha", inv: "Inversi\xF3n", clics: "Clics", imprShare: "Cuota impr.", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campa\xF1as", grupos: "Grupos de anuncios", campana: "Campa\xF1a", grupo: "Grupo", costo: "Costo", conversiones: "Conversiones", pag: "P\xE1gina", de: "de", vs: "vs per\xEDodo anterior", nota: "Solo se muestran campa\xF1as y grupos con inversi\xF3n en el per\xEDodo; de los grupos, a lo sumo los 12 de mayor inversi\xF3n." },
+      de: { titulo: "Leistungsbericht", cliente: "Kunde", periodo: "Zeitraum", fecha: "Datum", inv: "Ausgaben", clics: "Klicks", imprShare: "Impr.-Anteil", conv: "Conv.", cpa: "CPA", ctr: "CTR", campanas: "Kampagnen", grupos: "Anzeigengruppen", campana: "Kampagne", grupo: "Anzeigengruppe", costo: "Kosten", conversiones: "Conversions", pag: "Seite", de: "von", vs: "gg\xFC. Vorzeitraum", nota: "Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen h\xF6chstens die 12 mit den h\xF6chsten Ausgaben." },
       en: { titulo: "Performance Report", cliente: "Client", periodo: "Period", fecha: "Date", inv: "Spend", clics: "Clicks", imprShare: "Impr. share", conv: "Conv", cpa: "CPA", ctr: "CTR", campanas: "Campaigns", grupos: "Ad groups", campana: "Campaign", grupo: "Ad group", costo: "Cost", conversiones: "Conversions", pag: "Page", de: "of", vs: "vs previous period", nota: "Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend." }
     };
     money = (v, m, l) => v == null ? "-" : new Intl.NumberFormat(l, { style: "currency", currency: m, maximumFractionDigits: m === "CLP" ? 0 : 2 }).format(v);
@@ -2022,8 +2023,12 @@ function createApp() {
     }
     await registrarIntento(supabase, ip, "/r", true);
     await supabase.from("reportes_cliente").update({ vistas: r.vistas ? r.vistas + 1 : 1, visto_el: r.visto_el || (/* @__PURE__ */ new Date()).toISOString() }).eq("token", req.params.token);
-    const en = r.idioma === "en";
-    const t = en ? { titulo: "Performance Report", periodo: "Period", inv: "Spend", conv: "Conversions", cpa: "CPA", clics: "Clicks", ctr: "CTR", vs: "vs previous period", camp: "Campaigns", grp: "Ad groups", pdf: "Download PDF", by: "Prepared by" } : { titulo: "Reporte de rendimiento", periodo: "Per\xEDodo", inv: "Inversi\xF3n", conv: "Conversiones", cpa: "CPA", clics: "Clics", ctr: "CTR", vs: "vs per\xEDodo anterior", camp: "Campa\xF1as", grp: "Grupos de anuncios", pdf: "Descargar PDF", by: "Preparado por" };
+    const TR = {
+      es: { titulo: "Reporte de rendimiento", periodo: "Per\xEDodo", inv: "Inversi\xF3n", conv: "Conversiones", cpa: "CPA", clics: "Clics", ctr: "CTR", vs: "vs per\xEDodo anterior", camp: "Campa\xF1as", grp: "Grupos de anuncios", pdf: "Descargar PDF", by: "Preparado por", imprShare: "Cuota de impresiones" },
+      en: { titulo: "Performance Report", periodo: "Period", inv: "Spend", conv: "Conversions", cpa: "CPA", clics: "Clicks", ctr: "CTR", vs: "vs previous period", camp: "Campaigns", grp: "Ad groups", pdf: "Download PDF", by: "Prepared by", imprShare: "Impression share" },
+      de: { titulo: "Leistungsbericht", periodo: "Zeitraum", inv: "Ausgaben", conv: "Conversions", cpa: "CPA", clics: "Klicks", ctr: "CTR", vs: "gg\xFC. Vorzeitraum", camp: "Kampagnen", grp: "Anzeigengruppen", pdf: "PDF herunterladen", by: "Erstellt von", imprShare: "Impressionsanteil" }
+    };
+    const t = TR[String(r.idioma || "es")] || TR.es;
     const { data: cuenta } = await supabase.from("cuentas").select("moneda, locale").eq("account", r.account).single();
     const fmt = (v, tipo = "num") => v == null ? "\u2014" : tipo === "moneda" ? new Intl.NumberFormat(cuenta?.locale || "es-CL", { style: "currency", currency: cuenta?.moneda || "CLP", maximumFractionDigits: cuenta?.moneda === "EUR" ? 2 : 0 }).format(Number(v)) : tipo === "pct" ? Number(v).toFixed(2) + "%" : new Intl.NumberFormat(cuenta?.locale || "es-CL", { maximumFractionDigits: 1 }).format(Number(v));
     const delta2 = (k) => {
@@ -2034,7 +2039,7 @@ function createApp() {
       return `<span style="font-size:12px;color:${bueno ? "#1a7f37" : "#b42318"}">${d > 0 ? "+" : ""}${d.toFixed(0)}% ${t.vs}</span>`;
     };
     const kpis = r.reporte_plantilla?.kpis || ["gasto", "conversiones", "cpa", "clics"];
-    const kpiNombre = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: en ? "Impression share" : "Cuota de impresiones" };
+    const kpiNombre = { gasto: t.inv, conversiones: t.conv, cpa: t.cpa, clics: t.clics, ctr: t.ctr, cuota_impresiones: t.imprShare };
     const kpiHtml = kpis.map((k) => `<div style="flex:1;min-width:120px;padding:14px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">${kpiNombre[k] || k}</div><div style="font-size:22px;font-weight:600;color:#111827;margin:4px 0 2px">${fmt(r.metricas?.[k]?.actual, k === "gasto" || k === "cpa" ? "moneda" : k === "ctr" || k === "cuota_impresiones" ? "pct" : "num")}</div>${delta2(k)}</div>`).join("");
     const esc = (x) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
     const bloques = (r.bloques || []).map((b) => `<section style="margin:22px 0"><h2 style="font-size:14px;font-weight:700;color:#111827;margin:0 0 8px">${esc(b.etiqueta)}</h2>${b.texto ? `<p style="margin:0 0 8px;line-height:1.55">${esc(b.texto).replace(/\n\n/g, '</p><p style="margin:0 0 8px;line-height:1.55">')}</p>` : ""}${b.vinetas?.length ? `<ul style="margin:0;padding-left:18px;line-height:1.55">${b.vinetas.map((v) => `<li style="margin:4px 0">${esc(v)}</li>`).join("")}</ul>` : ""}</section>`).join("");
@@ -2098,6 +2103,12 @@ function createApp() {
     };
     next();
   });
+  const IDIOMAS_REPORTE = {
+    es: { nombre: "espa\xF1ol", etiquetas: "Contexto:, Observaciones:, Cambios aplicados:, Puntos de atenci\xF3n:, Pr\xF3ximos pasos:" },
+    en: { nombre: "ingl\xE9s", etiquetas: "Context:, Observations:, Changes applied:, Points of attention:, Next steps:" },
+    de: { nombre: "alem\xE1n", etiquetas: "Kontext:, Beobachtungen:, Umgesetzte \xC4nderungen:, Zu beachten:, N\xE4chste Schritte:" }
+  };
+  const idiomaReporte = (cod) => IDIOMAS_REPORTE[String(cod || "es")] || IDIOMAS_REPORTE.es;
   const COLUMNAS_INTEGRIDAD = [
     "account",
     "week_start",
@@ -4115,8 +4126,8 @@ ${extra}` : system,
   async function bloquesDe(r) {
     if (Array.isArray(r.bloques) && r.bloques.length) return r.bloques;
     const pdf = await cargarPdf();
-    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${r.idioma === "en" ? "Changes applied" : "Cambios aplicados"}:
-${r.que_cambiamos}` : "", r.que_sigue ? `${r.idioma === "en" ? "Next steps" : "Pr\xF3ximos pasos"}:
+    const textoCompleto = [r.resumen_ejecutivo, r.que_cambiamos ? `${{ en: "Changes applied", de: "Umgesetzte \xC4nderungen" }[r.idioma] || "Cambios aplicados"}:
+${r.que_cambiamos}` : "", r.que_sigue ? `${{ en: "Next steps", de: "N\xE4chste Schritte" }[r.idioma] || "Pr\xF3ximos pasos"}:
 ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
     const b = pdf.parsearBloques(textoCompleto || "");
     if (b.length && supabase) await supabase.from("reportes_cliente").update({ bloques: b }).eq("id", r.id);
@@ -4139,7 +4150,7 @@ ${r.que_sigue}` : ""].filter(Boolean).join("\n\n");
       supabase.from("accionables_espejo").select("titulo, ejecutado_el, por_que").eq("account", r.account).eq("estado", "Hecho").gte("ejecutado_el", r.periodo_desde).lte("ejecutado_el", r.periodo_hasta),
       supabase.rpc("get_estado_cuenta", { p_account: r.account })
     ]);
-    const idioma = r.idioma === "en" ? "ingl\xE9s" : "espa\xF1ol";
+    const idioma = idiomaReporte(r.idioma).nombre;
     const otras = (r.bloques || []).filter((b) => b.etiqueta !== etiqueta).map((b) => `${b.etiqueta}: ${b.texto || ""} ${(b.vinetas || []).map((v) => "- " + v).join(" ")}`).join("\n");
     const prompt = `Reescrib\xED SOLO la secci\xF3n "${etiqueta}" del reporte al cliente ${cuenta.nombre_cliente}, per\xEDodo ${r.periodo_desde} a ${r.periodo_hasta}, en ${idioma}, primera persona del singular.
 ${instruccion ? "INSTRUCCI\xD3N DE ANDR\xC9S: " + instruccion : ""}
@@ -4171,8 +4182,8 @@ Devolv\xE9 SOLO JSON: {"texto": "<p\xE1rrafo o vac\xEDo>", "vinetas": ["...", ".
       supabase.from("accionables_espejo").select("titulo, ejecutado_el, por_que").eq("account", account).eq("estado", "Hecho").gte("ejecutado_el", desde).lte("ejecutado_el", hasta),
       supabase.rpc("get_estado_cuenta", { p_account: account })
     ]);
-    const idioma = cuenta.idioma_reporte === "en" ? "ingl\xE9s" : "espa\xF1ol";
-    const etiquetas = cuenta.idioma_reporte === "en" ? "Context:, Observations:, Changes applied:, Points of attention:, Next steps:" : "Contexto:, Observaciones:, Cambios aplicados:, Puntos de atenci\xF3n:, Pr\xF3ximos pasos:";
+    const idioma = idiomaReporte(cuenta.idioma_reporte).nombre;
+    const etiquetas = idiomaReporte(cuenta.idioma_reporte).etiquetas;
     const prompt = `Escrib\xED la secci\xF3n de reporte al cliente para ${cuenta.nombre_cliente}, per\xEDodo ${desde} a ${hasta}, en ${idioma}, primera persona del singular (sos el media buyer de NorthSignal).
 
 ESTRUCTURA: bloques con etiqueta en su propia l\xEDnea seguida de dos puntos y vi\xF1etas con guion debajo. Etiquetas exactas: ${etiquetas}. Contexto solo si afecta la lectura. Entre dos y cinco vi\xF1etas en Observaciones. Cada bloque con el largo que necesita; las vi\xF1etas no miden todas igual.

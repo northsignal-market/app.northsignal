@@ -61,7 +61,7 @@ const s: Record<string, any> = ({
 
 export interface Bloque { etiqueta: string; texto?: string; vinetas?: string[] }
 export interface ReporteInput {
-  account: string; nombre_cliente: string; idioma: 'es' | 'en'; moneda: string; locale: string;
+  account: string; nombre_cliente: string; idioma: Idioma; moneda: string; locale: string;
   titulo?: string; periodo_desde: string; periodo_hasta: string; tipo: 'semanal' | 'mensual';
   bloques: Bloque[];
   metricas: Record<string, { actual: number | null; anterior: number | null }>;
@@ -71,8 +71,15 @@ export interface ReporteInput {
   logo?: Buffer | null;
 }
 
+/** Los idiomas en los que este PDF puede salir. KAREDO opera en mercado alemán
+ *  con locale de-DE y hasta el 14/9/2026 no había camino a alemán: el tipo era
+ *  binario 'es' | 'en'. Ahora existe; QUÉ idioma usa cada cuenta lo sigue
+ *  decidiendo `cuentas.idioma_reporte`. */
+export type Idioma = 'es' | 'en' | 'de';
+
 const T = {
   es: { titulo: 'Reporte de Rendimiento', cliente: 'Cliente', periodo: 'Período', fecha: 'Fecha', inv: 'Inversión', clics: 'Clics', imprShare: 'Cuota impr.', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campañas', grupos: 'Grupos de anuncios', campana: 'Campaña', grupo: 'Grupo', costo: 'Costo', conversiones: 'Conversiones', pag: 'Página', de: 'de', vs: 'vs período anterior', nota: 'Solo se muestran campañas y grupos con inversión en el período; de los grupos, a lo sumo los 12 de mayor inversión.' },
+  de: { titulo: 'Leistungsbericht', cliente: 'Kunde', periodo: 'Zeitraum', fecha: 'Datum', inv: 'Ausgaben', clics: 'Klicks', imprShare: 'Impr.-Anteil', conv: 'Conv.', cpa: 'CPA', ctr: 'CTR', campanas: 'Kampagnen', grupos: 'Anzeigengruppen', campana: 'Kampagne', grupo: 'Anzeigengruppe', costo: 'Kosten', conversiones: 'Conversions', pag: 'Seite', de: 'von', vs: 'ggü. Vorzeitraum', nota: 'Es werden nur Kampagnen und Anzeigengruppen mit Ausgaben im Zeitraum angezeigt; bei den Anzeigengruppen höchstens die 12 mit den höchsten Ausgaben.' },
   en: { titulo: 'Performance Report', cliente: 'Client', periodo: 'Period', fecha: 'Date', inv: 'Spend', clics: 'Clicks', imprShare: 'Impr. share', conv: 'Conv', cpa: 'CPA', ctr: 'CTR', campanas: 'Campaigns', grupos: 'Ad groups', campana: 'Campaign', grupo: 'Ad group', costo: 'Cost', conversiones: 'Conversions', pag: 'Page', de: 'of', vs: 'vs previous period', nota: 'Only campaigns and ad groups with spend in the period are shown; ad groups are limited to the 12 with the highest spend.' },
 };
 
@@ -86,7 +93,10 @@ const delta = (a: number | null, b: number | null) => (a == null || b == null ||
 
 function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
   const { Document, Page, Text, View, Image } = R;
-  const t = T[r.idioma];
+  // Si `cuentas.idioma_reporte` trae un valor que este PDF no conoce, se cae a
+  // castellano en vez de reventar con `undefined.titulo`. Un reporte en el idioma
+  // equivocado se ve y se corrige; un PDF que no se genera frena el envío entero.
+  const t = T[r.idioma] || T.es;
   const m = r.metricas;
   const kpi = (k: string) => k === 'cost' || k === 'cpa' ? money(m[k]?.actual, r.moneda, r.locale) : k === 'ctr' || k === 'impr_share' ? (m[k]?.actual == null ? '-' : `${num(m[k].actual, r.locale, k === 'ctr' ? 2 : 1)}%`) : num(m[k]?.actual, r.locale, k === 'conversions' ? 2 : 0);
   // `get_reporte_datos` emite cost, conversions, cpa, ctr, clicks e impr_share.
