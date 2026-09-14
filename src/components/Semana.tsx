@@ -612,7 +612,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                   {titulo && <p className="text-xs text-[#EDEFF3] font-medium line-clamp-2" title={titulo}>{titulo}</p>}
                   {cuerpo && (
                     <details className="mt-1">
-                      <summary className="cursor-pointer text-[10px] text-[#F5F7FA] opacity-45 hover:opacity-90 select-none">análisis del día</summary>
+                      <summary className="cursor-pointer text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-90 select-none">análisis del día</summary>
                       <p className="text-[11px] text-[#F5F7FA] opacity-75 leading-relaxed mt-1 whitespace-pre-wrap" style={{ maxWidth: '75ch' }}>{cuerpo}</p>
                     </details>
                   )}

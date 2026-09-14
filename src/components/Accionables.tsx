@@ -138,7 +138,7 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
         </div>
 
         <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-45" style={{ color: '#ADADAD' }} />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-80" style={{ color: '#ADADAD' }} />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar en título, causa o dónde…"
             className="w-full bg-transparent rounded-lg pl-8 pr-2.5 py-1.5 text-[11px] text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"

@@ -277,7 +277,7 @@ export function Pista({ children, titulo = 'Cómo leer esto' }: { children: Reac
   return (
     <span className="relative inline-flex group align-middle">
       <button type="button" aria-label={titulo}
-        className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-45 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
+        className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-80 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
         style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>i</button>
       {/* El `absolute` vuelve a ser una clase. Estuvo un tiempo forzado en el
           style porque `.glass-dense` declaraba `position: relative` para todo
