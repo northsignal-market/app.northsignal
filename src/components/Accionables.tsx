@@ -5,6 +5,9 @@ import { useCuentas } from '../lib/useCuentas';
 import { useAppStore } from '../store/useAppStore';
 import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
+// El enum real de la revisión del analizador. No se escriben a mano los valores:
+// el filtro ofrecía 'Validado', que no existe en ninguna parte del sistema.
+import { NOTION_REVISION_IA } from '../server/domain/notionSchema';
 
 /**
  * ACCIONABLES · el archivo completo de decisiones de una cuenta.
@@ -28,12 +31,18 @@ interface AccionablesProps {
 }
 
 export function Accionables({ onOpenActionable, initialClient, initialStatus }: AccionablesProps) {
-  const { actionables, updateActionableStatus } = useAppStore();
+  const { actionables, updateActionableStatus, analyzeAction, analyzingActions } = useAppStore();
   const { nombres: cuentasNombres } = useCuentas();
 
   const [search, setSearch] = useState('');
   const [novedadesIds, setNovedadesIds] = useState<Set<string>>(new Set());
-  useEffect(() => { fetchJSON<any[]>('/api/novedades', []).then((d) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable').map(n => n.ref_id)))); }, []);
+  // El punto azul es por accionable, así que hace falta la novedad SUELTA: sin
+  // `?todas` el endpoint devuelve `v_novedades_agrupadas`, que no tiene `ref_tipo`
+  // ni `ref_id` —un grupo son N entidades—, y el filtro por `ref_tipo` no matcheaba
+  // nunca: el punto era código muerto. `v_novedades_7d` sí los trae, pero incluye
+  // las ya leídas: sin ese segundo filtro el punto diría "no lo viste" sobre algo
+  // que sí se vio.
+  useEffect(() => { fetchJSON<any[]>('/api/novedades?todas', []).then((d) => setNovedadesIds(new Set((Array.isArray(d) ? d : []).filter(n => n.ref_tipo === 'accionable' && n.leida_el == null).map(n => String(n.ref_id))))); }, []);
 
   const [filterClient, setFilterClient] = useState<string>(initialClient || 'all');
   // El filtro SIGUE al selector del header: si cambiás de cuenta con esta
@@ -47,7 +56,6 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
   const [filterNaturaleza, setFilterNaturaleza] = useState<string>('all');
   const [filterRevision, setFilterRevision] = useState<string>('all');
   const [masFiltros, setMasFiltros] = useState(false);
-  const [analyzingIds, setAnalyzingIds] = useState<Record<string, boolean>>({});
 
   const semanasPendiente = (a: Actionable) => {
     const dt = a.detectado || a.created_at;
@@ -108,12 +116,16 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
     .sort((x, y) => y.sem - x.sem)
     .slice(0, 5), [delCliente]);
 
-  const analizar = async (e: React.MouseEvent, id: string) => {
+  /** El servidor exige `req.body.action` y responde 400 sin él: este POST iba sin
+   *  body y sin mirar `res.ok`, así que el ícono giraba, volvía, y no pasaba nada.
+   *  `analyzeAction` del store manda el cuerpo correcto, avisa si falla y maneja el
+   *  409 de "ya tiene análisis" — la llamada buena existía y nadie la usaba. */
+  const analizar = async (e: React.MouseEvent, a: Actionable) => {
     e.stopPropagation();
-    setAnalyzingIds(p => ({ ...p, [id]: true }));
-    try { await fetch(`/api/notion/actionables/${id}/analyze`, { method: 'POST', credentials: 'include' }); }
-    catch (err) { console.error(err); }
-    finally { setAnalyzingIds(p => ({ ...p, [id]: false })); }
+    const r = await analyzeAction(a);
+    if (r?.requiresConfirmation && confirm('Este accionable ya tiene una segunda opinión. ¿Pedirla de nuevo?')) {
+      await analyzeAction(a, true);
+    }
   };
 
   const EJES: { id: Eje; label: string; n: number }[] = [
@@ -161,7 +173,11 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
             { v: filterClient, set: setFilterClient, todos: 'Todas las cuentas', ops: cuentasNombres },
             { v: filterPriority, set: setFilterPriority, todos: 'Toda prioridad', ops: ['Urgente', 'Alta', 'Media', 'Baja'] },
             { v: filterNaturaleza, set: setFilterNaturaleza, todos: 'Toda naturaleza', ops: [NOTION_NATURALEZA.OBSERVACION, NOTION_NATURALEZA.INFERENCIA, NOTION_NATURALEZA.HIPOTESIS] },
-            { v: filterRevision, set: setFilterRevision, todos: 'Toda revisión', ops: ['Validado', 'En disputa', 'Sin revisar'] },
+            // 'Validado' no existe en el enum: el filtro devolvía siempre cero filas
+            // y los estados que el analizador SÍ escribe no se podían pedir desde acá.
+            // Es el patrón que Clientes.tsx ya tiene anotado: conocimiento fabricado
+            // disfrazado de medido.
+            { v: filterRevision, set: setFilterRevision, todos: 'Toda revisión', ops: Object.values(NOTION_REVISION_IA) as string[] },
           ].map((f, i) => (
             <select key={i} aria-label={f.todos} value={f.v} onChange={e => f.set(e.target.value)}
               className="bg-transparent rounded-md px-2 py-1 text-[11px] text-[#EDEFF3] outline-none"
@@ -226,10 +242,10 @@ export function Accionables({ onOpenActionable, initialClient, initialStatus }: 
                         <button onClick={() => updateActionableStatus(a.id, hecho ? NOTION_STATES.PROPUESTO : NOTION_STATES.HECHO)}
                           title={hecho ? 'Volver a Propuesto' : 'Marcar Hecho'}
                           className="p-1 rounded hover:bg-white/10 text-[#4D9DFF]"><Check size={13} /></button>
-                        <button onClick={(e) => analizar(e, a.id)} disabled={analyzingIds[a.id]}
+                        <button onClick={(e) => analizar(e, a)} disabled={!!analyzingActions[a.id]}
                           title="Pedir segunda opinión"
                           className="p-1 rounded hover:bg-white/10 opacity-70 hover:opacity-100" style={{ color: '#ADADAD' }}>
-                          <Cpu size={13} className={analyzingIds[a.id] ? 'animate-spin text-[#4D9DFF]' : ''} />
+                          <Cpu size={13} className={analyzingActions[a.id] ? 'animate-spin text-[#4D9DFF]' : ''} />
                         </button>
                       </div>
                     </div>

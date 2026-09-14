@@ -19,7 +19,7 @@ import type { Actionable } from '../types';
 import { NOTION_STATES } from '../types';
 import { detectarTipoAuto } from '../lib/tipoAuto';
 import { tipoAutoDesde } from '../lib/accion';
-import { fmtFechaCorta, useJSON, DosPaneles, Titular } from './ui';
+import { fmtFechaCorta, useJSON, DosPaneles, Titular, pedirJSON, motivoFallo } from './ui';
 import { abrirTextoAgente } from '../lib/lectura';
 
 interface Props { onOpenActionable: (a: Actionable) => void; onGoTo: (tab: string, client?: string, segmento?: string) => void }
@@ -53,13 +53,21 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   // se caía —o devolvía el HTML de un 500— `briefing` quedaba en null y el
   // tablero pintaba VERDE con "al día": el endpoint que informa si los datos
   // están sanos, justo cuando no puede responder, reportaba salud.
+  //
+  // Faltaba el cuarto camino, y es el más callado de todos: `get_briefing`
+  // calcula `datos_al_dia` con `bool_and(...)` sobre `v_data_health`, y bool_and
+  // sobre CERO filas devuelve NULL. Ahí la consulta anduvo, el cuerpo llegó, y
+  // el campo dice "no se midió" — que con `=== false` caía derecho al verde. No
+  // haber medido nada no es estar bien: tiene su propio estado.
   const estadoDatos = errorBriefing
     ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'sin confirmar', pie: 'no se pudo consultar · reintentar' }
-    : cargandoBriefing || !briefing
+    : cargandoBriefing
       ? { punto: '#ADADAD', color: '#ADADAD', texto: 'consultando…', pie: 'esperando la respuesta' }
-      : briefing.datos_al_dia === false
-        ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'problema', pie: 'mirá Sistema › Salud →' }
-        : { punto: '#4ADE80', color: '#FAFAFA', texto: 'al día', pie: 'detalle en Sistema →' };
+      : !briefing || briefing.datos_al_dia == null
+        ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'sin confirmar', pie: 'el briefing no dijo si están al día' }
+        : briefing.datos_al_dia === false
+          ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'problema', pie: 'mirá Sistema › Salud →' }
+          : { punto: '#4ADE80', color: '#FAFAFA', texto: 'al día', pie: 'detalle en Sistema →' };
 
   const alertas = Array.isArray(alertasRaw) ? alertasRaw : [];
   const pulsos = pulsoRaw?.pulsos || [];
@@ -67,7 +75,27 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const bloqueados = bloqueadosRaw || {};
   const propuestas = Array.isArray(propuestasRaw) ? propuestasRaw : [];
 
-  const resolverAlerta = async (id: number) => { await fetch(`/api/alertas/${id}/resolver`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }); cargar(); };
+  // Las alertas llegan AGRUPADAS (cuenta, tipo, día): `v_alertas_agrupadas` NO
+  // emite `id` —emite `id_representante` y el array `ids`—, así que el viejo
+  // `/api/alertas/${a.id}/resolver` viajaba como `/api/alertas/undefined/resolver`,
+  // pegaba `.eq('id','undefined')` contra un bigint y devolvía 500. Nadie miraba
+  // `res.ok`: la lista parpadeaba y la alerta seguía ahí, sin decir nada.
+  // El endpoint de grupo cierra las N alertas del mismo hecho, que es exactamente
+  // el radio de lo que la fila muestra.
+  const [errorAlerta, setErrorAlerta] = useState<string | null>(null);
+  const resolverGrupoAlerta = async (a: any) => {
+    setErrorAlerta(null);
+    // `alertas.account` es nullable y `resolver_grupo_alertas` compara con `=`:
+    // sin cuenta el grupo no se puede acotar, y prometer que se resolvió sería
+    // peor que decir que no se puede.
+    if (!a.account) { setErrorAlerta(`«${a.titulo}» no tiene cuenta, y resolver por grupo la necesita para acotar el radio. Esa se cierra desde la base.`); return; }
+    try {
+      await pedirJSON('/api/alertas/grupo/resolver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cuenta: a.account, tipo: a.tipo, dia: a.dia }) });
+      cargar();
+    } catch (e) {
+      setErrorAlerta(`No se pudo resolver «${a.titulo}»: ${motivoFallo(e)}`);
+    }
+  };
 
   const { nombres: cuentas } = useCuentas();
   const enCuenta = (c: string) => !filtroCuenta || c === filtroCuenta;
@@ -91,16 +119,38 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const confirmar = actionables.filter(a => a.status === NOTION_STATES.BLOQUEADO && !a.reemplazado_por && enCuenta(a.client));
   const reportes = (briefing?.reportes_por_aprobar || []).filter((r: any) => enCuenta(r.cuenta));
   const propPend = propuestas.filter(p => p.estado === 'propuesta' && enCuenta(p.account));
-  const novs = novedades.filter(n => enCuenta(n.account || ''));
-  const leerTodas = async () => { await fetch('/api/novedades/leer', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ todas: true }) }); cargar(); };
-  const abrirNovedad = (n: any) => {
-    if (n.ref_tipo === 'accionable') { const a = actionables.find(x => x.id === n.ref_id); if (a) abrir(a); else onGoTo('cuenta', n.account, 'accionables'); }
-    else if (n.ref_tipo === 'propuesta') onGoTo('cuenta', n.account, 'diagnostico');
-    else if (n.ref_tipo === 'ticket') onGoTo('sistema');
-    else if (n.ref_tipo === 'ejecucion') onGoTo('sistema');
-    fetch('/api/novedades/leer', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref_tipo: n.ref_tipo, ref_id: n.ref_id }) }).then(cargar).catch(() => {});
+  // `v_novedades_agrupadas` emite **`cuenta`**, no `account`: filtrar por
+  // `n.account` daba undefined en TODAS las filas, así que apenas se elegía una
+  // cuenta la sección entera se vaciaba. La cuenta viene con COALESCE a
+  // '(sistema)' para lo que no es de ninguna.
+  const novs = novedades.filter(n => enCuenta(n.cuenta || ''));
+  const [errorNovedad, setErrorNovedad] = useState<string | null>(null);
+  const leerTodas = async () => {
+    setErrorNovedad(null);
+    try { await pedirJSON('/api/novedades/leer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ todas: true }) }); cargar(); }
+    catch (e) { setErrorNovedad(`No se pudieron marcar vistas: ${motivoFallo(e)}`); }
   };
-  const total = hoy.length + listos.length + confirmar.length + reportes.length + propPend.length;
+  // La agrupada no tiene `ref_tipo` ni `ref_id` —un grupo son N entidades, no
+  // una—, así que ninguna rama del viejo `if` matcheaba: el clic no navegaba y
+  // el POST viajaba con `ref_tipo: undefined`, o sea que la novedad no se marcaba
+  // leída nunca. Lo que la vista sí identifica es el grupo (cuenta, tipo, actor,
+  // día), y ese es el radio que se marca. Navegar a UNA entidad sería inventar
+  // un foco que el grupo no tiene: se va a la cuenta, o a Sistema.
+  const abrirNovedad = async (n: any) => {
+    const cta = n.cuenta && n.cuenta !== '(sistema)' ? n.cuenta : null;
+    if (!cta) onGoTo('sistema');
+    else if (n.tipo === 'editado' || n.tipo === 'comentario') onGoTo('cuenta', cta, 'accionables');
+    else if (n.tipo === 'propuesta') onGoTo('cuenta', cta, 'diagnostico');
+    else onGoTo('sistema');
+    setErrorNovedad(null);
+    try { await pedirJSON('/api/novedades/grupo/leer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cuenta: n.cuenta, tipo: n.tipo, actor: n.actor, dia: n.dia }) }); cargar(); }
+    catch (e) { setErrorNovedad(`No se pudo marcar leída «${n.titulo}»: ${motivoFallo(e)}`); }
+  };
+  // El KPI total omitía `preguntas` y `aMano`: con 5 accionables "a mano" y nada
+  // más, la cifra decía 0, la lectura decía "nada pide tu criterio", el check
+  // verde se plantaba… y los 5 ítems ni se dibujaban, porque la cola entera
+  // cuelga de `total === 0`. Lo que espera criterio es todo lo propuesto.
+  const total = hoy.length + listos.length + preguntas.length + aMano.length + confirmar.length + reportes.length + propPend.length;
   const ultimoPulso = useMemo(() => { const m: Record<string, any> = {}; pulsos.forEach(p => { if (!m[p.account] || p.fecha > m[p.account].fecha) m[p.account] = p; }); return m; }, [pulsos]);
 
   const abrir = (a: Actionable) => { setSelectedClient(a.client); onOpenActionable(a); };
@@ -120,7 +170,9 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const vis = <T,>(arr: T[], id: string): T[] => !estaAbierto(id) ? [] : (gTodo[id] ? arr : arr.slice(0, TOPE));
 
   const nav: { id: string; click: () => void; rapida?: () => void }[] = [
-    ...vis(hoy, 'hoy').map((a: any) => ({ id: 'al' + a.id, click: () => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] })), rapida: () => resolverAlerta(a.id) })),
+    // `id_representante` (min(id) del grupo) es lo único que identifica una fila
+    // agrupada: con `a.id` las N alertas compartían la clave "alundefined".
+    ...vis(hoy, 'hoy').map((a: any) => ({ id: 'al' + a.id_representante, click: () => setAbierto(s => ({ ...s, ['al' + a.id_representante]: !s['al' + a.id_representante] })), rapida: () => resolverGrupoAlerta(a) })),
     ...vis(listosOrd, 'listos').map(a => ({ id: String(a.id), click: () => abrir(a) })),
     ...vis(preguntasOrd, 'preguntas').map(a => ({ id: String(a.id), click: () => abrir(a) })),
     ...vis(aManoOrd, 'aMano').map(a => ({ id: String(a.id), click: () => abrir(a) })),
@@ -236,13 +288,24 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               </div>
             ) : (
               <>
+                {/* `a.origen` y `a.accion` son columnas de la tabla `alertas`, no de
+                    la vista agrupada: el subtítulo salía siempre vacío. Lo que la
+                    vista sí trae es `tipo`, `cuantas` y `lectura` (que solo habla
+                    cuando el grupo tiene 5 o más: ahí cae a `detalle`). */}
                 {hoy.length > 0 && (
                   <Grupo id="hoy" titulo="Pide acción hoy" urgente n={hoy.length} abierto={estaAbierto('hoy')} onToggle={() => setGAbierto(s => ({ ...s, hoy: !estaAbierto('hoy') }))} todo={!!gTodo.hoy} tope={TOPE} onVerTodo={() => setGTodo(s => ({ ...s, hoy: true }))}>
                     {vis(hoy, 'hoy').map((a: any) => (
-                      <Fila key={'al' + a.id} activa={activaId === 'al' + a.id} cuenta={a.account || 'Sistema'} titulo={a.titulo} sub={[a.origen, a.accion].filter(Boolean).join(' · ')} onClick={() => setAbierto(s => ({ ...s, ['al' + a.id]: !s['al' + a.id] }))}
-                        accion={<button onClick={(e) => { e.stopPropagation(); resolverAlerta(a.id); }} className="px-2.5 py-1 rounded-md text-[11px] text-[#FAFAFA] hover:bg-white/10 transition-colors" style={{ border: '1px solid var(--border-strong)' }}>Resuelta</button>} />
+                      <Fila key={'al' + a.id_representante} activa={activaId === 'al' + a.id_representante} cuenta={a.account || 'Sistema'} titulo={a.titulo}
+                        sub={[a.tipo, a.cuantas > 1 ? `${a.cuantas} entidades` : null, a.lectura || a.detalle].filter(Boolean).join(' · ')}
+                        onClick={() => setAbierto(s => ({ ...s, ['al' + a.id_representante]: !s['al' + a.id_representante] }))}
+                        accion={<button onClick={(e) => { e.stopPropagation(); resolverGrupoAlerta(a); }} className="px-2.5 py-1 rounded-md text-[11px] text-[#FAFAFA] hover:bg-white/10 transition-colors" style={{ border: '1px solid var(--border-strong)' }}>Resuelta</button>} />
                     ))}
                   </Grupo>
+                )}
+                {/* Un botón que falla tiene que decirlo: antes el 500 se tragaba en
+                    silencio y la alerta seguía ahí como si nada hubiera pasado. */}
+                {errorAlerta && (
+                  <p className="text-[11px] px-5 py-2" style={{ color: 'var(--warn)' }}>{errorAlerta}</p>
                 )}
                 {/* Sin esto, "De un clic" vacío se leería como "no hay nada listo",
                     cuando en realidad no se pudo saber cuáles tenían conflicto y
@@ -370,11 +433,15 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 <span className="text-xs" style={LABEL}>Actividad de los agentes</span>
                 <button onClick={leerTodas} className="text-[10px] hover:text-[#FAFAFA] transition-colors" style={LABEL}>marcar visto</button>
               </div>
+              {errorNovedad && <p className="text-[11px] pb-2" style={{ color: 'var(--warn)' }}>{errorNovedad}</p>}
+              {/* `id` y `texto` son de `novedades`, no de la agrupada: la clave de
+                  React era la misma undefined en todas las filas y el tooltip nunca
+                  tuvo cuerpo. La vista trae `id_representante` y `detalle`. */}
               <div className="space-y-1">
                 {novs.slice(0, abierto.novs ? 20 : 5).map(n => (
-                  <button key={n.id} onClick={() => abrirNovedad(n)} className="w-full flex items-center gap-2 py-1.5 text-left group">
-                    <span className="text-[13px] font-medium truncate flex-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL} title={n.texto || n.titulo}>{n.titulo}</span>
-                    <span className="text-[10px] tabular shrink-0 opacity-80" style={LABEL}>{(() => { const v = n.ultima || n.creada; return v ? fmtFechaCorta(v) : ''; })()}</span>
+                  <button key={n.id_representante} onClick={() => abrirNovedad(n)} className="w-full flex items-center gap-2 py-1.5 text-left group">
+                    <span className="text-[13px] font-medium truncate flex-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL} title={n.detalle || n.titulo}>{n.titulo}</span>
+                    <span className="text-[10px] tabular shrink-0 opacity-80" style={LABEL}>{n.ultima ? fmtFechaCorta(n.ultima) : ''}</span>
                     <ChevronRight size={12} className="shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" style={{ color: '#ADADAD' }} />
                   </button>
                 ))}

@@ -5,6 +5,22 @@ import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular, Fallo, pedirJS
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
 
+/** Los cinco veredictos del CHECK de `reconciliaciones_api`, con su peso visual y
+ *  lo que significan. La UI distinguía solo los dos primeros: `excedio_tope` —la
+ *  divergencia fue tan grande que la corrección se FRENÓ— y `error` caían en el
+ *  mismo azul tibio que `sin_base`, y `corregido` se pintaba MÁS brillante que los
+ *  dos. Jerarquía invertida: lo que salió bien gritaba más que lo que no se pudo
+ *  arreglar. Un veredicto fuera de esta lista tampoco se apaga: se pinta ámbar,
+ *  porque un valor que la UI no conoce es exactamente lo que hay que mirar. */
+const VEREDICTO_RECONCILIACION: Record<string, { clase: string; que: string }> = {
+  limpio: { clase: 'text-[#F5F7FA] opacity-60', que: 'Lo que teníamos coincide con la API: no hubo nada que corregir.' },
+  corregido: { clase: 'text-[#EDEFF3]', que: 'Había diferencias y se escribió el dato de Google encima.' },
+  sin_base: { clase: 'text-[#4D9DFF]', que: 'No había con qué comparar: esta capa quedó sin verificar.' },
+  excedio_tope: { clase: 'text-[#F97066] font-semibold', que: 'Divergencia masiva: la corrección se frenó. Nada se escribió y el dato sigue sin cuadrar.' },
+  error: { clase: 'text-[#F97066] font-semibold', que: 'La reconciliación falló: esta capa quedó sin verificar.' },
+};
+const tonoVeredicto = (v: string) => VEREDICTO_RECONCILIACION[v] || { clase: 'text-[#E2B453] font-semibold', que: 'Veredicto que esta pantalla no conoce: miralo en la tabla.' };
+
 /** Un valor suelto de jsonb, listo para imprimir. `null` y ausente se muestran
  *  como `—` y no como "null" ni como vacío: en un diff de configuración, "no
  *  estaba" y "estaba en cero" son cosas distintas y ninguna es una cadena vacía. */
@@ -84,6 +100,13 @@ export function Sistema() {
   const [verifEstado, setVerifEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
   // Salud completa: las 32 verificaciones, tareas caidas y cuarentena.
   const [saludSistema, setSaludSistema] = useState<any>(null);
+  // El titular de esta página afirma "el sistema está sano" o "nada roto". Las dos
+  // frases son veredictos, y un veredicto necesita que las dos preguntas hayan sido
+  // contestadas. Con `fetchJSON` un 500 devolvía el fallback en silencio: `latidos`
+  // quedaba en [], `callados.length === 0`, y el héroe pintaba VERDE sin haber sabido
+  // si alguna tarea dejó de correr — que es justo el estado más caro de no ver.
+  const [latidosEstado, setLatidosEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
+  const [saludEstado, setSaludEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
   const [respaldo, setRespaldo] = useState<any>(null);
   // 8 sep 2026. Antes TODO el bloque estaba envuelto en {respaldo && (...)}: si este
   // fetch fallaba, el estado quedaba en null y la seccion no se renderizaba. No es que
@@ -120,7 +143,33 @@ export function Sistema() {
   const [coherencia, setCoherencia] = useState<any>({ escritores: [], reconciliaciones: [] });
   const [alertas, setAlertas] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
-  const accionAlerta = async (id: number, accion: string, extra: any = {}) => { await fetch(`/api/alertas/${id}/${accion}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(extra) }); setAlertas(await fetchJSON<any[]>('/api/alertas', [])); };
+  const [alertaError, setAlertaError] = useState<string | null>(null);
+  /** `/api/alertas` devuelve `v_alertas_agrupadas`: una fila son N alertas del mismo
+   *  hecho (cuenta, tipo, día). La vista NO emite `id` —emite `id_representante` y el
+   *  array `ids`—, así que `accionAlerta(a.id, …)` pegaba `/api/alertas/undefined/…`,
+   *  o sea `.eq('id','undefined')` contra un bigint: 500 silencioso, porque nadie
+   *  miraba `res.ok`. Y resolver solo al representante dejaría a las otras 15
+   *  gritando: el radio de la acción es el del grupo que se ve. */
+  const recargarAlertas = async () => setAlertas(await fetchJSON<any[]>('/api/alertas', []));
+  const resolverGrupo = async (a: any) => {
+    setAlertaError(null);
+    // `alertas.account` es nullable y `resolver_grupo_alertas` filtra con `=`: sin
+    // cuenta no hay grupo que acotar, y decir "resuelta" sin haberlo hecho es peor.
+    if (!a.account) { setAlertaError(`«${a.titulo}» no tiene cuenta, y resolver por grupo la necesita para acotar el radio. Esa se cierra desde la base.`); return; }
+    try {
+      await pedirJSON('/api/alertas/grupo/resolver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cuenta: a.account, tipo: a.tipo, dia: a.dia }) });
+      await recargarAlertas();
+    } catch (e) { setAlertaError(`No se pudo resolver «${a.titulo}»: ${motivoFallo(e)}`); }
+  };
+  /** El motivo se tipeaba en un `prompt()` y se descartaba: iba a un endpoint que
+   *  devolvía 500 antes de leerlo. Ahora viaja, y con los `ids` del grupo entero. */
+  const silenciarGrupo = async (a: any, dias: number, por_que: string) => {
+    setAlertaError(null);
+    try {
+      await pedirJSON('/api/alertas/grupo/silenciar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: a.ids, dias, por_que }) });
+      await recargarAlertas();
+    } catch (e) { setAlertaError(`No se pudo silenciar «${a.titulo}»: ${motivoFallo(e)}`); }
+  };
 
   // Operator log form state
   const [logAccount, setLogAccount] = useState('360');
@@ -151,8 +200,16 @@ export function Sistema() {
     pedirJSON<any[]>('/api/salud-sistema')
       .then(d => { setVerificaciones(Array.isArray(d) ? d : []); setVerifEstado({ fase: 'listo', error: null }); })
       .catch(e => { setVerificaciones([]); setVerifEstado({ fase: 'listo', error: motivoFallo(e) }); });
-    fetchJSON<any>('/api/salud', null).then(d => d && setSaludSistema(d));
-    fetchJSON<any[]>('/api/latidos', []).then(d => setLatidos(Array.isArray(d) ? d : []));
+    setSaludEstado({ fase: 'cargando', error: null });
+    pedirJSON<any>('/api/salud')
+      // Un cuerpo sin `veredicto` tampoco es un veredicto: se cuenta como pregunta
+      // sin responder, no como "nada roto".
+      .then(d => { setSaludSistema(d || null); setSaludEstado({ fase: 'listo', error: d?.veredicto ? null : 'El servidor respondió sin veredicto.' }); })
+      .catch(e => { setSaludSistema(null); setSaludEstado({ fase: 'listo', error: motivoFallo(e) }); });
+    setLatidosEstado({ fase: 'cargando', error: null });
+    pedirJSON<any[]>('/api/latidos')
+      .then(d => { setLatidos(Array.isArray(d) ? d : []); setLatidosEstado({ fase: 'listo', error: Array.isArray(d) ? null : 'El servidor no devolvió la lista de tareas.' }); })
+      .catch(e => { setLatidos([]); setLatidosEstado({ fase: 'listo', error: motivoFallo(e) }); });
     fetchJSON<any>('/api/respaldo', null).then(d => {
       if (d) setRespaldo(d);
       else setRespaldoError('No se pudo consultar el respaldo.');
@@ -240,7 +297,20 @@ export function Sistema() {
   // y las alertas activas también: lo que pide acción no se recorta.
   const tLecciones = useTope(aprendido?.lecciones || []);
   const tConocimiento = useTope(aprendido?.conocimiento || []);
-  const tInvalidos = useTope(aprendido?.invalidos || []);
+  // `v_accionables_invalidos` NO filtra por `clasificacion`: emite también 'ok'
+  // ("Listo para ejecutar.") y 'sin_json_correcto' ("CORRECTO: no lleva Accion JSON
+  // porque su verbo no es ejecutable por script. No es un error y no hay nada que
+  // arreglar."). Listarlas bajo "Accionables que no cumplen el estándar" mostrando
+  // `accion_error` —que en esas filas es NULL— llenaba el panel de renglones vacíos
+  // que no eran fallas. Tratar un no_aplicaba como falla es cómo mueren las alertas.
+  //
+  // Se excluyen las dos que son correctas por definición en vez de listar las tres
+  // que fallan: si la vista agrega mañana una clasificación nueva, que moleste a la
+  // vista y no que desaparezca sin que nadie se entere.
+  const invalidosReales = React.useMemo(
+    () => (aprendido?.invalidos || []).filter((a: any) => a.clasificacion !== 'ok' && a.clasificacion !== 'sin_json_correcto'),
+    [aprendido?.invalidos]);
+  const tInvalidos = useTope(invalidosReales);
   const tEjecuciones = useTope(ejecuciones);
   const tTickets = useTope(tickets);
   const tReflexiones = useTope(aprendizaje.reflexiones || []);
@@ -382,24 +452,40 @@ export function Sistema() {
           adentro de una tarjeta, en una pastilla de 11px. Los silencios se
           nombran primero: una tarea que dejó de correr no grita, y por eso es
           el estado más caro de no ver. */}
-      {(saludSistema || latidos.length > 0) && (() => {
+      {(latidosEstado.fase === 'listo' || saludEstado.fase === 'listo') && (() => {
         const callados = latidos.filter((l: any) => l.en_silencio && l.vigilado !== false);
         const roto = saludSistema?.veredicto === 'hay algo roto';
         const primera = (saludSistema?.fallas || [])[0];
-        const color = roto || callados.length > 0 ? 'var(--bad)' : saludSistema?.veredicto === 'todo bien' ? '#4ADE80' : 'var(--warn)';
+        // Lo que NO se pudo preguntar. Un hallazgo positivo (una tarea callada, algo
+        // roto) sigue valiendo aunque la otra consulta falle: encontrar algo malo no
+        // necesita que todo lo demás haya respondido. Lo que sí lo necesita es
+        // afirmar que está todo bien.
+        const sinRespuesta = [
+          latidosEstado.error ? { que: 'si alguna tarea dejó de correr', motivo: latidosEstado.error } : null,
+          saludEstado.error ? { que: 'si hay algo roto', motivo: saludEstado.error } : null,
+        ].filter(Boolean) as { que: string; motivo: string }[];
+        const aCiegas = sinRespuesta.length > 0;
+        const color = roto || callados.length > 0
+          ? 'var(--bad)'
+          : aCiegas ? 'var(--warn)' : saludSistema?.veredicto === 'todo bien' ? '#4ADE80' : 'var(--warn)';
         const frase = callados.length > 0
           ? `${callados.length} tarea${callados.length !== 1 ? 's' : ''} dejó de correr en silencio.`
           : roto
             ? `Hay algo roto${primera ? `: ${primera.area} · ${primera.cuenta}` : ''}.`
-            : saludSistema?.veredicto === 'todo bien'
-              ? 'El sistema está sano.'
-              : 'Hay cosas para mirar, nada roto.';
+            : aCiegas
+              ? 'No se pudo saber si el sistema está sano.'
+              : saludSistema?.veredicto === 'todo bien'
+                ? 'El sistema está sano.'
+                : 'Hay cosas para mirar, nada roto.';
         const guia = callados.length > 0
           ? callados.map((l: any) => String(l.tarea).replace(/_/g, ' ')).join(' · ')
-          : roto && primera ? primera.detalle : undefined;
+          : roto && primera ? primera.detalle
+            : aCiegas ? `No se pudo consultar ${sinRespuesta.map(s => s.que).join(' ni ')}. ${sinRespuesta.map(s => s.motivo).join(' ')} Un vacío acá no es salud: es una pregunta sin responder.`
+              : undefined;
         return (
           <Titular estado={color} guia={guia}
-            meta={saludSistema ? <span>{saludSistema.ok} verificaciones pasadas{(saludSistema.atencion || []).length > 0 ? ` · ${saludSistema.atencion.length} para mirar` : ''}</span> : undefined}>
+            meta={saludEstado.error ? undefined : saludSistema ? <span>{saludSistema.ok} verificaciones pasadas{(saludSistema.atencion || []).length > 0 ? ` · ${saludSistema.atencion.length} para mirar` : ''}</span> : undefined}
+            aviso={aCiegas && (callados.length > 0 || roto) ? `Además, no se pudo consultar ${sinRespuesta.map(s => s.que).join(' ni ')}.` : undefined}>
             {frase}
           </Titular>
         );
@@ -413,6 +499,9 @@ export function Sistema() {
           {/* Agentes, cada uno contra SU cadencia. El latido dice que el proceso
               corrió; "en silencio" es el estado más peligroso porque no grita —
               por eso los silencios vienen primero y el marco se tiñe. */}
+          {/* Sin esto, un /api/latidos caído borraba el panel entero de la pantalla:
+              cero tareas a la vista se lee igual que cero tareas caídas. */}
+          {latidosEstado.error && <Fallo que="el latido de los agentes" motivo={latidosEstado.error} onReintentar={cargarTodo} />}
           {latidos.length > 0 && (
             <div id="agentes" data-toc="Agentes" data-grupo="g-salud" className="tarjeta-pulse tarjeta-hero p-5 rounded-xl space-y-3" style={{ border: latidos.some((l: any) => l.en_silencio) ? '1px solid rgba(249,112,102,0.4)' : '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -448,6 +537,7 @@ export function Sistema() {
 
           {/* Veredicto del sistema. Reune las 32 verificaciones, las tareas caidas y
               la cuarentena. Antes esto solo se veia consultando SQL a mano. */}
+          {saludEstado.error && <Fallo que="el estado del sistema" motivo={saludEstado.error} onReintentar={cargarTodo} />}
           {saludSistema && (
             <div id="estado" data-toc="Estado del sistema" data-grupo="g-salud" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -694,7 +784,7 @@ export function Sistema() {
                   {reconciliaciones.slice(0, 8).map((r: any) => (
                     <div key={r.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                       <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
-                      <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'}`}>{r.veredicto}</span>
+                      <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${tonoVeredicto(r.veredicto).clase}`} title={tonoVeredicto(r.veredicto).que}>{r.veredicto}</span>
                       <span className="text-[#F5F7FA] flex-1">{r.account} · {r.capa} · {r.filas_comparadas} comparadas{r.filas_corregidas ? `, ${r.filas_corregidas} corregidas` : ''}{r.filas_insertadas ? `, ${r.filas_insertadas} insertadas` : ''}</span>
                       {r.detalle && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[280px] truncate" title={r.detalle}>{r.detalle}</span>}
                     </div>
@@ -777,7 +867,7 @@ export function Sistema() {
               {verMas(tConocimiento, `ver los ${aprendido.conocimiento.length} registros`)}
             </div>
           </div>
-          {(aprendido.invalidos || []).length > 0 && (
+          {invalidosReales.length > 0 && (
             <div id="invalidos" data-toc="Accionables sin estándar" data-grupo="g-aprendizaje" className="p-5 rounded-2xl space-y-3" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
               <div className="pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Accionables que no cumplen el estándar</h2>
@@ -788,10 +878,13 @@ export function Sistema() {
                   <div key={a.notion_id} className="flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
                     <span className="text-[#F5F7FA] opacity-50 w-14 shrink-0">{a.account}</span>
                     <span className="text-[#EDEFF3] flex-1 truncate">{a.titulo}</span>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-50 shrink-0 max-w-[280px] truncate" title={a.accion_error}>{a.accion_error}</span>
+                    {/* `lectura` es la única columna que explica QUÉ pasa con esta fila;
+                        `accion_error` solo tiene texto cuando el JSON no parsea, y la
+                        propia `lectura` ya lo incluye ("ROTO: " || accion_error). */}
+                    <span className="text-[10px] text-[#F5F7FA] opacity-70 shrink-0 max-w-[320px] truncate" title={a.lectura}>{a.lectura}</span>
                   </div>
                 ))}
-                {verMas(tInvalidos, `ver los ${aprendido.invalidos.length}`)}
+                {verMas(tInvalidos, `ver los ${invalidosReales.length}`)}
               </div>
             </div>
           )}
@@ -1060,23 +1153,28 @@ export function Sistema() {
               <h2 className="text-[15px] font-medium text-[#EDEFF3]">Alertas</h2>
               <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.">Una alerta existe solo si hay algo concreto que hacer. Tres niveles: pide acción hoy, para mirar esta semana, y las de fondo que no avisan. Silenciar registra por qué y hasta cuándo.</p>
             </div>
+            {alertaError && <p className="text-[11px]" style={{ color: '#F97066' }}>{alertaError}</p>}
+            {/* `origen` y `accion` son columnas de la tabla `alertas`, no de la vista
+                agrupada: la línea "Qué hacer:" no se renderizó nunca, en el panel cuya
+                descripción dice que una alerta existe solo si hay algo concreto que
+                hacer. Lo que la vista sí trae es `tipo`, `cuantas` y `lectura`. */}
             {alertas.length === 0 ? <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin alertas abiertas. Se generan cada 4 horas desde el centinela, la integridad de datos y el plan de la semana.</p> : (
               <div className="space-y-1.5">
                 {alertas.map((a: any) => (
-                  <div key={a.id} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : a.nivel === 'semana' ? '2px solid var(--border-strong)' : '2px solid transparent' }}>
+                  <div key={a.id_representante} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--surface-2)', borderLeft: a.nivel === 'hoy' ? '2px solid var(--primary)' : a.nivel === 'semana' ? '2px solid var(--border-strong)' : '2px solid transparent' }}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
-                          <span className="text-[10px] text-[#F5F7FA] opacity-60">{a.account || 'Sistema'} · {a.origen}</span>
+                          <span className="text-[10px] text-[#F5F7FA] opacity-60">{a.account || 'Sistema'} · {a.tipo}{a.cuantas > 1 ? ` · ${a.cuantas} entidades` : ''} · {fmtFechaCorta(a.dia)}</span>
                         </div>
                         <div className="text-xs text-[#EDEFF3] font-medium mt-0.5">{a.titulo}</div>
                         {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
-                        {a.accion && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.accion}</div>}
+                        {a.lectura && <div className="text-[11px] text-[#F5F7FA] mt-1"><span className="opacity-60">Qué hacer:</span> {a.lectura}</div>}
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        <button onClick={() => accionAlerta(a.id, 'resolver')} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#EDEFF3]">Resuelta</button>
-                        <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) accionAlerta(a.id, 'silenciar', { dias: 7, por_que: pq }); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
+                        <button onClick={() => resolverGrupo(a)} className="px-2 py-0.5 rounded text-[10px] bg-[#0062CC] text-[#EDEFF3]">{a.cuantas > 1 ? `Resolver las ${a.cuantas}` : 'Resuelta'}</button>
+                        <button onClick={() => { const pq = prompt('¿Por qué la silenciás? (queda registrado)'); if (pq !== null) silenciarGrupo(a, 7, pq); }} className="px-2 py-0.5 rounded text-[10px] text-[#F5F7FA] opacity-60 hover:opacity-100" style={{ border: '1px solid var(--border)' }}>Silenciar 7d</button>
                       </div>
                     </div>
                   </div>
