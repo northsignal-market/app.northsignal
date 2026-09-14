@@ -16,7 +16,15 @@ import { Client } from '@notionhq/client';
 import PQueue from 'p-queue';
 
 const notionKey = process.env.NOTION_API_KEY;
-const raw = notionKey ? new Client({ auth: notionKey }) : null;
+// NOTION_BASE_URL solo se define en el arnés local: apunta el SDK a un Notion de
+// mentira para poder VER qué propiedades escribe cada botón antes de creerle. Sin
+// la variable, el SDK usa api.notion.com como siempre. Hace falta porque los bugs
+// más caros de este sistema son escrituras que borran campos en silencio, y
+// probarlas contra el workspace real significa romper datos de Andrés para
+// averiguarlo.
+const raw = notionKey
+  ? new Client({ auth: notionKey, ...(process.env.NOTION_BASE_URL ? { baseUrl: process.env.NOTION_BASE_URL } : {}) })
+  : null;
 
 const queue = new PQueue({ intervalCap: 3, interval: 1000, carryoverConcurrencyCount: true, concurrency: 3 });
 const MAX_RETRIES = 4;

@@ -852,7 +852,7 @@ var NOTION_REVISION_IA = {
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
 var notionKey = process.env.NOTION_API_KEY;
-var raw = notionKey ? new Client({ auth: notionKey }) : null;
+var raw = notionKey ? new Client({ auth: notionKey, ...process.env.NOTION_BASE_URL ? { baseUrl: process.env.NOTION_BASE_URL } : {} }) : null;
 var queue = new PQueue({ intervalCap: 3, interval: 1e3, carryoverConcurrencyCount: true, concurrency: 3 });
 var MAX_RETRIES = 4;
 async function conReintentos(fn, idempotente, etiqueta) {
@@ -2572,6 +2572,58 @@ function createApp() {
       res.status(500).json({ error: e.message });
     }
   });
+  async function mapearAccionable(notion2, page) {
+    const client = await resolveNotionClient(notion2, page.properties.Cliente || page.properties.Client);
+    const props = page.properties;
+    const texto = (p) => p?.rich_text?.map((rt) => rt.plain_text).join("") || "";
+    return {
+      id: page.id,
+      client,
+      title: props.Accion?.title?.map((rt) => rt.plain_text).join("") || "Untitled",
+      status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
+      priority: props.Prioridad?.select?.name || "Medium",
+      why: texto(props["Por que"]),
+      where: texto(props.Donde),
+      tags: props.Etiquetas?.multi_select?.map((ms) => ms.name) || props.Tags?.multi_select?.map((ms) => ms.name) || [],
+      revision_ia: props["Revision IA"]?.select?.name || NOTION_REVISION_IA.SIN_REVISAR,
+      punto_disputa: texto(props["Punto en disputa"]),
+      decision_final: texto(props["Decision final"]),
+      ejecutado_el: props["Ejecutado el"]?.date?.start || null,
+      resultado_observado: texto(props["Resultado observado"]),
+      detectado: props["Detectado"]?.date?.start || page.created_time,
+      // Sin valor en Notion se devuelve null, NO un default. Antes caía a
+      // 'Observacion', que es uno de los dos buckets de v_tasa_acierto: un
+      // accionable sin clasificar entraba a la métrica como si alguien lo
+      // hubiera clasificado. El que no sabe tiene que verse como que no se sabe.
+      naturaleza: props.Naturaleza?.select?.name || null,
+      que_lo_confirmaria: texto(props["Que lo confirmaria"]),
+      como_hacerlo: texto(props["Como hacerlo"]),
+      origen: props["Origen"]?.select?.name || "",
+      accion_json: texto(props["Accion JSON"]),
+      entidad: texto(props["Entidad"]),
+      vence: props["Vence"]?.date?.start || null,
+      reemplazado_por: props["Reemplazado por"]?.relation?.[0]?.id || null,
+      last_edited: page.last_edited_time,
+      causa_raiz: texto(props["Causa raiz"]),
+      relacionado_con: props["Relacionado con"]?.relation?.map((rel) => rel.id) || [],
+      semanas_pendiente: props["Semanas pendiente"]?.number ?? (props["Semanas pendiente"]?.formula?.number ?? 0),
+      comments_count: 0,
+      created_at: page.created_time,
+      url: page.url
+    };
+  }
+  app2.get("/api/notion/actionables/:id", async (req, res) => {
+    const notionKey2 = process.env.NOTION_API_KEY;
+    if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
+    try {
+      const notion2 = notion;
+      const page = await notion2.pages.retrieve({ page_id: req.params.id });
+      res.json({ data: await mapearAccionable(notion2, page) });
+    } catch (e) {
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
   app2.get("/api/notion/actionables", async (req, res) => {
     const notionKey2 = process.env.NOTION_API_KEY;
     if (!notionKey2) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
@@ -2582,42 +2634,7 @@ function createApp() {
         page_size: 50,
         sorts: [{ timestamp: "created_time", direction: "descending" }]
       });
-      const data = await Promise.all(response.results.map(async (page) => {
-        const client = await resolveNotionClient(notion2, page.properties.Cliente || page.properties.Client);
-        const props = page.properties;
-        let comments_count = 0;
-        return {
-          id: page.id,
-          client,
-          title: props.Accion?.title?.map((rt) => rt.plain_text).join("") || "Untitled",
-          status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
-          priority: props.Prioridad?.select?.name || "Medium",
-          why: props["Por que"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          where: props.Donde?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          tags: props.Etiquetas?.multi_select?.map((ms) => ms.name) || props.Tags?.multi_select?.map((ms) => ms.name) || [],
-          revision_ia: props["Revision IA"]?.select?.name || NOTION_REVISION_IA.SIN_REVISAR,
-          punto_disputa: props["Punto en disputa"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          decision_final: props["Decision final"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          ejecutado_el: props["Ejecutado el"]?.date?.start || null,
-          resultado_observado: props["Resultado observado"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          detectado: props["Detectado"]?.date?.start || page.created_time,
-          naturaleza: props.Naturaleza?.select?.name || "Observacion",
-          que_lo_confirmaria: props["Que lo confirmaria"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          como_hacerlo: props["Como hacerlo"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          origen: props["Origen"]?.select?.name || "",
-          accion_json: props["Accion JSON"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          entidad: props["Entidad"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          vence: props["Vence"]?.date?.start || null,
-          reemplazado_por: props["Reemplazado por"]?.relation?.[0]?.id || null,
-          last_edited: page.last_edited_time,
-          causa_raiz: props["Causa raiz"]?.rich_text?.map((rt) => rt.plain_text).join("") || "",
-          relacionado_con: props["Relacionado con"]?.relation?.map((rel) => rel.id) || [],
-          semanas_pendiente: props["Semanas pendiente"]?.number ?? (props["Semanas pendiente"]?.formula?.number ?? 0),
-          comments_count,
-          created_at: page.created_time,
-          url: page.url
-        };
-      }));
+      const data = await Promise.all(response.results.map((page) => mapearAccionable(notion2, page)));
       const { parsearAccion: parsearAccion2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
       for (const a of data) {
         const p = parsearAccion2(a.accion_json);

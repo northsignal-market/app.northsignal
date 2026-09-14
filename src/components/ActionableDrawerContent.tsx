@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { avisar, useCuentas } from '../lib/useCuentas';
-import { useJSON, fmtMoneda, fmtFechaCorta, Fallo } from './ui';
+import { useJSON, fmtMoneda, fmtFechaCorta, Fallo, pedirJSON, motivoFallo } from './ui';
 import { 
   Check, Cpu, MessageSquare, Send, Clock, 
   ExternalLink, AlertCircle, ShieldAlert,
@@ -137,11 +137,20 @@ export function ActionableDrawerContent({
   // Tracking fields
   const [ejecutadoEl, setEjecutadoEl] = useState(action.ejecutado_el || '');
   const [resultadoObservado, setResultadoObservado] = useState(action.resultado_observado || '');
-  const [naturaleza, setNaturaleza] = useState(action.naturaleza || NOTION_NATURALEZA.DATO);
+  // Sin default: `/api/data` no trae naturaleza, así que cualquier valor inicial
+  // acá sería inventado. Se llena con lo que devuelve /api/notion/actionables/:id.
+  const [naturaleza, setNaturaleza] = useState<string>(action.naturaleza || '');
   const [queLoConfirmaria, setQueLoConfirmaria] = useState(action.que_lo_confirmaria || '');
   const [causaRaiz, setCausaRaiz] = useState(action.causa_raiz || '');
   const [savingDetails, setSavingDetails] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Los valores tal como están en Notion. Se manda SOLO lo que difiere de acá:
+  // un campo que Andrés no tocó no se reescribe. Ver el comentario de
+  // handleSaveTracking para el bug que esto cierra.
+  const [enNotion, setEnNotion] = useState<Record<string, any> | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [detalleError, setDetalleError] = useState<string | null>(null);
 
   // Operator log form
   const [showLogForm, setShowLogForm] = useState(false);
@@ -213,13 +222,37 @@ export function ActionableDrawerContent({
   useEffect(() => {
     setEjecutadoEl(action.ejecutado_el || '');
     setResultadoObservado(action.resultado_observado || '');
-    setNaturaleza(action.naturaleza || NOTION_NATURALEZA.DATO);
+    setNaturaleza(action.naturaleza || '');
     setQueLoConfirmaria(action.que_lo_confirmaria || '');
     setCausaRaiz(action.causa_raiz || '');
     setGeminiResult(null);
     setShowLogForm(false);
+    setSaveError(null);
     // Al avanzar al siguiente (queue-advance), el estado "encolado" es del anterior.
     setEjecutado(null);
+
+    // La lista sale de /api/data, que NO trae naturaleza, que_lo_confirmaria ni
+    // causa_raiz. Sin esto el formulario se abría con tres campos en blanco que
+    // no estaban en blanco en Notion. Se piden al abrir.
+    let vigente = true;
+    setEnNotion(null);
+    setDetalleError(null);
+    if (!action.id) return;
+    setCargandoDetalle(true);
+    pedirJSON<{ data: any }>(`/api/notion/actionables/${action.id}`)
+      .then(r => {
+        if (!vigente) return;
+        const d = r?.data || {};
+        setEnNotion(d);
+        setNaturaleza(d.naturaleza || '');
+        setQueLoConfirmaria(d.que_lo_confirmaria || '');
+        setCausaRaiz(d.causa_raiz || '');
+        if (d.ejecutado_el) setEjecutadoEl(d.ejecutado_el);
+        if (d.resultado_observado) setResultadoObservado(d.resultado_observado);
+      })
+      .catch(e => { if (vigente) setDetalleError(motivoFallo(e)); })
+      .finally(() => { if (vigente) setCargandoDetalle(false); });
+    return () => { vigente = false; };
   }, [action]);
 
   const fetchChanges = async () => {
@@ -276,9 +309,41 @@ export function ActionableDrawerContent({
     }
   };
 
+  /**
+   * Guarda SOLO los campos que Andrés cambió.
+   *
+   * Antes mandaba los cinco siempre. Como `/api/data` —de donde sale `action`—
+   * no incluye naturaleza, que_lo_confirmaria ni causa_raiz, los tres arrancaban
+   * vacíos y viajaban vacíos: apretar "Guardar Trazabilidad" para anotar un
+   * resultado observado BORRABA "Que lo confirmaria" y "Causa raiz" en Notion y
+   * reescribía "Naturaleza" a 'Dato'. Y 'Dato' es el peor valor posible:
+   * v_tasa_acierto buckea por 'Observacion' y por ('Inferencia','Hipotesis'), así
+   * que el accionable desaparecía de las dos tasas, sin error y sin fila.
+   *
+   * El servidor ya respeta `!== undefined` por campo; lo que faltaba era que el
+   * cliente no mandara lo que no tocó. Con el detalle sin cargar, `enNotion` es
+   * null y no se manda ninguno de los tres: no se escribe lo que no se pudo leer.
+   */
   const handleSaveTracking = async () => {
     setSavingDetails(true);
+    setSaveError(null);
     try {
+      const cuerpo: Record<string, any> = {};
+      // `ejecutado_el` y `resultado_observado` sí vienen en /api/data, así que si
+      // el detalle no cargó todavía se comparan contra la lista. Los otros tres no
+      // vienen, y por eso van adentro del `if (enNotion)`.
+      const base: Record<string, any> = enNotion || action;
+      if (ejecutadoEl !== (base.ejecutado_el || '')) cuerpo.ejecutado_el = ejecutadoEl || null;
+      if (resultadoObservado !== (base.resultado_observado || '')) cuerpo.resultado_observado = resultadoObservado || null;
+      if (enNotion) {
+        if (naturaleza !== (base.naturaleza || '')) cuerpo.naturaleza = naturaleza || null;
+        if (queLoConfirmaria !== (base.que_lo_confirmaria || '')) cuerpo.que_lo_confirmaria = queLoConfirmaria || null;
+        if (causaRaiz !== (base.causa_raiz || '')) cuerpo.causa_raiz = causaRaiz || null;
+      }
+      if (Object.keys(cuerpo).length === 0) {
+        setSaveError('No hay cambios para guardar.');
+        return;
+      }
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -288,32 +353,35 @@ export function ActionableDrawerContent({
         method: 'PUT',
         headers,
         credentials: 'include',
-        body: JSON.stringify({
-          ejecutado_el: ejecutadoEl || null,
-          resultado_observado: resultadoObservado || null,
-          naturaleza,
-          que_lo_confirmaria: queLoConfirmaria || null,
-          causa_raiz: causaRaiz || null
-        })
+        body: JSON.stringify(cuerpo)
       });
-      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return;
-      const data = await res.json();
-      if (data.success) {
-        setSavedSuccess(true);
-        if (onActionChange) {
-          onActionChange({
-            ...action,
-            ejecutado_el: ejecutadoEl || undefined,
-            resultado_observado: resultadoObservado || undefined,
-            naturaleza: naturaleza as any,
-            que_lo_confirmaria: queLoConfirmaria || undefined,
-            causa_raiz: causaRaiz || undefined
-          });
-        }
-        setTimeout(() => setSavedSuccess(false), 2000);
+      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
+        setSaveError(`No se guardó: el servidor respondió ${res.status}.`);
+        return;
       }
+      const data = await res.json();
+      if (!data.success) {
+        setSaveError(`No se guardó: ${data.error || 'el servidor no confirmó el cambio.'}`);
+        return;
+      }
+      // Lo guardado pasa a ser la nueva base: si Andrés vuelve a apretar sin
+      // tocar nada, no se reescribe.
+      setEnNotion({ ...base, naturaleza, que_lo_confirmaria: queLoConfirmaria, causa_raiz: causaRaiz,
+        ejecutado_el: ejecutadoEl, resultado_observado: resultadoObservado });
+      setSavedSuccess(true);
+      if (onActionChange) {
+        onActionChange({
+          ...action,
+          ejecutado_el: ejecutadoEl || undefined,
+          resultado_observado: resultadoObservado || undefined,
+          naturaleza: naturaleza as any,
+          que_lo_confirmaria: queLoConfirmaria || undefined,
+          causa_raiz: causaRaiz || undefined
+        });
+      }
+      setTimeout(() => setSavedSuccess(false), 2000);
     } catch (err) {
-      console.error(err);
+      setSaveError(`No se guardó: ${motivoFallo(err)}`);
     } finally {
       setSavingDetails(false);
     }
@@ -736,15 +804,23 @@ export function ActionableDrawerContent({
             <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
               Naturaleza
             </label>
+            {/* `Observacion` faltaba, y es uno de los dos buckets de v_tasa_acierto
+                (el otro es Inferencia+Hipotesis). Sin esa opción no había forma de
+                clasificar un accionable dentro de la métrica con la que el sistema
+                se califica a sí mismo. `Dato` queda porque hay páginas que ya lo
+                tienen, pero no cae en ningún bucket: se dice al lado. */}
             <select aria-label="Naturaleza"
               value={naturaleza}
-              onChange={(e) => setNaturaleza(e.target.value as any)}
-              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] outline-none"
+              onChange={(e) => setNaturaleza(e.target.value)}
+              disabled={cargandoDetalle || !enNotion}
+              className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] outline-none disabled:opacity-50"
               style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
             >
-              <option value={NOTION_NATURALEZA.DATO} className="bg-[#1A1F36]">Dato</option>
+              <option value="" className="bg-[#1A1F36]">{cargandoDetalle ? 'Cargando…' : 'Sin clasificar'}</option>
+              <option value={NOTION_NATURALEZA.OBSERVACION} className="bg-[#1A1F36]">Observación</option>
               <option value={NOTION_NATURALEZA.INFERENCIA} className="bg-[#1A1F36]">Inferencia</option>
               <option value={NOTION_NATURALEZA.HIPOTESIS} className="bg-[#1A1F36]">Hipótesis</option>
+              <option value={NOTION_NATURALEZA.DATO} className="bg-[#1A1F36]">Dato (fuera de la tasa de acierto)</option>
             </select>
           </div>
 
@@ -770,8 +846,9 @@ export function ActionableDrawerContent({
             type="text"
             value={queLoConfirmaria}
             onChange={(e) => setQueLoConfirmaria(e.target.value)}
-            placeholder="Ej: Si el CPA de betreuung se mantiene bajo 45€..."
-            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
+            disabled={cargandoDetalle || !enNotion}
+            placeholder={cargandoDetalle ? 'Cargando lo que hay en Notion…' : 'Ej: Si el CPA de betreuung se mantiene bajo 45€...'}
+            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none disabled:opacity-50"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
           />
         </div>
@@ -784,11 +861,23 @@ export function ActionableDrawerContent({
             type="text"
             value={causaRaiz}
             onChange={(e) => setCausaRaiz(e.target.value)}
-            placeholder="Ej: Cambio en presupuesto de campaña Search..."
-            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none"
+            disabled={cargandoDetalle || !enNotion}
+            placeholder={cargandoDetalle ? 'Cargando lo que hay en Notion…' : 'Ej: Cambio en presupuesto de campaña Search...'}
+            className="w-full bg-transparent rounded-md px-2.5 py-1.5 text-xs text-[#EDEFF3] placeholder-[#F5F7FA]/30 outline-none disabled:opacity-50"
             style={{ border: '1px solid var(--border-strong)', backgroundColor: 'var(--surface-2)' }}
           />
         </div>
+
+        {/* Si no se pudo leer lo que hay en Notion, esos tres campos quedan
+            bloqueados: editar a ciegas es como se borraban. Los dos de abajo
+            (fecha y resultado) sí vienen en la lista y se pueden guardar igual. */}
+        {detalleError && (
+          <p className="text-[11px] text-[#4D9DFF] leading-relaxed">
+            No se pudo leer la trazabilidad que ya está en Notion: {detalleError} Naturaleza,
+            "qué lo confirmaría" y causa raíz quedan bloqueados para no sobrescribir lo que
+            no se pudo ver. La fecha y el resultado observado sí se pueden guardar.
+          </p>
+        )}
 
         <div>
           <label className="text-[10px] uppercase font-semibold text-[#F5F7FA] opacity-60 block mb-1">
@@ -804,10 +893,11 @@ export function ActionableDrawerContent({
           />
         </div>
 
-        <div className="flex justify-end pt-1">
+        <div className="flex justify-end items-center gap-3 pt-1">
+          {saveError && <span className="text-[11px] text-[#4D9DFF] flex-1">{saveError}</span>}
           <button
             onClick={handleSaveTracking}
-            disabled={savingDetails}
+            disabled={savingDetails || cargandoDetalle}
             className="px-3.5 py-1.5 rounded-md bg-[#0062CC] hover:opacity-90 disabled:opacity-50 text-[#EDEFF3] text-xs font-semibold transition-opacity"
           >
             {savingDetails ? 'Guardando...' : 'Guardar Trazabilidad'}

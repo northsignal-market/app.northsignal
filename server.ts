@@ -1020,54 +1020,82 @@ export function createApp() {
     }
   });
 
+  /** Una página de Accionables de Notion → el objeto que consume la app.
+   *
+   *  Vive acá afuera porque lo usan la lista y el GET por id. Con dos mapeos
+   *  copiados, el día que uno agregue un campo el otro se queda corto y el
+   *  drawer vuelve a mostrar un default donde hay un dato: es exactamente la
+   *  familia de bugs que este archivo viene arreglando. */
+  async function mapearAccionable(notion: NotionClient, page: any) {
+    const client = await resolveNotionClient(notion, page.properties.Cliente || page.properties.Client);
+    const props = page.properties;
+    const texto = (p: any) => p?.rich_text?.map((rt: any) => rt.plain_text).join('') || '';
+    return {
+      id: page.id,
+      client: client,
+      title: props.Accion?.title?.map((rt: any) => rt.plain_text).join('') || 'Untitled',
+      status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
+      priority: props.Prioridad?.select?.name || 'Medium',
+      why: texto(props['Por que']),
+      where: texto(props.Donde),
+      tags: props.Etiquetas?.multi_select?.map((ms: any) => ms.name) || props.Tags?.multi_select?.map((ms: any) => ms.name) || [],
+      revision_ia: props['Revision IA']?.select?.name || NOTION_REVISION_IA.SIN_REVISAR,
+      punto_disputa: texto(props['Punto en disputa']),
+      decision_final: texto(props['Decision final']),
+      ejecutado_el: props['Ejecutado el']?.date?.start || null,
+      resultado_observado: texto(props['Resultado observado']),
+      detectado: props['Detectado']?.date?.start || page.created_time,
+      // Sin valor en Notion se devuelve null, NO un default. Antes caía a
+      // 'Observacion', que es uno de los dos buckets de v_tasa_acierto: un
+      // accionable sin clasificar entraba a la métrica como si alguien lo
+      // hubiera clasificado. El que no sabe tiene que verse como que no se sabe.
+      naturaleza: props.Naturaleza?.select?.name || null,
+      que_lo_confirmaria: texto(props['Que lo confirmaria']),
+      como_hacerlo: texto(props['Como hacerlo']),
+      origen: props['Origen']?.select?.name || '',
+      accion_json: texto(props['Accion JSON']),
+      entidad: texto(props['Entidad']),
+      vence: props['Vence']?.date?.start || null,
+      reemplazado_por: props['Reemplazado por']?.relation?.[0]?.id || null,
+      last_edited: page.last_edited_time,
+      causa_raiz: texto(props['Causa raiz']),
+      relacionado_con: props['Relacionado con']?.relation?.map((rel: any) => rel.id) || [],
+      semanas_pendiente: props['Semanas pendiente']?.number ?? (props['Semanas pendiente']?.formula?.number ?? 0),
+      comments_count: 0,
+      created_at: page.created_time,
+      url: page.url
+    };
+  }
+
+  /** Un accionable con TODOS sus campos. El drawer lo pide al abrir porque
+   *  /api/data —de donde sale la lista— no incluye naturaleza, que_lo_confirmaria
+   *  ni causa_raiz, y el drawer los editaba a ciegas. */
+  app.get("/api/notion/actionables/:id", async (req, res) => {
+    const notionKey = process.env.NOTION_API_KEY;
+    if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
+    try {
+      const notion = notionEnCola as NotionClient;
+      const page: any = await notion.pages.retrieve({ page_id: req.params.id });
+      res.json({ data: await mapearAccionable(notion, page) });
+    } catch (e: any) {
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/notion/actionables", async (req, res) => {
     const notionKey = process.env.NOTION_API_KEY;
     if (!notionKey) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
     try {
       const notion = notionEnCola as NotionClient;
-      
+
       const response = await notion.databases.query({
         database_id: NOTION_BASES.ACCIONABLES,
         page_size: 50,
         sorts: [{ timestamp: 'created_time', direction: 'descending' }]
       });
-      const data = await Promise.all(response.results.map(async (page: any) => {
-        const client = await resolveNotionClient(notion, page.properties.Cliente || page.properties.Client);
-        const props = page.properties;
-        // Sin comments.list por pagina: eran 50 llamadas por carga y Notion limita a 3/s. El drawer los pide al abrir.
-        let comments_count = 0;
-        return {
-          id: page.id,
-          client: client,
-          title: props.Accion?.title?.map((rt: any) => rt.plain_text).join('') || 'Untitled',
-          status: props.Estado?.select?.name || NOTION_STATES.PROPUESTO,
-          priority: props.Prioridad?.select?.name || 'Medium',
-          why: props['Por que']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          where: props.Donde?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          tags: props.Etiquetas?.multi_select?.map((ms: any) => ms.name) || props.Tags?.multi_select?.map((ms: any) => ms.name) || [],
-          revision_ia: props['Revision IA']?.select?.name || NOTION_REVISION_IA.SIN_REVISAR,
-          punto_disputa: props['Punto en disputa']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          decision_final: props['Decision final']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          ejecutado_el: props['Ejecutado el']?.date?.start || null,
-          resultado_observado: props['Resultado observado']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          detectado: props['Detectado']?.date?.start || page.created_time,
-          naturaleza: props.Naturaleza?.select?.name || 'Observacion',
-          que_lo_confirmaria: props['Que lo confirmaria']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          como_hacerlo: props['Como hacerlo']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          origen: props['Origen']?.select?.name || '',
-          accion_json: props['Accion JSON']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          entidad: props['Entidad']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          vence: props['Vence']?.date?.start || null,
-          reemplazado_por: props['Reemplazado por']?.relation?.[0]?.id || null,
-          last_edited: page.last_edited_time,
-          causa_raiz: props['Causa raiz']?.rich_text?.map((rt: any) => rt.plain_text).join('') || '',
-          relacionado_con: props['Relacionado con']?.relation?.map((rel: any) => rel.id) || [],
-          semanas_pendiente: props['Semanas pendiente']?.number ?? (props['Semanas pendiente']?.formula?.number ?? 0),
-          comments_count,
-          created_at: page.created_time,
-          url: page.url
-        };
-      }));
+      // Sin comments.list por pagina: eran 50 llamadas por carga y Notion limita a 3/s. El drawer los pide al abrir.
+      const data = await Promise.all(response.results.map((page: any) => mapearAccionable(notion, page)));
       // La app oculta los reemplazados; el resto los ve
       const { parsearAccion } = await import('./src/lib/accion');
       for (const a of data as any[]) { const p = parsearAccion(a.accion_json); a.accion = p.accion || null; a.accion_error = p.error || null; }
