@@ -156,7 +156,8 @@ El "por qué" es lo importante. El qué se deduce mirando el código; la razón 
 - **Google Ads API (GAQL)** — el contralor diario. Los scripts extraen el detalle y
   ejecutan; la API verifica TODO cada mañana (cron 10:50 UTC → `/api/cron/reconciliar-api`)
   y corrige con el dato de Google donde difiere, sin esperar a que nadie sospeche.
-  Resultado en `reconciliaciones` (Sistema › Integridad). **Nunca escribe en Google Ads**:
+  Resultado en `reconciliaciones_api` (Sistema › Integridad) — **no** en `reconciliaciones`,
+  que es otra tabla y reconcilia accionables. **Nunca escribe en Google Ads**:
   la única mano que escribe allá es el ejecutor con acciones aprobadas. Cliente en
   `src/server/lib/gads.ts`, credenciales solo por variables de entorno. (Lección #109.)
 - **La app** `app-northsignal.vercel.app`

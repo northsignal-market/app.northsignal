@@ -21,8 +21,30 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { GLOSARIO } from '../../lib/glosario';
+import { NOTION_PRIORITIES } from '../domain/notionSchema';
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+
+// Peso real de la prioridad. Ordenar por el texto la ordena alfabéticamente
+// (Alta, Baja, Media, Urgente) y deja Urgente ÚLTIMO: con más de un puñado de
+// abiertos, los urgentes son los primeros en caerse de la respuesta.
+// Es el mismo orden que usa Accionables.tsx, duplicado acá porque aquel vive
+// dentro de un componente React que el servidor no puede importar; las
+// etiquetas salen de NOTION_PRIORITIES para que no se separen del vocabulario.
+const PESO_PRIORIDAD: Record<string, number> = {
+  [NOTION_PRIORITIES.URGENTE]: 4,
+  [NOTION_PRIORITIES.ALTA]: 3,
+  [NOTION_PRIORITIES.MEDIA]: 2,
+  [NOTION_PRIORITIES.BAJA]: 1,
+};
+
+// Resta días sobre la fecha ISO en UTC: con Date local, un `toISOString()`
+// después de las 21:00 de Buenos Aires corre la ventana un día entero.
+const menosDias = (iso: string, n: number) => {
+  const t = new Date(`${iso}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - n);
+  return t.toISOString().slice(0, 10);
+};
 
 const MAPA_APP = `
 SECCIONES DE LA APP (menú izquierdo, cinco ítems):
@@ -45,13 +67,13 @@ function construirHerramientas(cuentas: string[]): Anthropic.Tool[] {
   // afirmaría que Fresh Monkee no existe, que es peor que decir que no sabe.
   const ENUM = cuentas;
   return [
-  { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, CPA de 7 y 14 días, conversiones, plan de la semana vigente, último pulso diario. Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
+  { name: 'estado_cuenta', description: 'Resumen actual de una cuenta: veredicto de headroom, gasto, conversiones y CPA de 7 y 14 días, plan de la semana vigente, último pulso diario. Cada ventana viene con las fechas que abarca, cuántos días tenían dato y cuáles todavía maduran: citá esa ventana, no "los últimos 14 días". Usar cuando pregunten "cómo va X" o "qué dice el plan de X".', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'accionables_abiertos', description: 'Lista los accionables Propuestos y Bloqueados de una cuenta con título, prioridad, naturaleza y por qué. Usar cuando pregunten qué hay pendiente o qué hacer.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'explicar_accionable', description: 'Todo el razonamiento detras de un accionable: quien lo propuso, con que evidencia, que invariantes toca, si se puede ejecutar y por que no, y que paso con cambios parecidos. Usar SIEMPRE que pregunten por que se propuso algo, si conviene hacerlo, o que pasa si lo hago.', input_schema: { type: 'object', properties: { notion_id: { type: 'string', description: 'El id del accionable. Si no lo tenes, buscalo primero con buscar_accionable.' } }, required: ['notion_id'] } },
   { name: 'ejecutar_accionable', description: 'Encola un accionable para que el ejecutor lo aplique en Google Ads. SOLO usar cuando Andres lo pide explicitamente ("ejecutalo", "dale", "hacelo"). Nunca por iniciativa propia. Antes de llamarla, explicar que va a hacer y esperar confirmacion en el mismo mensaje.', input_schema: { type: 'object', properties: { notion_id: { type: 'string' }, modo: { type: 'string', enum: ['simular','ejecutar'], description: 'simular muestra que haria sin tocar nada; ejecutar lo aplica de verdad' } }, required: ['notion_id','modo'] } },
   { name: 'dejar_nota_para_agente', description: 'Deja una nota que el agente de esa cuenta va a leer en su proxima corrida. Usar cuando Andres pregunta algo que el agente deberia investigar, da una instruccion que cambia como analizar, o corrige algo que el agente asumio mal. Asi la conversacion no muere aca.', input_schema: { type: 'object', properties: { contenido: { type: 'string', description: 'Que tiene que saber el agente, en una o dos frases claras' }, cuenta: { type: 'string', enum: ENUM }, para: { type: 'string', enum: ['semanal','pulso','mensual','cualquiera'] }, tipo: { type: 'string', enum: ['pregunta','instruccion','contexto','correccion'] } }, required: ['contenido'] } },
   { name: 'que_pregunte_andres', description: 'Las notas que Andres ya dejo para los agentes y todavia no fueron atendidas. Usar cuando pregunte si ya avisó algo, o para no repetir una nota que ya existe.', input_schema: { type: 'object', properties: {}, required: [] } },
-  { name: 'consultar_datos', description: 'Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos.', input_schema: { type: 'object', properties: { vista: { type: 'string', description: 'Nombre exacto de la vista, tal como aparece en que_datos_hay' }, cuenta: { type: 'string', enum: ENUM }, limite: { type: 'number' } }, required: ['vista'] } },
+  { name: 'consultar_datos', description: 'Corre una consulta de lectura sobre una vista del sistema. Usar para preguntas concretas sobre numeros que ninguna otra herramienta responde. Solo lectura: la vista tiene que existir en diccionario_datos. Devuelve el orden con el que vinieron las filas y avisa si se truncaron: si dice que no hay orden determinista, no las presentes como "los datos".', input_schema: { type: 'object', properties: { vista: { type: 'string', description: 'Nombre exacto de la vista, tal como aparece en que_datos_hay' }, cuenta: { type: 'string', enum: ENUM }, limite: { type: 'number' } }, required: ['vista'] } },
   { name: 'que_datos_hay', description: 'Catalogo de las 119 vistas y funciones del sistema con para que sirve cada una y que cuidado tener. Usar cuando pregunten donde esta un dato, si existe algo, o cuando haga falta explorar mas alla de lo obvio.', input_schema: { type: 'object', properties: { buscar: { type: 'string', description: 'Palabra a buscar, por ejemplo "conversiones" o "landing". Vacio devuelve el catalogo entero.' } }, required: [] } },
   { name: 'completitud_de_cuenta', description: 'Que le falta a una cuenta para operar bien: doc maestro, reglas, nucleo, terminos protegidos, objetivo, datos frescos, destinatarios de reporte. Usar cuando pregunten si una cuenta esta lista, que falta cargar, o por que algo no funciona en una cuenta puntual.', input_schema: { type: 'object', properties: { cuenta: { type: 'string', enum: ENUM } }, required: ['cuenta'] } },
   { name: 'estado_de_los_flujos', description: 'Cada flujo de datos del sistema: quien lo escribe, cuando fue el ultimo dato, si esta vivo o cortado. Usar SIEMPRE antes de decir que un dato no existe: puede que el flujo que lo trae nunca se haya conectado, que es distinto de que no haya habido nada.', input_schema: { type: 'object', properties: {}, required: [] } },
@@ -128,26 +150,80 @@ Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas 
       try {
         const inp: any = tu.input;
         if (tu.name === 'estado_cuenta') {
-          const [h, s7, plan, pulso] = await Promise.all([
+          // La ventana sale de ventana_metrica y se filtra por FECHA, nunca por
+          // cantidad de filas: un .limit(14) devuelve 14 filas, y si a la capa
+          // diaria le falta un día son 14 filas repartidas en 15 fechas, que el
+          // modelo lee como "los últimos 14 días". Se declara la ventana real
+          // y cuántos días tenían dato, que es lo que de verdad se sumó.
+          const [h, vent, plan, pulso] = await Promise.all([
             supabase.from('v_headroom').select('*').eq('account', inp.cuenta).maybeSingle(),
-            supabase.from('v_serie_diaria').select('date,gasto,conversiones,cpa,madurez').eq('account', inp.cuenta).order('date', { ascending: false }).limit(14),
+            supabase.rpc('ventana_metrica', { p_account: inp.cuenta, p_tipo: 'diaria_real' }),
             supabase.from('plan_semanal').select('semana,contexto,indicadores,hipotesis').eq('account', inp.cuenta).order('semana', { ascending: false }).limit(1).maybeSingle(),
             supabase.from('pulso_diario').select('fecha,nivel,hallazgo_principal,resumen').eq('account', inp.cuenta).order('fecha', { ascending: false }).limit(1).maybeSingle(),
           ]);
-          const d = s7.data || []; const sum = (arr: any[], k: string) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
-          const c7 = d.slice(0, 7), c14 = d;
-          out = { headroom: h.data, ultimos_7d: { gasto: sum(c7, 'gasto'), conversiones: sum(c7, 'conversiones'), cpa: sum(c7, 'conversiones') ? sum(c7, 'gasto') / sum(c7, 'conversiones') : null }, ultimos_14d: { gasto: sum(c14, 'gasto'), conversiones: sum(c14, 'conversiones'), cpa: sum(c14, 'conversiones') ? sum(c14, 'gasto') / sum(c14, 'conversiones') : null }, plan: plan.data, ultimo_pulso: pulso.data };
+          const v: any = Array.isArray(vent.data) ? vent.data[0] : vent.data;
+          if (!v?.hasta) {
+            // Sin ventana no hay número honesto: antes que un CPA sobre una
+            // ventana que no se puede nombrar, va el hueco explicado.
+            out = { headroom: h.data, plan: plan.data, ultimo_pulso: pulso.data, ventana: null,
+              nota: `No pude establecer la ventana real de la capa diaria de ${inp.cuenta} (ventana_metrica no devolvió nada), así que no hay gasto, conversiones ni CPA de 7 ni de 14 días. Con estos datos no se puede saber; decilo así.` };
+          } else {
+            const hasta = String(v.hasta).slice(0, 10);
+            const desde14 = menosDias(hasta, 13), desde7 = menosDias(hasta, 6);
+            const { data: dias } = await supabase.from('v_serie_diaria')
+              .select('date,gasto,conversiones,cpa,madurez').eq('account', inp.cuenta)
+              .gte('date', desde14).lte('date', hasta).order('date', { ascending: false });
+            const d = dias || [];
+            const sum = (arr: any[], k: string) => arr.reduce((a, r) => a + Number(r[k] || 0), 0);
+            const c7 = d.filter((r: any) => String(r.date).slice(0, 10) >= desde7), c14 = d;
+            const resumen = (arr: any[], desde: string, declarados: number) => ({
+              ventana: `${desde} a ${hasta}`,
+              dias_declarados: declarados,
+              dias_con_dato: arr.length,
+              gasto: sum(arr, 'gasto'),
+              conversiones: sum(arr, 'conversiones'),
+              cpa: sum(arr, 'conversiones') ? sum(arr, 'gasto') / sum(arr, 'conversiones') : null,
+              // Las conversiones de los días recientes todavía maduran, y Google
+              // las atribuye al día del clic: sumarlas sin decirlo es afirmar
+              // una caída que puede no existir.
+              dias_que_todavia_maduran: arr.filter((r: any) => r.madurez && r.madurez !== 'consolidado')
+                .map((r: any) => `${String(r.date).slice(0, 10)} (${r.madurez})`),
+            });
+            out = {
+              headroom: h.data,
+              ultimos_7d: resumen(c7, desde7, 7),
+              ultimos_14d: resumen(c14, desde14, 14),
+              plan: plan.data, ultimo_pulso: pulso.data,
+              nota_ventana: `Las ventanas se cuentan desde ${hasta}, el último día que la capa diaria tiene para ${inp.cuenta} (ventana_metrica, fuente ${v.fuente || 'capa diaria'}). Si dias_con_dato es menor que dias_declarados, el total sumó solo esos días: decí la ventana real, no "los últimos 14 días".`,
+              nota_madurez: 'En los días provisionales o madurando el gasto ya es definitivo y las conversiones no. Nunca cierres un veredicto de CPA sobre ellos.',
+            };
+          }
         } else if (tu.name === 'accionables_abiertos') {
           // El espejo tiene el contenido real, sincronizado cada 30 minutos.
           // Antes esta herramienta devolvia un texto que mandaba a buscar a mano.
+          // Se traen más de las que viajan y se ordenan por peso de prioridad
+          // en memoria: PostgREST ordena el texto, y alfabéticamente Urgente
+          // queda último, así que el corte se comía justo lo urgente.
+          const TOPE = 30, TRAER = 200;
           const { data: acc } = await supabase.from('accionables_espejo')
             .select('titulo, estado, prioridad, naturaleza, origen, entidad, por_que, detectado, vence, accion, accion_valida, accion_error, url')
             .eq('account', inp.cuenta).in('estado', ['Propuesto', 'Bloqueado', 'Aprobado', 'En curso'])
-            .order('prioridad', { ascending: true }).limit(30);
+            .limit(TRAER);
+          const ordenados = [...(acc || [])].sort((a: any, b: any) =>
+            (PESO_PRIORIDAD[b.prioridad] || 0) - (PESO_PRIORIDAD[a.prioridad] || 0)
+            // Desempates deterministas: lo que vence antes, y el título para que
+            // dos consultas iguales devuelvan el mismo orden.
+            || String(a.vence || '9999-12-31').localeCompare(String(b.vence || '9999-12-31'))
+            || String(a.titulo || '').localeCompare(String(b.titulo || '')));
+          const visibles = ordenados.slice(0, TOPE);
+          const sinPrioridad = ordenados.filter((x: any) => !PESO_PRIORIDAD[x.prioridad]).length;
           out = {
             cuenta: inp.cuenta,
-            cuantos: (acc || []).length,
-            accionables: (acc || []).map((x: any) => ({
+            cuantos: ordenados.length,
+            se_muestran: visibles.length,
+            orden: 'Por prioridad real (Urgente, Alta, Media, Baja; sin prioridad o con una etiqueta desconocida van al final), después por vencimiento más cercano.',
+            sin_prioridad: sinPrioridad,
+            accionables: visibles.map((x: any) => ({
               titulo: x.titulo, estado: x.estado, prioridad: x.prioridad, naturaleza: x.naturaleza,
               origen: x.origen, entidad: x.entidad,
               por_que: (x.por_que || '').slice(0, 700),
@@ -157,7 +233,12 @@ Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas 
               por_que_manual: x.accion_valida ? null : (x.accion_error || 'sin acción estructurada'),
               url: x.url
             })),
-            nota: (acc || []).length ? 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Podés citar títulos y el "por qué" textual.' : 'Esta cuenta no tiene accionables abiertos ahora mismo.'
+            nota: !ordenados.length
+              ? 'Esta cuenta no tiene accionables abiertos ahora mismo.'
+              : 'Contenido real del espejo de Notion, sincronizado cada 30 minutos. Podés citar títulos y el "por qué" textual.'
+                + (ordenados.length > visibles.length ? ` Hay ${ordenados.length} abiertos y viajan los ${visibles.length} de mayor prioridad: no digas que son todos.` : '')
+                + (sinPrioridad ? ` ${sinPrioridad} no tienen prioridad cargada y quedaron al final: eso es un dato faltante, no una prioridad baja.` : '')
+                + ((acc || []).length >= TRAER ? ` La consulta se cortó en ${TRAER} filas en la base: puede haber más abiertos que ni se contaron.` : '')
           };
         } else if (tu.name === 'explicar_accionable') {
           const { data: exp } = await supabase.rpc('explicar_accionable', { p_notion_id: inp.notion_id });
@@ -199,11 +280,38 @@ Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas 
           const existe = (dic || []).some((d: any) => d.objeto === inp.vista);
           if (!existe) { out = { error: `La vista "${inp.vista}" no existe. Mirá que_datos_hay para el catálogo.` }; }
           else {
-            let q = supabase.from(inp.vista).select('*').limit(Math.min(inp.limite || 30, 100));
+            const tope = Math.min(Math.max(Number(inp.limite) || 30, 1), 100);
+            // Un limit sin ORDER BY sobre una serie temporal devuelve las filas
+            // en el orden que Postgres tenga a mano, y el modelo las reporta
+            // como "los datos". Se mira la forma real de la vista (una fila,
+            // solo por los nombres de columna: no se adivina ninguno) y se
+            // ordena por la primera columna temporal o de id que exista.
+            const { data: muestra } = await supabase.from(inp.vista).select('*').limit(1);
+            const cols = Object.keys((muestra || [])[0] || {});
+            const CANDIDATAS = ['fecha', 'date', 'week_start', 'semana', 'corrida', 'detectado', 'creada_el', 'ejecutado_el', 'ultima_edicion', 'sincronizado', 'created_at', 'id'];
+            const orden = CANDIDATAS.find(c => cols.includes(c)) || null;
+            // tope + 1 para saber si se truncó sin pedir un count exacto.
+            let q = supabase.from(inp.vista).select('*').limit(tope + 1);
+            if (orden) q = q.order(orden, { ascending: false });
             if (inp.cuenta) q = q.eq('account', inp.cuenta);
             const { data: filas, error: e } = await q;
-            out = e ? { error: e.message, nota: 'Puede que esa vista no filtre por cuenta.' }
-                    : { vista: inp.vista, filas: filas || [], cuantas: (filas || []).length };
+            if (e) out = { error: e.message, nota: 'Puede que esa vista no filtre por cuenta.' };
+            else {
+              const hay = filas || [];
+              const visibles = hay.slice(0, tope);
+              out = {
+                vista: inp.vista,
+                cuantas: visibles.length,
+                orden: orden
+                  ? `${orden} descendente: lo más reciente primero.`
+                  : 'SIN ORDEN DETERMINISTA: esta vista no expone ninguna columna de fecha ni de id, así que estas filas son una muestra arbitraria. No las leas como "las primeras", "las últimas" ni como el total.',
+                truncado: hay.length > tope,
+                filas: visibles,
+                nota: hay.length > tope
+                  ? `Se cortó en ${tope} filas y hay más. Lo que ves no es el total: no sumes ni saques promedios sobre esto.`
+                  : undefined,
+              };
+            }
           }
         } else if (tu.name === 'que_datos_hay') {
           const { data: dic } = await supabase.rpc('diccionario_datos');
@@ -247,7 +355,15 @@ Si la pregunta toca varias cuentas, contestá por cuenta: cada una tiene reglas 
           out = r.data?.contenido || 'Sección vacía.';
         } else out = { error: 'herramienta desconocida' };
       } catch (e: any) { out = { error: e.message }; }
-      results.push({ type: 'tool_result', tool_use_id: tu.id, content: typeof out === 'string' ? out : JSON.stringify(out).slice(0, 6000) });
+      // El corte a 6000 deja el JSON partido al medio, y un JSON partido se
+      // completa con lo más plausible: se avisa cuando pasa, en vez de que el
+      // faltante parezca ausencia de datos.
+      const cuerpo = typeof out === 'string' ? out : JSON.stringify(out);
+      const CAP = 6000;
+      results.push({ type: 'tool_result', tool_use_id: tu.id,
+        content: cuerpo.length > CAP
+          ? cuerpo.slice(0, CAP) + `\n[CORTADO: la herramienta devolvió ${cuerpo.length} caracteres y viajan los primeros ${CAP}, así que este JSON está incompleto. Lo que falta NO es un vacío: pedí lo mismo más acotado antes de concluir nada.]`
+          : cuerpo });
     }
     msgs.push({ role: 'user', content: results });
   }
