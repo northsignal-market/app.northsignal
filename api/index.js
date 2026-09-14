@@ -910,6 +910,77 @@ function coberturaPct(capturados, clicsReales) {
   return +(100 * capturados / clicsReales).toFixed(1);
 }
 
+// src/server/lib/ghl.ts
+var BASE = "https://services.leadconnectorhq.com";
+var VERSION = "2021-07-28";
+function ghlDisponible() {
+  return !!process.env.GHL_API_TOKEN;
+}
+async function ghlGet(ruta, params = {}) {
+  const token = process.env.GHL_API_TOKEN;
+  if (!token) return { ok: false, status: null, error: "GHL_API_TOKEN no configurado" };
+  const url = new URL(BASE + ruta);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  try {
+    const r = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}`, Version: VERSION, Accept: "application/json" }
+    });
+    const texto = await r.text();
+    let cuerpo = null;
+    try {
+      cuerpo = texto ? JSON.parse(texto) : null;
+    } catch {
+      cuerpo = { _no_era_json: texto.slice(0, 200) };
+    }
+    if (!r.ok) return { ok: false, status: r.status, error: String(cuerpo?.message || cuerpo?.error || texto).slice(0, 300) };
+    return { ok: true, status: r.status, cuerpo };
+  } catch (e) {
+    return { ok: false, status: null, error: String(e?.message || e).slice(0, 200) };
+  }
+}
+function formaDe(v, profundidad = 0) {
+  if (v === null) return "null";
+  if (Array.isArray(v)) {
+    if (!v.length) return "array(0)";
+    return { [`array(${v.length})`]: profundidad >= 3 ? "\u2026" : formaDe(v[0], profundidad + 1) };
+  }
+  switch (typeof v) {
+    case "string":
+      return `string(${v.length})`;
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "object": {
+      if (profundidad >= 3) return "{\u2026}";
+      const out = {};
+      for (const k of Object.keys(v).slice(0, 60)) out[k] = formaDe(v[k], profundidad + 1);
+      return out;
+    }
+    default:
+      return typeof v;
+  }
+}
+function pareceClickId(s2) {
+  return s2.length >= 30 && /^[A-Za-z0-9_-]+$/.test(s2);
+}
+function rutasDeClickId(v, ruta = "", out = [], profundidad = 0) {
+  if (profundidad > 5 || out.length >= 12) return out;
+  if (typeof v === "string") {
+    const clave = ruta.toLowerCase();
+    if (/gclid|wbraid|gbraid|clickid/.test(clave) || pareceClickId(v)) out.push(ruta || "(ra\xEDz)");
+    return out;
+  }
+  if (Array.isArray(v)) {
+    v.slice(0, 5).forEach((x, i) => rutasDeClickId(x, `${ruta}[${i}]`, out, profundidad + 1));
+    return out;
+  }
+  if (v && typeof v === "object") {
+    for (const k of Object.keys(v)) rutasDeClickId(v[k], ruta ? `${ruta}.${k}` : k, out, profundidad + 1);
+  }
+  return out;
+}
+
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
@@ -1162,7 +1233,7 @@ ${JSON.stringify(input)}${memoriaTxt}`;
 }
 
 // src/server/lib/gads.ts
-var VERSION = "v25";
+var VERSION2 = "v25";
 var DEV_TOKEN = process.env.GADS_DEVELOPER_TOKEN || "";
 var CLIENT_ID = process.env.GADS_CLIENT_ID || "";
 var CLIENT_SECRET = process.env.GADS_CLIENT_SECRET || "";
@@ -1196,7 +1267,7 @@ async function gadsSearch(cid, gaql, opts = {}) {
   const filas = [];
   let pageToken;
   do {
-    const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${customer}/googleAds:search`, {
+    const r = await fetch(`https://googleads.googleapis.com/${VERSION2}/customers/${customer}/googleAds:search`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${tok}`,
@@ -1224,7 +1295,7 @@ async function keywordPlannerHistorico(cid, opts) {
   for (let i = 0; i < opts.keywords.length; i += 1e3) lotes.push(opts.keywords.slice(i, i + 1e3));
   const salida = [];
   for (const lote of lotes) {
-    const r = await fetch(`https://googleads.googleapis.com/${VERSION}/customers/${customer}:generateKeywordHistoricalMetrics`, {
+    const r = await fetch(`https://googleads.googleapis.com/${VERSION2}/customers/${customer}:generateKeywordHistoricalMetrics`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${tok}`,
@@ -5833,6 +5904,65 @@ Reporte completo: ${url}`;
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ campanas: data || [] });
+  });
+  app2.all("/api/cron/ghl-sondeo", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
+    if (!ghlDisponible()) return res.status(503).json({ error: "Falta GHL_API_TOKEN en el entorno" });
+    const cuenta = String(req.query.client || "BHI");
+    const { data: cta } = await supabase.from("cuentas").select("account, ghl_location_id").eq("account", cuenta).maybeSingle();
+    const locationId = cta?.ghl_location_id;
+    if (!locationId) {
+      return res.status(400).json({
+        error: `La cuenta ${cuenta} no tiene ghl_location_id cargado.`,
+        como: "Correr la migraci\xF3n 20260914160000_ghl_location_id.sql."
+      });
+    }
+    const pasos = [];
+    const anotar = (nombre, r, extra = {}) => {
+      pasos.push({
+        paso: nombre,
+        ok: r.ok,
+        status: r.status,
+        error: r.ok ? void 0 : r.error,
+        forma: r.ok ? formaDe(r.cuerpo) : void 0,
+        ...extra
+      });
+      return r;
+    };
+    const contactos = anotar("contactos", await ghlGet("/contacts/", { locationId, limit: "3" }));
+    let idContacto = null;
+    if (contactos.ok) {
+      const lista = contactos.cuerpo?.contacts || contactos.cuerpo?.data || [];
+      idContacto = lista[0]?.id || null;
+      anotar("contactos \xB7 d\xF3nde vendr\xEDa el click id", { ok: true, status: 200, cuerpo: null }, {
+        // Las RUTAS donde aparece algo que parece un gclid. Sin los valores.
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : [],
+        contactos_en_la_muestra: lista.length,
+        nota: lista.length ? void 0 : "La muestra vino vac\xEDa: no se puede saber d\xF3nde llega el click id con estos datos."
+      });
+    }
+    if (idContacto) {
+      const notas = anotar("notas del contacto", await ghlGet(`/contacts/${idContacto}/notes`));
+      if (notas.ok) {
+        const lista = notas.cuerpo?.notes || notas.cuerpo?.data || [];
+        pasos.push({
+          paso: "notas \xB7 tama\xF1o",
+          cuantas: lista.length,
+          // El LARGO del texto, no el texto. Sirve para saber si son frases
+          // sueltas o párrafos, que cambia cómo se clasifican.
+          largos: lista.slice(0, 5).map((n) => String(n?.body ?? "").length)
+        });
+      }
+    } else {
+      pasos.push({ paso: "notas del contacto", omitido: "no hubo contacto de muestra" });
+    }
+    anotar("oportunidades", await ghlGet("/opportunities/search", { location_id: locationId, limit: "3" }));
+    res.json({
+      cuenta,
+      location_id: locationId,
+      aviso: "Formas y conteos solamente. Ning\xFAn contenido de notas, nombre, mail ni tel\xE9fono sale de ac\xE1.",
+      pasos
+    });
   });
   app2.all("/api/cron/clicks-keyword", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });

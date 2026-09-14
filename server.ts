@@ -5,6 +5,7 @@ import { webhooksRouter } from './src/server/routes/webhooks';
 import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } from './src/server/domain/notionSchema';
 import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-cuenta';
 import { mapearClickView, coberturaPct } from './src/server/domain/atribucion-clic';
+import { ghlDisponible, ghlGet, formaDe, rutasDeClickId } from './src/server/lib/ghl';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -4492,6 +4493,92 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
    * `metrics.clicks` de la cuenta ese día, que es la única forma de saber si el
    * cero es la respuesta o es que no pudimos preguntar.
    */
+  /**
+   * SONDEO DE GOHIGHLEVEL · qué trae la API, sin traer datos de nadie.
+   *
+   * No construyo la ingesta de notas contra la documentación que recuerdo: este
+   * sistema castiga eso, y esta mañana el sondeo de `click_view` fue la
+   * diferencia entre "cobertura 100%, medida" y "debería andar". Con GHL no
+   * tengo forma de verificar desde afuera, así que el sondeo corre adentro.
+   *
+   * Devuelve FORMAS, NUNCA CONTENIDOS. Los contactos de BHI son personas con
+   * seguro de salud y sus notas dicen cosas como "descalificado por
+   * preexistencia": un sondeo que vuelca respuestas crudas deja información
+   * médica identificable en un log o en un chat, y de ahí no vuelve.
+   *
+   * Lo único que sale con valor: cuántos hay, si un campo existe, y en qué RUTA
+   * aparece un gclid — la ruta, no el gclid.
+   */
+  app.all("/api/cron/ghl-sondeo", async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
+    if (!ghlDisponible()) return res.status(503).json({ error: 'Falta GHL_API_TOKEN en el entorno' });
+
+    const cuenta = String(req.query.client || 'BHI');
+    const { data: cta } = await supabase.from('cuentas').select('account, ghl_location_id').eq('account', cuenta).maybeSingle();
+    const locationId = cta?.ghl_location_id;
+    if (!locationId) {
+      return res.status(400).json({
+        error: `La cuenta ${cuenta} no tiene ghl_location_id cargado.`,
+        como: 'Correr la migración 20260914160000_ghl_location_id.sql.',
+      });
+    }
+
+    const pasos: any[] = [];
+    const anotar = (nombre: string, r: any, extra: any = {}) => {
+      pasos.push({
+        paso: nombre,
+        ok: r.ok, status: r.status,
+        error: r.ok ? undefined : r.error,
+        forma: r.ok ? formaDe(r.cuerpo) : undefined,
+        ...extra,
+      });
+      return r;
+    };
+
+    // 1 · ¿El token sirve, y para qué? Un 401 y un 403 dicen cosas distintas:
+    //     el primero es token inválido, el segundo es scope que falta.
+    const contactos = anotar('contactos', await ghlGet('/contacts/', { locationId, limit: '3' }));
+
+    let idContacto: string | null = null;
+    if (contactos.ok) {
+      const lista = contactos.cuerpo?.contacts || contactos.cuerpo?.data || [];
+      idContacto = lista[0]?.id || null;
+      anotar('contactos · dónde vendría el click id', { ok: true, status: 200, cuerpo: null }, {
+        // Las RUTAS donde aparece algo que parece un gclid. Sin los valores.
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : [],
+        contactos_en_la_muestra: lista.length,
+        nota: lista.length ? undefined : 'La muestra vino vacía: no se puede saber dónde llega el click id con estos datos.',
+      });
+    }
+
+    // 2 · Las notas, que es lo que Andrés quiere que lean los agentes.
+    if (idContacto) {
+      const notas = anotar('notas del contacto', await ghlGet(`/contacts/${idContacto}/notes`));
+      if (notas.ok) {
+        const lista = notas.cuerpo?.notes || notas.cuerpo?.data || [];
+        pasos.push({
+          paso: 'notas · tamaño',
+          cuantas: lista.length,
+          // El LARGO del texto, no el texto. Sirve para saber si son frases
+          // sueltas o párrafos, que cambia cómo se clasifican.
+          largos: lista.slice(0, 5).map((n: any) => String(n?.body ?? '').length),
+        });
+      }
+    } else {
+      pasos.push({ paso: 'notas del contacto', omitido: 'no hubo contacto de muestra' });
+    }
+
+    // 3 · Las oportunidades: es donde vive la etapa del pipeline, que ya mapea
+    //     el webhook. Sirve para cruzar que los nombres coincidan.
+    anotar('oportunidades', await ghlGet('/opportunities/search', { location_id: locationId, limit: '3' }));
+
+    res.json({
+      cuenta, location_id: locationId,
+      aviso: 'Formas y conteos solamente. Ningún contenido de notas, nombre, mail ni teléfono sale de acá.',
+      pasos,
+    });
+  });
+
   app.all("/api/cron/clicks-keyword", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     if (!gadsDisponible()) return res.status(503).json({ error: 'Faltan credenciales GADS_* en el entorno' });
