@@ -350,7 +350,7 @@ ${deltas} ${t.vs}` : ""
         /* @__PURE__ */ jsx(Text, { style: [s.td, s.cNum, s.n], children: c.ctr == null ? "-" : `${num(c.ctr, r.locale, 2)}%` })
       ] }, i))
     ] }),
-    r.grupos.length > 1 && /* @__PURE__ */ jsxs(View, { children: [
+    r.grupos.length > 0 && /* @__PURE__ */ jsxs(View, { children: [
       /* @__PURE__ */ jsxs(View, { wrap: false, children: [
         /* @__PURE__ */ jsx(Text, { style: s.tablaTitulo, children: t.grupos }),
         /* @__PURE__ */ jsxs(View, { style: s.th, children: [
@@ -840,6 +840,12 @@ var NOTION_PRIORITIES = {
   MEDIA: "Media",
   BAJA: "Baja"
 };
+var PESO_PRIORIDAD = {
+  [NOTION_PRIORITIES.URGENTE]: 4,
+  [NOTION_PRIORITIES.ALTA]: 3,
+  [NOTION_PRIORITIES.MEDIA]: 2,
+  [NOTION_PRIORITIES.BAJA]: 1
+};
 var NOTION_REVISION_IA = {
   SIN_REVISAR: "Sin revisar",
   ANALIZADO: "Analizado por Gemini",
@@ -1302,12 +1308,6 @@ var GLOSARIO = {
 
 // src/server/lib/asistente.ts
 var anthropic2 = process.env.ANTHROPIC_API_KEY ? new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
-var PESO_PRIORIDAD = {
-  [NOTION_PRIORITIES.URGENTE]: 4,
-  [NOTION_PRIORITIES.ALTA]: 3,
-  [NOTION_PRIORITIES.MEDIA]: 2,
-  [NOTION_PRIORITIES.BAJA]: 1
-};
 var menosDias = (iso, n) => {
   const t = /* @__PURE__ */ new Date(`${iso}T00:00:00Z`);
   t.setUTCDate(t.getUTCDate() - n);
@@ -1970,7 +1970,7 @@ async function cuentasActivas() {
     return completo.data;
   }
   if (completo.error) console.error("[cuentas] select completo fall\xF3: " + completo.error.message + " \u2014 reintentando con columnas base");
-  const base = await supabase.from("cuentas").select("account, nombre_cliente, moneda, cid, perfil_analisis").eq("activa", true).order("account");
+  const base = await supabase.from("cuentas").select("account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario").eq("activa", true).order("account");
   if (base.error) console.error("[cuentas] select base tambi\xE9n fall\xF3: " + base.error.message);
   if (base.data?.length) _cuentasCache = { at: Date.now(), data: base.data };
   return base.data || [];
@@ -2549,8 +2549,17 @@ function createApp() {
           conversions: totConvs,
           clicks: totClicks,
           impressions: totImpr,
-          cost_per_conv: totConvs > 0 ? Math.round(totCost / totConvs) : null,
-          ctr: totImpr > 0 ? Number((totClicks / totImpr * 100).toFixed(2)) : 0,
+          // Sin Math.round: borraba los centavos de un CPA que puede ser 12,35.
+          cost_per_conv: totConvs > 0 ? Number((totCost / totConvs).toFixed(2)) : null,
+          // null, no 0: un CTR sin impresiones no es "nadie hizo clic", es que no hay
+          // sobre qué calcularlo.
+          ctr: totImpr > 0 ? Number((totClicks / totImpr * 100).toFixed(2)) : null,
+          // Estos totales suman las filas de ESTA PÁGINA, no todo el filtro: `total`
+          // (el count) sí es exacto, así que el pie decía "3.482 filas" y el mosaico
+          // sumaba 100. Se declara para que la pantalla pueda decirlo en vez de
+          // presentar la suma parcial como el total.
+          solo_pagina: true,
+          filas_sumadas: (rows || []).length,
           disponible: true
         };
         return res.json({

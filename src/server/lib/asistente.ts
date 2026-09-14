@@ -21,7 +21,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { GLOSARIO } from '../../lib/glosario';
-import { NOTION_PRIORITIES } from '../domain/notionSchema';
+import { NOTION_PRIORITIES, PESO_PRIORIDAD} from '../domain/notionSchema';
 
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
@@ -31,12 +31,7 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: proces
 // Es el mismo orden que usa Accionables.tsx, duplicado acá porque aquel vive
 // dentro de un componente React que el servidor no puede importar; las
 // etiquetas salen de NOTION_PRIORITIES para que no se separen del vocabulario.
-const PESO_PRIORIDAD: Record<string, number> = {
-  [NOTION_PRIORITIES.URGENTE]: 4,
-  [NOTION_PRIORITIES.ALTA]: 3,
-  [NOTION_PRIORITIES.MEDIA]: 2,
-  [NOTION_PRIORITIES.BAJA]: 1,
-};
+
 
 // Resta días sobre la fecha ISO en UTC: con Date local, un `toISOString()`
 // después de las 21:00 de Buenos Aires corre la ventana un día entero.

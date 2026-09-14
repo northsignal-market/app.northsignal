@@ -136,7 +136,10 @@ function Reporte({ r, R }: { r: ReporteInput; R: RP }) {
             ))}
           </View>
         )}
-        {r.grupos.length > 1 && (
+        {/* `> 0`, no `> 1`: con exactamente UN grupo la tabla y su nota al pie no se
+            dibujaban, mientras campañas ya usaba `> 0`. Y la nota es justamente donde
+            se aclara qué se muestra y qué no. */}
+        {r.grupos.length > 0 && (
           <View>
             <View wrap={false}>
               <Text style={s.tablaTitulo}>{t.grupos}</Text>

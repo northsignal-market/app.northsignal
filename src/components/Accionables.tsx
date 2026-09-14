@@ -7,7 +7,7 @@ import type { Actionable } from '../types';
 import { NOTION_STATES, NOTION_NATURALEZA } from '../types';
 // El enum real de la revisión del analizador. No se escriben a mano los valores:
 // el filtro ofrecía 'Validado', que no existe en ninguna parte del sistema.
-import { NOTION_REVISION_IA } from '../server/domain/notionSchema';
+import { NOTION_REVISION_IA, PESO_PRIORIDAD} from '../server/domain/notionSchema';
 
 /**
  * ACCIONABLES · el archivo completo de decisiones de una cuenta.
@@ -19,7 +19,7 @@ import { NOTION_REVISION_IA } from '../server/domain/notionSchema';
  */
 
 const LABEL = { color: '#ADADAD', letterSpacing: '0.3px' } as const;
-const PESO_PRIORIDAD: Record<string, number> = { Urgente: 4, Alta: 3, Media: 2, Baja: 1 };
+
 const COLOR_PRIORIDAD: Record<string, string> = {
   Urgente: 'var(--bad)', Alta: 'var(--warn)', Media: 'var(--primary-text)', Baja: 'var(--border-strong)',
 };

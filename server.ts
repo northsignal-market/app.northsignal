@@ -58,8 +58,11 @@ async function cuentasActivas(): Promise<any[]> {
     .eq('activa', true).order('account');
   if (completo.data?.length) { _cuentasCache = { at: Date.now(), data: completo.data }; return completo.data; }
   if (completo.error) console.error('[cuentas] select completo falló: ' + completo.error.message + ' — reintentando con columnas base');
+  // El respaldo trae TAMBIÉN presupuesto_diario y locale: sin ellos, el Burn Rate se
+  // queda sin límite y el PDF sin formato de moneda. El respaldo existe para sobrevivir
+  // al cache de esquema de PostgREST, no para devolver una cuenta a medias.
   const base = await supabase.from('cuentas')
-    .select('account, nombre_cliente, moneda, cid, perfil_analisis')
+    .select('account, nombre_cliente, moneda, locale, cid, perfil_analisis, presupuesto_diario')
     .eq('activa', true).order('account');
   if (base.error) console.error('[cuentas] select base también falló: ' + base.error.message);
   if (base.data?.length) _cuentasCache = { at: Date.now(), data: base.data };
@@ -858,8 +861,17 @@ export function createApp() {
           conversions: totConvs,
           clicks: totClicks,
           impressions: totImpr,
-          cost_per_conv: totConvs > 0 ? Math.round(totCost / totConvs) : null,
-          ctr: totImpr > 0 ? Number(((totClicks / totImpr) * 100).toFixed(2)) : 0,
+          // Sin Math.round: borraba los centavos de un CPA que puede ser 12,35.
+          cost_per_conv: totConvs > 0 ? Number((totCost / totConvs).toFixed(2)) : null,
+          // null, no 0: un CTR sin impresiones no es "nadie hizo clic", es que no hay
+          // sobre qué calcularlo.
+          ctr: totImpr > 0 ? Number(((totClicks / totImpr) * 100).toFixed(2)) : null,
+          // Estos totales suman las filas de ESTA PÁGINA, no todo el filtro: `total`
+          // (el count) sí es exacto, así que el pie decía "3.482 filas" y el mosaico
+          // sumaba 100. Se declara para que la pantalla pueda decirlo en vez de
+          // presentar la suma parcial como el total.
+          solo_pagina: true,
+          filas_sumadas: (rows || []).length,
           disponible: true
         };
 

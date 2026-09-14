@@ -20,6 +20,17 @@ export const NOTION_PRIORITIES = {
   BAJA: 'Baja'
 } as const;
 
+/** El orden real de las prioridades. Vive acá, al lado del vocabulario que lo
+ *  define, porque estaba duplicado en `Accionables.tsx` y en `asistente.ts` y dos
+ *  copias de un orden es cómo dos pantallas terminan ordenando distinto. Ordenar
+ *  por el TEXTO deja Urgente ÚLTIMO (Alta, Baja, Media, Urgente), que era el bug. */
+export const PESO_PRIORIDAD: Record<string, number> = {
+  [NOTION_PRIORITIES.URGENTE]: 4,
+  [NOTION_PRIORITIES.ALTA]: 3,
+  [NOTION_PRIORITIES.MEDIA]: 2,
+  [NOTION_PRIORITIES.BAJA]: 1,
+};
+
 export const NOTION_REVISION_IA = {
   SIN_REVISAR: 'Sin revisar',
   ANALIZADO: 'Analizado por Gemini',

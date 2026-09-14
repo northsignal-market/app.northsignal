@@ -228,16 +228,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   // disparar el efecto de carga con exactamente la misma consulta.
   const [recarga, setRecarga] = useState(0);
 
-  const [annotations, setAnnotations] = useState<{manual: any[], system: any[]}>({manual: [], system: []});
-  useEffect(() => {
-     if (!selectedClient) return;
-     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-     const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-     fetch(`/api/annotations?client=${selectedClient}`, { credentials: 'include', headers })
-       .then(r => r.ok && r.headers.get('content-type')?.includes('application/json') ? r.json() : { manual: [], system: [] })
-       .then(d => setAnnotations(d))
-       .catch(console.error);
-  }, [selectedClient]);
+  // Acá había un fetch a /api/annotations que guardaba el resultado en un estado que
+  // NADIE leía en todo el archivo: una consulta por cada cambio de cuenta, para nada.
+  // Las anotaciones se muestran en Semana, que sí las usa. Si algún día hacen falta
+  // acá, el endpoint está — lo que no va es pedirlas y tirarlas.
 
   
   const [anomalies, setAnomalies] = useState<any[]>([]);
@@ -624,7 +618,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   // trajo (server.ts:832), no sobre todo el filtro. Las que pasan por
   // get_view_data / get_entidades devuelven `filas` —el count del filtro
   // entero— y ahí el mosaico sí cubre lo mismo que el pie.
-  const totalesSoloDeLaPagina = !sinTotales && totals.filas === undefined && totalCount > data.length;
+  const totalesSoloDeLaPagina = !sinTotales && (totals.solo_pagina === true || totals.filas === undefined) && totalCount > data.length;
 
   const exportToCSV = async () => {
     if (!selectedClient) return;
@@ -1332,7 +1326,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
         {totalesSoloDeLaPagina && (
           <div className="mb-4 p-3 rounded-xl bg-[var(--primary-faint)]/10 border border-[var(--border-strong)]/30 text-[#F5F7FA] text-xs flex items-center gap-2 shrink-0">
             <AlertTriangle className="text-[#F5F7FA] shrink-0" size={16} />
-            <span>Estos totales suman solo las {data.length} filas de esta página, no las {totalCount} del filtro.</span>
+            <span>Estos totales suman solo las {totals.filas_sumadas ?? data.length} filas de esta página, no las {totalCount} del filtro.</span>
           </div>
         )}
       </div>
