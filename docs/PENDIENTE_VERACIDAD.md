@@ -75,20 +75,23 @@ El comentario va **arriba** del `.map(` o del `{cond &&`.
 JSX.** Lo cierra antes de tiempo. (Sí: pasó escribiendo el comentario que
 explicaba esto.)
 
-### Por qué el typecheck no atrapa nada de esto
+### Por qué el typecheck no atrapa nada de esto · TAREA 0 HECHA el 14/9
 
-**`@types/react` no está instalado** — no figura en `dependencies` ni en
-`devDependencies`. Sin él, todo objeto sostenido por un `useState` es `any`, así
-que leer `row.columna_que_no_existe` da verde.
+`@types/react` **ya está instalado** (commit `2ed2662`). Encendió 13 errores, no
+"decenas", y los 13 están arreglados. Encontró 1.8 y dos cosas que esta
+auditoría no vio: dos tipos distintos llamados `NotionBrief` (uno en `types.ts`
+que en realidad era `Brief`, y el real en `store/useAppStore.ts`), y la ficha de
+cuenta leyendo `currency`/`timezone` cuando el endpoint emite `moneda`.
 
-**Esa es la tarea 0 de este documento.** Instalarlo va a encender decenas de
-errores de tipo reales; conviene hacerlo primero y usar la lista de errores como
-guía, porque va a encontrar cosas que esta auditoría no vio.
+> **No concluyas que ahora el typecheck cuida esta sección: no la cuida.**
+> `strict` sigue apagado (con `--strict` aparecen 33 errores más) y el dato entra
+> por **47 `fetchJSON<any>` / `useJSON<any>`** y 45 `useState<any[]>`. Un objeto
+> `any` acepta cualquier nombre de columna. Mientras eso siga así, **la forma
+> real se trae de la base o del DDL, y el `tsc` no te va a avisar.**
 
-```
-npm i -D @types/react @types/react-dom
-npx tsc --noEmit          # esperá una lista larga: es el punto
-```
+También se arregló el gate: `npm run verificar` corría los 22 tests reales **más
+22 copias congeladas** de un worktree de `.claude/` más uno ajeno a medio hacer.
+Ahora `vite.config.ts` los excluye.
 
 ### Lo que NO hay que rehacer
 
@@ -117,77 +120,35 @@ sobrevive en al menos ocho lugares más.
 ```sql
 select * from <la_vista> limit 1;
 ```
+Si no tenés acceso a la base viva, el DDL está en
+`supabase/migrations/20260912182011_remote_schema.sql`. Es un artefacto escrito,
+no una adivinanza — pero es una **foto del 12/9**: si la base derivó, no lo sabés.
 
-### 1.1 · Toda corrida semanal muestra `15 / 15 pts`
-`src/components/Sistema.tsx:925`
-```tsx
-{run.score || run.puntuacion || 15} / 15 pts
-```
-`v_run_scorecard` devuelve **`puntos`** y **`puntos_posibles`**. Doble falla:
-los dos nombres son inventados, y aunque existieran `0 || 15` daría 15.
+### 1.1 a 1.5 · ~~Los cinco paneles de Sistema~~ · ARREGLADOS el 14/9 (`e062068`)
+Los cinco leían nombres que la vista nunca tuvo. Ya leen los reales:
+`puntos`/`puntos_posibles`, `mensaje`/`semana_datos`/`ultimo_run`,
+`source`/`ultimo_evento`/`horas_sin_eventos`, y `campos_cambiados` (jsonb).
 
-**Síntoma:** cada tarjeta de "Calidad de cada análisis semanal" muestra la
-pastilla `15 / 15 pts`, siempre, en todas las cuentas y fechas. La métrica que
-mide si el análisis se degrada está clavada en el máximo.
+**1.5 tenía una pregunta abierta y ya está respondida: no existe ninguna vista
+con tamaños de tabla en el esquema.** El panel pasó a mostrar lo que
+`/api/salud-sistema` sí devuelve —las verificaciones de integridad, con las que
+no están en OK arriba— en vez de renderizar `NaN`.
 
-**Arreglo:** leer `puntos` / `puntos_posibles`, y si alguno viene null mostrar
-`—`, no un número.
+El guardarraíl de forma (`COLUMNAS_*` + `columnasFaltantes`, que existía solo
+para Integridad) ahora cubre los cuatro paneles, y `/api/health/system` mira el
+`error` de las siete consultas y no de una.
 
-### 1.2 · Toda cuenta dice "Sincronización al día"
-`src/components/Sistema.tsx:506`
-```tsx
-{row.motivo || row.detalle || 'Sincronización al día'}
-```
-`v_data_health` devuelve **`mensaje`**, `semana_datos`, `ultimo_run`, `estado`.
-Y `mensaje` es justamente la columna que dice *"El script no corre hace mas de 8
-dias. Los datos mostrados son viejos."*
+**Dos cosas que salieron de ahí y no estaban en esta auditoría:**
 
-**Síntoma:** la columna **Detalle** afirma "Sincronización al día" incluso en la
-fila cuyo `estado` es `ERROR`. Dos columnas más del mismo panel leen
-`ultimo_dia_datos` / `ultima_sincronizacion` (reales: `semana_datos` /
-`ultimo_run`), así que **"Último día con datos" y "Última extracción" muestran
-`—` siempre**.
-
-### 1.3 · Todo webhook dice "Último disparo: reciente"
-`src/components/Sistema.tsx:526`
-```tsx
-Último disparo: {w.ultimo_disparo || 'reciente'}
-{w.servicio || w.endpoint || 'Webhook Ingest'}
-```
-`v_webhook_health` devuelve `estado`, `ultimo_evento`, `horas_sin_eventos`,
-`eventos_7d`, `en_cuarentena`, `fallidos`. **Ninguno de los tres nombres que lee
-la UI existe.**
-
-**Síntoma:** cada fila dice `Webhook Ingest / Último disparo: reciente` y afirma
-frescura que nadie midió. Contexto que lo empeora: los webhooks de cierres
-**nunca recibieron un evento** (ticket 60, 503 por secretos faltantes en Vercel).
-El panel dice "reciente" sobre un flujo que jamás funcionó.
-
-### 1.4 · "Cambios de configuración detectados" no muestra ningún cambio
-`src/components/Sistema.tsx:1093`
-```tsx
-{ch.tipo_cambio || 'Ajuste de configuración'} · {ch.campo}: {ch.valor_anterior} → {ch.valor_nuevo}
-```
-`v_cambios_detectados` devuelve `account`, `entity_type`, `entity_name`,
-`detectado_entre`, `detectado_hasta`, `campos_cambiados`. De los siete campos
-que lee la UI **solo `account` existe**.
-
-**Síntoma:** cada fila sale `Reciente  BHI` seguido de `Ajuste de configuración
-· :  → `. El dato real vive en `campos_cambiados` (jsonb) y no se lee nunca.
-
-### 1.5 · "Tamaño y crecimiento" está cableado a la vista equivocada
-`src/components/Sistema.tsx:129, 655`. El fetch va a `/api/salud-sistema` →
-`server.ts:4448` → `v_salud_sistema`, que devuelve `area, prueba, cuenta,
-estado, detalle` — el UNION ALL de las verificaciones de salud, otro dominio.
-La UI lee `t.tabla`, `t.filas`, `t.tamano`, `t.filas_por_dia`,
-`t.filas_en_un_ano`; los dos últimos no existen en **ninguna** vista del repo.
-
-**Síntoma:** `Number(t.filas).toLocaleString('es-CL')` sobre undefined →
-**la columna Filas renderiza `NaN`** en cada fila.
-
-**Arreglo:** o se apunta a la vista correcta (buscar cuál tiene tamaños de
-tabla) o se saca el panel. `fmtNum` de `ui.tsx` ya devuelve `—` para ausente:
-esta línea lo esquiva llamando a `Number()` primero.
+1. `v_run_scorecard` **no expone la PK `id`**, así que la UI caía a `run_date`.
+   Pero `run_date` no identifica una corrida: las cuatro cuentas corren el mismo
+   día. El PUT hacía `.eq('run_date', d)` sin filtrar cuenta, así que **anotar la
+   revisión humana de BHI la escribía en las cuatro**, y el estado local de los
+   inputs —indexado por `run_date`— mostraba el texto de una en todas. Arreglado
+   identificando por `(cuenta, fecha)`; el servidor ahora exige `account`.
+   *Lo correcto de fondo sería exponer `id` en la vista: eso es una migración.*
+2. El botón "Guardar" de la revisión no miraba `res.ok`: un guardado que fallaba
+   se veía igual que uno que anduvo. Ahora dice por qué falló.
 
 ### 1.6 · El botón "Resuelta" no resuelve nada, en dos pantallas
 `server.ts:2993` consulta `v_alertas_agrupadas`, que devuelve
@@ -219,17 +180,15 @@ existe solo si hay algo concreto que hacer"*.
 - `Accionables.tsx:36` filtra por `ref_tipo === 'accionable'` → el punto azul
   "un agente lo tocó y no lo viste" es código muerto.
 
-### 1.8 · El aviso de madurez borrado por un `|| 0`
-`src/components/Briefs.tsx:66`
-```tsx
-const provisionalDays = selectedBrief?.provisional_days || 0;
-```
-El servidor emite **`dias_provisionales`** (`server.ts:980`). `provisional_days`
-aparece una sola vez en todo el repo: esa línea.
+### 1.8 · ~~El aviso de madurez borrado por un `|| 0`~~ · ARREGLADO el 14/9 (`2ed2662`)
+Lo encontró el typecheck apenas se instalaron los tipos. La causa de fondo era
+peor que el nombre suelto: **había dos tipos llamados `NotionBrief`** —uno en
+`src/types.ts` que en realidad era `Brief`, y el que describe lo que llega en
+`src/store/useAppStore.ts`— y `Briefs.tsx` importaba el equivocado. Se repuntó el
+import, se borró el alias duplicado y se lee `dias_provisionales`.
 
-**Síntoma:** el badge *"N días provisionales (atribución pendiente)"* **no
-aparece nunca**. Es el bug del panel Integridad aplicado justo al aviso de que
-las conversiones todavía no maduraron.
+> Si volvés a ver dos tipos con el mismo nombre en este repo, ese es el olor:
+> el componente compila contra una forma que nunca recibe.
 
 ### 1.9 · La comparación contra el período anterior está apagada desde siempre
 `server.ts:2790`
@@ -837,16 +796,21 @@ vuelve a lo que declara.
 
 ## 11 · Orden sugerido
 
-1. **`@types/react`** (§0). Todo lo demás se encuentra mejor con el typecheck vivo.
-2. **§1 entero** — ocho paneles que afirman cosas que nadie midió. Es mecánico:
-   traer la forma real con `select * from <vista> limit 1` y alinear.
-3. **4.4** — el único de los que quedan que **habilita una acción** desde un hueco.
-4. **§2** — los ceros fabricados, empezando por 2.1 y 2.2 que **escriben** en la base.
-5. **4.11** — la bomba de tiempo de seis días.
-6. **§7** — lo que ve el cliente.
-7. **§3 y §6** — ventanas y promedios: son los que hacen que un número sea
+~~1. `@types/react`~~ · hecho el 14/9 (`2ed2662`)
+~~2. §1.1 a 1.5 y 1.8~~ · hechos el 14/9 (`2ed2662`, `e062068`)
+~~3. 4.4~~ · hecho el 14/9 (`1c6a68a`); queda el lado servidor, ver ahí.
+
+**Lo que sigue, en orden:**
+
+1. **Lo que queda de §1** — 1.6 y 1.7 (botones y novedades que no hacen nada),
+   1.9, 1.10 (**escribe en Notion y borra datos**: es el más caro de los que
+   quedan), 1.11, 1.12.
+2. **§2** — los ceros fabricados, empezando por 2.1 y 2.2 que **escriben** en la base.
+3. **4.11** — la bomba de tiempo, ahora con ~5 días.
+4. **§7** — lo que ve el cliente.
+5. **§3 y §6** — ventanas y promedios: son los que hacen que un número sea
    plausible y equivocado, que es el modo de falla declarado del sistema.
-8. El resto.
+6. El resto.
 
 **Al terminar cada bloque:** `npm run verificar`, commit con el porqué, y
 `registrar_cambio(...)` en Supabase.
