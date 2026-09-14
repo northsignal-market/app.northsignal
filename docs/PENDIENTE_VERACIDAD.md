@@ -1087,38 +1087,23 @@ Seis cosas. Tres necesitan una decisión tuya, tres son trabajo.
 
 ---
 
-## 12 · Encontrado al arreglar, todavía abierto
+## 12 · ~~Encontrado al arreglar~~ · CERRADO el 14/9 (`4b2f27c`)
 
-Nada de esto estaba en la auditoría original. Sale de los agentes y de haber
-probado contra un Postgres real.
+Las diez cosas que aparecieron al arreglar están resueltas. La más cara:
+**`v_location_ranking_bayes` mostraba locales más baratos de lo medido.** Con
+`coalesce(cpa_grupo, 0)`, un grupo de pares sin conversiones arrastraba al local
+hacia CPA cero — y ese número decide qué local se salió de la manada en Fresh
+Monkee, que tiene 46. Medido: un local de CPA real 60 se mostraba en **30**.
 
-- **`v_location_ranking_bayes` fabrica un cero.** `coalesce(cpa_grupo, 0)`: si el
-  grupo de pares no tiene conversiones, el encogimiento bayesiano arrastra al local
-  hacia **CPA 0**, o sea lo muestra más barato de lo que se midió. Lo correcto es no
-  encoger sin ancla de grupo y decirlo en `lectura`.
-- **`alertas.account` es nullable** y `resolver_grupo_alertas` filtra por igualdad,
-  que nunca matchea NULL: las alertas de sistema sin cuenta no se pueden resolver
-  por grupo. La UI lo dice; el arreglo de fondo es SQL.
-- **`v_run_scorecard` no expone la PK `id`.** Se resolvió identificando por
-  `(cuenta, fecha)`, pero lo correcto de fondo es exponerla.
-- **`v_alertas_agrupadas.lectura` es NULL con menos de 5 alertas**, así que la línea
-  "Qué hacer:" sigue sin aparecer en grupos chicos. Es lo que la vista emite.
-- **`server.ts:844`**: `Math.round` borra los centavos del CPA de las tres vistas
-  diarias, y los totales se suman sobre la página mientras `total: count` es exacto
-  sobre todo el filtro. La UI ya lo delata; el arreglo es del servidor.
-- **`server.ts:61-63`**: el select de respaldo de `cuentasActivas()` no trae
-  `presupuesto_diario`. Agregarlo ahí cierra §2.8 de raíz.
-- **`PESO_PRIORIDAD` vive en dos lugares** (`Accionables.tsx` y `asistente.ts`). El
-  hogar natural es `notionSchema.ts`.
-- **`reporte-pdf.tsx:139`**: con exactamente UN grupo, la tabla de grupos y su nota
-  al pie no se renderizan (campañas usa `> 0`). Parece un typo viejo; cambiarlo
-  altera la salida al cliente.
-- **`cuentas.locale` nulo haría fallar el PDF entero** en `money()`, antes incluso
-  de las fechas. Conviene confirmar que las 4 cuentas lo tienen.
-- **`Datos.tsx` pide `/api/annotations`** y guarda el resultado en un estado que no
-  usa nadie.
+Lo demás: la PK de `v_run_scorecard` expuesta, `resolver_grupo_alertas` con
+`IS NOT DISTINCT FROM` (las alertas sin cuenta no se podían resolver), el
+`Math.round` del CPA y los totales de página declarados como tales, el select de
+respaldo de `cuentasActivas()` con `presupuesto_diario` y `locale` (cierra §2.8 de
+raíz), el fetch muerto de `Datos.tsx`, la tabla de grupos del PDF que desaparecía
+con un solo grupo, y `PESO_PRIORIDAD` en un solo lugar.
 
----
+**Lo único que sigue abierto de acá:** `cuentas.locale` nulo haría fallar el PDF
+entero en `money()`. Es una consulta: `select account, locale from cuentas where activa`.
 
 ## 13 · Cómo se verificó esto
 
