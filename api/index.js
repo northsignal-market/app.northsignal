@@ -1029,6 +1029,39 @@ function armarLead(oportunidad, contacto, nombreEtapa, account = "BHI") {
   };
 }
 
+// src/server/domain/motivo-descarte.ts
+var REGLAS = [
+  // Buscaba otra cosa. Va PRIMERO porque "complementario de bajo costo" tiene la
+  // palabra costo y se llevaría el match de presupuesto — y es lo que pasó.
+  ["producto equivocado", /complementari|bajo costo|bajar costos?|asesor[íi]as? para|seguro en viaje|seguro de viaje|viaje por|pens[óo] que (nosotros|hac)/i],
+  // Se fue con otro. Nombres de competidores vistos en las notas reales.
+  ["eligio competencia", /se decidi[óo]|cigna|otro corredor|otro broker|con martin|est[áa] viendo .* con |competencia/i],
+  // El proyecto se movió: no es el lead, es el calendario del cliente.
+  ["proyecto postergado", /se corri[óo] el proyecto|postergad|m[áa]s adelante|pr[óo]ximo a[ñn]o|qued(amos|ó) conectad/i],
+  // Todavía decidiendo. No es un descarte cerrado y conviene verlo aparte.
+  ["en decision", /avisar[áa]|esperando que se decida|hoy se define|si lo toma|si toma la p[óo]liza|esperando (una )?cotizaci[óo]n/i],
+  // Estos dos son los que la regla 3 afirma. Se dejan por si aparecen.
+  ["preexistencia", /preexist|enfermedad previa|patolog[íi]a|diagnostic/i],
+  ["presupuesto", /no puede pagar|no le alcanza|fuera de su presupuesto|muy caro|precio alto/i],
+  ["sin informacion", /no tengo informaci[óo]n|sin datos|sin informaci[óo]n/i]
+];
+function limpiar(nota) {
+  return String(nota ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+function clasificarDescarte(nota) {
+  const t = limpiar(nota);
+  if (!t) return null;
+  for (const [motivo, re] of REGLAS) if (re.test(t)) return motivo;
+  return null;
+}
+function motivoDeLasNotas(notas) {
+  for (const n of notas) {
+    const m = clasificarDescarte(n);
+    if (m) return m;
+  }
+  return null;
+}
+
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
@@ -6286,6 +6319,14 @@ Reporte completo: ${url}`;
         if (l) leads.push(l);
       }
     }
+    let clasificados = 0;
+    for (const l of leads.filter((x) => x.estado === "descartado")) {
+      const rn = await ghlGet(`/contacts/${l.contact_id}/notes`);
+      if (!rn.ok) continue;
+      const cuerpos = (rn.cuerpo?.notes || []).map((n) => String(n?.body ?? ""));
+      l.motivo_descarte = motivoDeLasNotas(cuerpos);
+      if (l.motivo_descarte) clasificados++;
+    }
     if (leads.length) {
       const { error } = await supabase.from("ghl_leads").upsert(leads, { onConflict: "account,contact_id" });
       if (error) return res.status(500).json({ error: error.message });
@@ -6306,6 +6347,8 @@ Reporte completo: ${url}`;
       pct_con_keyword: leads.length ? +(100 * conKeyword / leads.length).toFixed(1) : null,
       con_gclid: leads.filter((l) => l.gclid).length,
       por_estado: leads.reduce((a, l) => ({ ...a, [l.estado]: (a[l.estado] || 0) + 1 }), {}),
+      descartados_clasificados: clasificados,
+      por_motivo: leads.filter((l) => l.motivo_descarte).reduce((a, l) => ({ ...a, [l.motivo_descarte]: (a[l.motivo_descarte] || 0) + 1 }), {}),
       por_etapa: porEtapa
     });
   });

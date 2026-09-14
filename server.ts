@@ -7,6 +7,7 @@ import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-
 import { mapearClickView, coberturaPct } from './src/server/domain/atribucion-clic';
 import { ghlDisponible, ghlGet, formaDe, rutasDeClickId } from './src/server/lib/ghl';
 import { armarLead, valorDeCampo, CAMPOS_BHI } from './src/server/domain/ghl-lead';
+import { motivoDeLasNotas } from './src/server/domain/motivo-descarte';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -4942,6 +4943,22 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       }
     }
 
+    // El motivo, solo para los descartados: es una llamada por contacto y no tiene
+    // sentido gastarla en los que siguen en curso.
+    //
+    // El TEXTO de la nota no se guarda en ningún lado. Se lee, se clasifica, y lo
+    // que queda es una etiqueta de lista cerrada. Un motivo que no pega queda en
+    // NULL —"no lo pudimos clasificar"— y la vista los cuenta aparte: no es lo
+    // mismo que "se fue sin motivo".
+    let clasificados = 0;
+    for (const l of leads.filter((x) => x.estado === 'descartado')) {
+      const rn = await ghlGet(`/contacts/${l.contact_id}/notes`);
+      if (!rn.ok) continue;
+      const cuerpos = (rn.cuerpo?.notes || []).map((n: any) => String(n?.body ?? ''));
+      l.motivo_descarte = motivoDeLasNotas(cuerpos);
+      if (l.motivo_descarte) clasificados++;
+    }
+
     if (leads.length) {
       const { error } = await supabase.from('ghl_leads').upsert(leads, { onConflict: 'account,contact_id' });
       if (error) return res.status(500).json({ error: error.message });
@@ -4963,6 +4980,9 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       pct_con_keyword: leads.length ? +((100 * conKeyword) / leads.length).toFixed(1) : null,
       con_gclid: leads.filter((l) => l.gclid).length,
       por_estado: leads.reduce((a: any, l) => ({ ...a, [l.estado]: (a[l.estado] || 0) + 1 }), {}),
+      descartados_clasificados: clasificados,
+      por_motivo: leads.filter((l) => l.motivo_descarte)
+        .reduce((a: any, l) => ({ ...a, [l.motivo_descarte]: (a[l.motivo_descarte] || 0) + 1 }), {}),
       por_etapa: porEtapa,
     });
   });
