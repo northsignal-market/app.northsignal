@@ -28,6 +28,22 @@
 const BASE = 'https://services.leadconnectorhq.com';
 const VERSION = '2021-07-28';
 
+/**
+ * ESTE CLIENTE NO ESCRIBE, Y NO ES UNA PROMESA: ES LA ÚNICA FUNCIÓN QUE HAY.
+ *
+ * Andrés fue explícito — mirar, no editar. GoHighLevel es el CRM donde su equipo
+ * trabaja todos los días: una escritura equivocada acá no rompe un número, mueve
+ * una oportunidad real de un vendedor real.
+ *
+ * Por eso no existe `ghlPost`. No hay nada que comentar ni desactivar: para poder
+ * escribir habría que agregar una función nueva, y el control de este archivo
+ * falla si aparece. Es la misma línea que el resto del sistema: la única mano que
+ * escribe en Google Ads es el ejecutor con acciones aprobadas.
+ *
+ * Además el fetch de abajo fija `method: 'GET'` explícito. Redundante a propósito:
+ * si alguien pasara un `init` con otro método, no tendría por dónde entrar.
+ */
+
 export function ghlDisponible(): boolean {
   return !!process.env.GHL_API_TOKEN;
 }
@@ -47,6 +63,7 @@ export async function ghlGet(ruta: string, params: Record<string, string> = {}):
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   try {
     const r = await fetch(url.toString(), {
+      method: 'GET',   // explícito: este cliente solo lee
       headers: { Authorization: `Bearer ${token}`, Version: VERSION, Accept: 'application/json' },
     });
     const texto = await r.text();

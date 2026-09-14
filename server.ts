@@ -4568,9 +4568,52 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       pasos.push({ paso: 'notas del contacto', omitido: 'no hubo contacto de muestra' });
     }
 
-    // 3 · Las oportunidades: es donde vive la etapa del pipeline, que ya mapea
-    //     el webhook. Sirve para cruzar que los nombres coincidan.
-    anotar('oportunidades', await ghlGet('/opportunities/search', { location_id: locationId, limit: '3' }));
+    // 3 · TODAS las columnas del pipeline, con sus nombres.
+    //
+    //     Esto es lo que Andrés pidió ver: no solo las cuatro etapas que hoy
+    //     declara funnel_stages, sino también las de DESCARTE — los no
+    //     calificados, que son justamente los que tienen notas. La regla 3 de BHI
+    //     dice "leads buen perfil descalificados por preexistencias o
+    //     presupuesto: el filtro es el problema, no el trafico", y hoy el sistema
+    //     afirma eso sin poder medirlo, porque esa columna no existe de este lado.
+    //
+    //     Los nombres de etapa son CONFIGURACIÓN, no datos de nadie: salen enteros.
+    const pipes = anotar('pipelines', await ghlGet('/opportunities/pipelines', { locationId }));
+    if (pipes.ok) {
+      const lista = pipes.cuerpo?.pipelines || pipes.cuerpo?.data || [];
+      pasos.push({
+        paso: 'pipelines · las columnas, con nombre',
+        pipelines: lista.map((p: any) => ({
+          nombre: p?.name ?? null,
+          etapas: (p?.stages || []).map((s: any) => s?.name).filter(Boolean),
+        })),
+        nota: 'Comparar contra funnel_stages de BHI: hoy declara 4 (Envio de formulario, Asesoria Agendada, Asesoria Realizada, Cliente Activo). Toda columna de acá que NO esté ahí es una etapa que el webhook va a mandar a SIN_MAPEO.',
+      });
+    }
+
+    // 4 · Las oportunidades: la etapa de cada una y en qué estado quedó.
+    //     `status` es donde vive el descarte (won / lost / abandoned), y es lo
+    //     que distingue "se cayó" de "sigue abierta".
+    const opos = anotar('oportunidades', await ghlGet('/opportunities/search', { location_id: locationId, limit: '20' }));
+    if (opos.ok) {
+      const lista = opos.cuerpo?.opportunities || opos.cuerpo?.data || [];
+      const cuenta = (f: (o: any) => any) => lista.reduce((acc: Record<string, number>, o: any) => {
+        const k = String(f(o) ?? '(sin valor)');
+        acc[k] = (acc[k] || 0) + 1; return acc;
+      }, {});
+      pasos.push({
+        paso: 'oportunidades · dónde caen',
+        en_la_muestra: lista.length,
+        // Nombres de etapa y estados: configuración y enums, no datos de personas.
+        por_estado: cuenta((o: any) => o?.status),
+        por_etapa: cuenta((o: any) => o?.pipelineStageName ?? o?.stageName ?? o?.pipelineStageId),
+        // ¿Trae motivo de descarte en algún campo propio, sin abrir las notas?
+        campos_de_motivo: lista.length
+          ? Object.keys(lista[0] || {}).filter((k) => /reason|motivo|lost|disqualif|descart/i.test(k))
+          : [],
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : [],
+      });
+    }
 
     res.json({
       cuenta, location_id: locationId,

@@ -14,6 +14,7 @@
  * uno que no. El daño solo aparece después, y para entonces ya salió.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
 import { formaDe, rutasDeClickId } from './ghl';
 
 /** Un contacto como los que devuelve GHL, con todo lo que NO puede salir. */
@@ -97,5 +98,69 @@ describe('rutasDeClickId devuelve rutas, no click ids', () => {
   it('no confunde un texto largo cualquiera con un click id', () => {
     // Tiene espacios y puntuación: ningún gclid los tiene.
     expect(rutasDeClickId({ nota: 'La paciente consulto por un plan de salud y quedo en llamar la semana que viene.' })).toEqual([]);
+  });
+});
+
+/**
+ * MIRAR, NO TOCAR · y que no sea una promesa.
+ *
+ * Andrés fue explícito: quiere que el sistema VEA GoHighLevel, no que edite.
+ * GHL es el CRM donde su equipo trabaja todos los días; una escritura equivocada
+ * acá no rompe un número, mueve una oportunidad real de un vendedor real.
+ *
+ * Una promesa en un comentario no sobrevive a la primera sesión apurada que
+ * necesite "solo actualizar un campito". Por eso el control mira el ARCHIVO: si
+ * aparece una función que escribe, falla, y quien la agregue tiene que venir a
+ * discutirlo con Andrés en vez de deslizarla.
+ *
+ * Es la misma línea que ya sostiene el resto del sistema: la API de Google Ads
+ * verifica todas las mañanas y NUNCA escribe; la única mano que escribe allá es
+ * el ejecutor con acciones aprobadas.
+ */
+describe('el cliente de GHL no puede escribir', () => {
+  const fuente = () => readFileSync(new URL('./ghl.ts', import.meta.url), 'utf8');
+  /**
+   * Solo el CÓDIGO, sin los comentarios.
+   *
+   * Es la segunda vez hoy que un control mío se come la documentación que explica
+   * su propia regla: pasó igual con el del ancho fantasma, que leía el comentario
+   * donde dice `overflow-y-auto` como si fuera una declaración. Acá el comentario
+   * de ghl.ts dice «fija `method: 'GET'` explícito» y el control lo tomaba por una
+   * asignación con basura al final.
+   *
+   * Un control que falla sobre su propia explicación no es estricto: está roto, y
+   * el arreglo más probable es que alguien borre el comentario.
+   */
+  const codigo = () => fuente().split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+
+  it('no existe ninguna función de escritura exportada', () => {
+    const exportadas = [...fuente().matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)].map((m) => m[1]);
+    expect(exportadas.length, 'no se encontró ninguna exportación: el control está mirando mal').toBeGreaterThan(0);
+    const escriben = exportadas.filter((n) => /post|put|patch|delete|crear|actualizar|borrar|escribir|enviar/i.test(n));
+    expect(escriben, `estas funciones escriben o lo parecen: ${escriben.join(', ')}`).toEqual([]);
+  });
+
+  it('ningún fetch usa un método que no sea GET', () => {
+    const metodos = [...codigo().matchAll(/method\s*:\s*['"`](\w+)['"`]/g)].map((m) => m[1].toUpperCase());
+    expect(metodos.length, 'ningún fetch declara método: sin declararlo, un init podría colarse').toBeGreaterThan(0);
+    expect(metodos.filter((m) => m !== 'GET')).toEqual([]);
+  });
+
+  it('el fetch fija el método en vez de heredarlo de un parámetro', () => {
+    // `method: init?.method` o `...init` dejarían entrar un POST desde afuera.
+    //
+    // Sin lookahead a propósito: la primera versión de este control era
+    // /method\s*:\s*(?!['"`]GET['"`])/ y fallaba sobre un archivo correcto. El
+    // `\s*` RETROCEDE, así que el motor encuentra una posición donde consumió
+    // cero espacios, el lookahead ve un espacio en vez de la comilla, falla, y el
+    // negado da match. El archivo decía `method: 'GET'` y el control gritaba.
+    // Acá se captura el lado derecho y se mira entero, que no se puede torcer.
+    const asignaciones = [...codigo().matchAll(/method\s*:\s*([^,\n}]+)/g)].map((m) => m[1].trim());
+    expect(asignaciones.length, 'no se encontró ninguna asignación de método').toBeGreaterThan(0);
+    const dinamicas = asignaciones.filter((rhs) => !/^['"`]GET['"`]$/.test(rhs));
+    expect(dinamicas, `estos métodos no son un literal GET: ${dinamicas.join(' | ')}`).toEqual([]);
+    expect(codigo(), 'un spread de init dejaría entrar cualquier método').not.toMatch(/\.\.\.init/);
   });
 });

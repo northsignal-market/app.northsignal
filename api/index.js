@@ -923,6 +923,8 @@ async function ghlGet(ruta, params = {}) {
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   try {
     const r = await fetch(url.toString(), {
+      method: "GET",
+      // explícito: este cliente solo lee
       headers: { Authorization: `Bearer ${token}`, Version: VERSION, Accept: "application/json" }
     });
     const texto = await r.text();
@@ -5956,7 +5958,37 @@ Reporte completo: ${url}`;
     } else {
       pasos.push({ paso: "notas del contacto", omitido: "no hubo contacto de muestra" });
     }
-    anotar("oportunidades", await ghlGet("/opportunities/search", { location_id: locationId, limit: "3" }));
+    const pipes = anotar("pipelines", await ghlGet("/opportunities/pipelines", { locationId }));
+    if (pipes.ok) {
+      const lista = pipes.cuerpo?.pipelines || pipes.cuerpo?.data || [];
+      pasos.push({
+        paso: "pipelines \xB7 las columnas, con nombre",
+        pipelines: lista.map((p) => ({
+          nombre: p?.name ?? null,
+          etapas: (p?.stages || []).map((s2) => s2?.name).filter(Boolean)
+        })),
+        nota: "Comparar contra funnel_stages de BHI: hoy declara 4 (Envio de formulario, Asesoria Agendada, Asesoria Realizada, Cliente Activo). Toda columna de ac\xE1 que NO est\xE9 ah\xED es una etapa que el webhook va a mandar a SIN_MAPEO."
+      });
+    }
+    const opos = anotar("oportunidades", await ghlGet("/opportunities/search", { location_id: locationId, limit: "20" }));
+    if (opos.ok) {
+      const lista = opos.cuerpo?.opportunities || opos.cuerpo?.data || [];
+      const cuenta2 = (f) => lista.reduce((acc, o) => {
+        const k = String(f(o) ?? "(sin valor)");
+        acc[k] = (acc[k] || 0) + 1;
+        return acc;
+      }, {});
+      pasos.push({
+        paso: "oportunidades \xB7 d\xF3nde caen",
+        en_la_muestra: lista.length,
+        // Nombres de etapa y estados: configuración y enums, no datos de personas.
+        por_estado: cuenta2((o) => o?.status),
+        por_etapa: cuenta2((o) => o?.pipelineStageName ?? o?.stageName ?? o?.pipelineStageId),
+        // ¿Trae motivo de descarte en algún campo propio, sin abrir las notas?
+        campos_de_motivo: lista.length ? Object.keys(lista[0] || {}).filter((k) => /reason|motivo|lost|disqualif|descart/i.test(k)) : [],
+        rutas_de_click_id: lista.length ? rutasDeClickId(lista[0]) : []
+      });
+    }
     res.json({
       cuenta,
       location_id: locationId,
