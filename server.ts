@@ -3168,7 +3168,14 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
-  app.post("/api/alertas/:id/:accion", async (req, res) => {
+  /** `:id(\d+)` no es cosmético: sin la restricción, esta ruta se comía
+   *  `/api/alertas/grupo/resolver` —declarada más abajo— porque Express matchea por
+   *  ORDEN y "grupo" entraba como `:id`. El `.eq('id', 'grupo')` contra un bigint
+   *  devolvía `invalid input syntax for type bigint: "grupo"`, o sea un 500 en el
+   *  botón "Resuelta", con el endpoint correcto existiendo y sin poder alcanzarse.
+   *  Visto en los logs de producción el 14/9/2026. Con la restricción, cualquier
+   *  ruta `/api/alertas/<palabra>/...` que se agregue después funciona sola. */
+  app.post("/api/alertas/:id(\\d+)/:accion", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase no configurado' });
     const { accion } = req.params; const { dias, por_que } = req.body || {};
     const upd: any = accion === 'vista' ? { estado: 'vista', vista_el: new Date().toISOString() }

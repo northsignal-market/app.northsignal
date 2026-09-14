@@ -4583,7 +4583,7 @@ Reporte completo: ${url}`;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   });
-  app2.post("/api/alertas/:id/:accion", async (req, res) => {
+  app2.post("/api/alertas/:id(\\d+)/:accion", async (req, res) => {
     if (!supabase) return res.status(503).json({ error: "Supabase no configurado" });
     const { accion } = req.params;
     const { dias, por_que } = req.body || {};
