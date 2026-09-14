@@ -6,6 +6,27 @@
    Paleta: #0062CC · #1A1F36 · #FFFFFF · #F5F7FA. Todo lo demás por color-mix.
    Tipografía: Inter 400/500/700. Cifras con tabular-nums.
    Material: Liquid Glass para lo que flota; superficie sólida para contenido.
+
+   ── CÓMO SE REPARTE LA CASCADA EN ESTE ARCHIVO ──────────────────
+   Tailwind declara el orden `theme, base, components, utilities`, y una regla
+   SIN capa le gana a TODAS ellas por más específica que sea la utilidad. Ese
+   detalle produjo tres bugs seguidos que se veían como problemas de layout
+   (sidebar de 1px, globos fuera de lugar, bloques corridos) y eran la cascada.
+
+   Desde acá la división es explícita:
+
+   · Las CLASES DE COMPONENTE (.glass, .tarjeta-pulse, .orbe, .grupo-sticky…)
+     viven en `@layer components`. Son un PUNTO DE PARTIDA: cualquier utilidad
+     de Tailwind en el markup —`border-0`, `absolute`, `rounded-full`, `top-4`,
+     `opacity-100`— las pisa, que es exactamente lo que el markup dice que hace.
+     Se eligió la capa y no el scopeado por selector (`header.glass-dense`)
+     porque scopear resuelve UN caso y hay que acertarle al elemento; la capa
+     resuelve la clase entera de bug de una y no hay que mantenerla.
+
+   · Quedan FUERA DE CAPA solo las reglas que TIENEN que ganar: los tokens de
+     :root, la tipografía base, el anillo de foco, y las medias de
+     accesibilidad (prefers-contrast, forced-colors, prefers-reduced-motion,
+     hover:none). Ahí "el markup manda" es justo lo que no queremos.
    ================================================================ */
 
 :root {
@@ -97,7 +118,8 @@ html, body {
 }
 
 /* Anillo de foco único del sistema: visible con teclado, invisible con mouse.
-   2px del azul de texto (el de marca no contrasta), separado del control. */
+   2px del azul de texto (el de marca no contrasta), separado del control.
+   FUERA DE CAPA a propósito: el foco visible no se negocia con una utilidad. */
 :focus-visible {
   outline: 2px solid var(--primary-text);
   outline-offset: 2px;
@@ -150,71 +172,73 @@ body::before {
    ventana y respeta sus esquinas. El fondo del shell es EXACTAMENTE el
    viejo fondo de la app (dot-grid + auroras): ningún color interno
    cambió de contexto. */
-.app-shell {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  z-index: 1;
-  transform: translateZ(0);
-  background:
-    radial-gradient(ellipse 60% 42% at 12% -8%, rgba(0, 98, 204, 0.16), transparent 60%),
-    radial-gradient(ellipse 50% 36% at 88% -6%, rgba(34, 211, 238, 0.07), transparent 55%),
-    radial-gradient(circle 0.8px at 0.8px 0.8px, rgba(255, 255, 255, 0.028) 0.8px, transparent 0) 0 0 / 26px 26px,
-    color-mix(in oklab, var(--navy) 88%, #000000);
-}
-@media (min-width: 1024px) {
+@layer components {
   .app-shell {
-    inset: 14px;
-    border-radius: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 32px 90px -28px rgba(0, 0, 0, 0.75),
-      0 0 0 1px rgba(0, 0, 0, 0.45);
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 1;
+    transform: translateZ(0);
+    background:
+      radial-gradient(ellipse 60% 42% at 12% -8%, rgba(0, 98, 204, 0.16), transparent 60%),
+      radial-gradient(ellipse 50% 36% at 88% -6%, rgba(34, 211, 238, 0.07), transparent 55%),
+      radial-gradient(circle 0.8px at 0.8px 0.8px, rgba(255, 255, 255, 0.028) 0.8px, transparent 0) 0 0 / 26px 26px,
+      color-mix(in oklab, var(--navy) 88%, #000000);
   }
-  /* La firma de la casa, en la ventana entera: top-highlight de nivel shell. */
-  .app-shell::after {
+  @media (min-width: 1024px) {
+    .app-shell {
+      inset: 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 32px 90px -28px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(0, 0, 0, 0.45);
+    }
+    /* La firma de la casa, en la ventana entera: top-highlight de nivel shell. */
+    .app-shell::after {
+      content: '';
+      position: absolute;
+      top: -1px; left: 10%; right: 10%;
+      height: 1px;
+      z-index: 60;
+      background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.5), rgba(34, 211, 238, 0.3), transparent);
+      pointer-events: none;
+    }
+  }
+
+  /* ── BETA AMBIENT · el orbe ─────────────────────────────────────────
+     Existe SOLO donde no hay datos (login, bienvenidas). UNA instancia,
+     azul de la casa — jamás violeta, jamás en pantallas operativas
+     (informe 16 §B3: el compuesto violeta+orbe es el template AI).
+     Respiración lentísima; la regla global de reduced-motion lo aquieta. */
+  .orbe {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 26%),
+      radial-gradient(circle at 68% 74%, rgba(34, 211, 238, 0.5), rgba(34, 211, 238, 0) 46%),
+      radial-gradient(circle at 50% 45%, #4D9DFF 0%, #0062CC 54%, #04182E 100%);
+    box-shadow:
+      inset -14px -18px 34px rgba(2, 10, 24, 0.6),
+      inset 8px 10px 22px rgba(255, 255, 255, 0.12),
+      0 26px 64px -18px rgba(0, 98, 204, 0.55),
+      0 0 90px 8px rgba(34, 211, 238, 0.10);
+    animation: orbe-respira 9s ease-in-out infinite;
+  }
+  /* Anillos-pedestal concéntricos (la referencia wrapped), quietos. */
+  .orbe::before,
+  .orbe::after {
     content: '';
     position: absolute;
-    top: -1px; left: 10%; right: 10%;
-    height: 1px;
-    z-index: 60;
-    background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.5), rgba(34, 211, 238, 0.3), transparent);
+    border-radius: 50%;
     pointer-events: none;
   }
+  .orbe::before { inset: -30%; border: 1px solid rgba(77, 157, 255, 0.16); }
+  .orbe::after { inset: -58%; border: 1px solid rgba(77, 157, 255, 0.08); }
 }
-
-/* ── BETA AMBIENT · el orbe ─────────────────────────────────────────
-   Existe SOLO donde no hay datos (login, bienvenidas). UNA instancia,
-   azul de la casa — jamás violeta, jamás en pantallas operativas
-   (informe 16 §B3: el compuesto violeta+orbe es el template AI).
-   Respiración lentísima; la regla global de reduced-motion lo aquieta. */
-.orbe {
-  position: relative;
-  width: 128px;
-  height: 128px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 26%),
-    radial-gradient(circle at 68% 74%, rgba(34, 211, 238, 0.5), rgba(34, 211, 238, 0) 46%),
-    radial-gradient(circle at 50% 45%, #4D9DFF 0%, #0062CC 54%, #04182E 100%);
-  box-shadow:
-    inset -14px -18px 34px rgba(2, 10, 24, 0.6),
-    inset 8px 10px 22px rgba(255, 255, 255, 0.12),
-    0 26px 64px -18px rgba(0, 98, 204, 0.55),
-    0 0 90px 8px rgba(34, 211, 238, 0.10);
-  animation: orbe-respira 9s ease-in-out infinite;
-}
-/* Anillos-pedestal concéntricos (la referencia wrapped), quietos. */
-.orbe::before,
-.orbe::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-.orbe::before { inset: -30%; border: 1px solid rgba(77, 157, 255, 0.16); }
-.orbe::after { inset: -58%; border: 1px solid rgba(77, 157, 255, 0.08); }
 @keyframes orbe-respira {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
@@ -227,70 +251,92 @@ body::before {
   --glow-azul: 0 0 16px rgba(77, 157, 255, 0.4);
 }
 
-/* Cifra protagonista con gradiente de luz (blanco → azul hielo). */
-.cifra-luz {
-  background: linear-gradient(100deg, #FFFFFF 30%, #9BC8FF 90%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
+@layer components {
+  /* Cifra protagonista con gradiente de luz (blanco → azul hielo). */
+  .cifra-luz {
+    background: linear-gradient(100deg, #FFFFFF 30%, #9BC8FF 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 
-/* Tarjeta Pulse: elevación real (no outline muerto) + top-highlight luminoso,
-   la firma de las cards futuristas. Hover: el borde respira acento. */
-.tarjeta-pulse {
-  position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012) 55%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-slow) var(--ease);
-}
-/* El top-highlight es la firma: SOLO tarjetas de nivel 1 (una o dos por vista,
-   via .tarjeta-hero). Repetirlo en todas lo convierte en papel tapiz. */
-.tarjeta-hero::before {
-  content: '';
-  position: absolute;
-  top: -1px; left: 8%; right: 8%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.55), rgba(34, 211, 238, 0.35), transparent);
-  pointer-events: none;
-}
-.tarjeta-pulse:hover {
-  border-color: rgba(77, 157, 255, 0.28);
-  box-shadow: 0 0 0 1px rgba(77, 157, 255, 0.06), 0 8px 40px -18px rgba(0, 98, 204, 0.5);
-}
+  /* Tarjeta Pulse: elevación real (no outline muerto) + top-highlight luminoso,
+     la firma de las cards futuristas. Hover: el borde respira acento. */
+  .tarjeta-pulse {
+    position: relative;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012) 55%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-slow) var(--ease);
+  }
+  /* El top-highlight es la firma: SOLO tarjetas de nivel 1 (una o dos por vista,
+     via .tarjeta-hero). Repetirlo en todas lo convierte en papel tapiz. */
+  .tarjeta-hero::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 8%; right: 8%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(77, 157, 255, 0.55), rgba(34, 211, 238, 0.35), transparent);
+    pointer-events: none;
+  }
+  .tarjeta-pulse:hover {
+    border-color: rgba(77, 157, 255, 0.28);
+    box-shadow: 0 0 0 1px rgba(77, 157, 255, 0.06), 0 8px 40px -18px rgba(0, 98, 204, 0.5);
+  }
 
-/* Punto de estado con halo: el glow es información (vivo/atención/caído). */
-.punto-glow-ok { box-shadow: 0 0 8px rgba(74, 222, 128, 0.7); }
-.punto-glow-warn { box-shadow: 0 0 8px rgba(226, 180, 83, 0.75); }
-.punto-glow-bad { box-shadow: 0 0 8px rgba(249, 112, 102, 0.75); }
+  /* Punto de estado con halo: el glow es información (vivo/atención/caído). */
+  .punto-glow-ok { box-shadow: 0 0 8px rgba(74, 222, 128, 0.7); }
+  .punto-glow-warn { box-shadow: 0 0 8px rgba(226, 180, 83, 0.75); }
+  .punto-glow-bad { box-shadow: 0 0 8px rgba(249, 112, 102, 0.75); }
 
-/* La línea luminosa bajo el header: separa el shell del contenido con luz.
-   El `position: relative` va SOLO en el header. Estaba en `.glass-dense` a
-   secas, y esta hoja no está dentro de ninguna @layer: una regla sin capa le
-   gana a cualquier utilidad de Tailwind por más específica que sea. O sea que
-   `.glass-dense` estaba anulando el `fixed` del sidebar y del botón de ayuda
-   del teléfono, y el `absolute` de cualquier globo que usara este vidrio. Se
-   veía como un problema de layout — texto truncado, bloques corridos — y era
-   la cascada. */
-header.glass-dense { position: relative; }
-header.glass-dense::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: -1px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 2%, rgba(77, 157, 255, 0.35) 30%, rgba(34, 211, 238, 0.25) 70%, transparent 98%);
-  pointer-events: none;
+  /* La línea luminosa bajo el header: separa el shell del contenido con luz.
+     El `position: relative` sigue scopeado a header aunque el bloque ya esté en
+     capa: la capa arregla la pelea con Tailwind, pero un `position` heredado por
+     TODO lo que use este vidrio seguiría siendo una sorpresa para quien lea el
+     markup y no el CSS. */
+  header.glass-dense { position: relative; }
+  header.glass-dense::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 2%, rgba(77, 157, 255, 0.35) 30%, rgba(34, 211, 238, 0.25) 70%, transparent 98%);
+    pointer-events: none;
+  }
 }
 
 /* Entrada de módulos: fade + leve subida, escalonada. Es LA sensación de vivo
    de los dashboards actuales; 240ms, solo transform/opacity, y respeta
-   prefers-reduced-motion por la regla global de abajo. */
+   prefers-reduced-motion por la regla global de abajo.
+
+   ⚠️ `backwards` y no `both`, y la diferencia NO es cosmética.
+
+   Con `both` el valor del último keyframe queda pegado para siempre. Un
+   `transform` distinto de `none` convierte al elemento en containing block de
+   sus descendientes `fixed` y en stacking context propio, y esta regla alcanza
+   a TODO hijo directo de un space-y-4/6/8 dentro de main (28 contenedores en
+   13 archivos): cada módulo de la app rompía los `position: fixed` de adentro y
+   sepultaba los globos con z-50 debajo del módulo siguiente — visible en las
+   tres <Pista> de Semana.tsx.
+
+   Y escribir `to { transform: none }` NO alcanza, aunque lo parezca: medido en
+   Chromium (13/9, sobre este mismo CSS), un `none` ANIMADO computa
+   `matrix(1, 0, 0, 1, 0, 0)`, que es un transform como cualquier otro y hace
+   exactamente el mismo daño que `translateY(0)`. La única salida es no dejar
+   nada pegado: con `backwards` el relleno cubre el retardo —que es para lo
+   único que hacía falta, para que el módulo no parpadee antes de su turno— y al
+   terminar la animación el elemento vuelve a SUS valores, que ya son
+   `transform: none; opacity: 1`. Misma animación en pantalla, cero herencia.
+
+   Esto no se puede arreglar desde el markup: los valores animados le ganan a
+   CUALQUIER declaración de autor, con capa o sin ella, con !important o sin él.
+   La única llave está en estas dos líneas. */
 @keyframes modulo-entra {
   from { opacity: 0; transform: translateY(7px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 main .space-y-8 > *, main .space-y-6 > *, main .space-y-4 > * {
-  animation: modulo-entra 0.26s var(--ease) both;
+  animation: modulo-entra 0.26s var(--ease) backwards;
 }
 main .space-y-8 > *:nth-child(2), main .space-y-6 > *:nth-child(2), main .space-y-4 > *:nth-child(2) { animation-delay: 40ms; }
 main .space-y-8 > *:nth-child(3), main .space-y-6 > *:nth-child(3), main .space-y-4 > *:nth-child(3) { animation-delay: 80ms; }
@@ -301,40 +347,44 @@ main .space-y-8 > *:nth-child(n+6), main .space-y-6 > *:nth-child(n+6), main .sp
 h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; }
 h4, h5, h6 { font-weight: 500; }
 
-.tabular { font-variant-numeric: tabular-nums; }
+@layer components {
+  .tabular { font-variant-numeric: tabular-nums; }
 
-/* El Liquid Glass se retiró (13/9, pedido explícito + referencia noir): las
-   clases quedan como superficies SÓLIDAS con hairline para que el shell
-   (header, sidebar, paleta, tooltips) cambie entero sin tocar componentes.
-   Nada de blur, specular ni sombras internas: jerarquía por líneas y tipografía. */
-.glass-dense {
-  background: color-mix(in oklab, var(--navy) 97%, #000000);
-  border: 1px solid var(--border);
+  /* El Liquid Glass se retiró (13/9, pedido explícito + referencia noir): las
+     clases quedan como superficies SÓLIDAS con hairline para que el shell
+     (header, sidebar, paleta, tooltips) cambie entero sin tocar componentes.
+     Nada de blur, specular ni sombras internas: jerarquía por líneas y tipografía. */
+  .glass-dense {
+    background: color-mix(in oklab, var(--navy) 97%, #000000);
+    border: 1px solid var(--border);
+  }
+
+  .glass {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    transition: border-color var(--dur-base) var(--ease);
+  }
+  .glass:hover { border-color: var(--border-strong); }
+
+  .glass-light {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+  }
+
+  .surface { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-card); }
+  .surface:hover { background: var(--surface-2); }
+  .surface-attention { border-left: 2px solid var(--primary); }
 }
-
-.glass {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  transition: border-color var(--dur-base) var(--ease);
-}
-.glass:hover { border-color: var(--border-strong); }
-
-.glass-light {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-}
-
-.surface { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-card); }
-.surface:hover { background: var(--surface-2); }
-.surface-attention { border-left: 2px solid var(--primary); }
 
 button, [role="button"] { transition: transform var(--dur-fast) var(--ease), opacity var(--dur-base) var(--ease); }
 button:active, [role="button"]:active { transform: scale(0.97); }
 
 @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-.drawer-enter { animation: drawer-in var(--dur-slow) var(--ease); }
+@layer components {
+  .drawer-enter { animation: drawer-in var(--dur-slow) var(--ease); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -385,24 +435,31 @@ button:active, [role="button"]:active { transform: scale(0.97); }
    pinnea SOBRE las filas, y sombra solo cuando está efectivamente
    pegado — scroll-state(stuck) es Chrome 133+; sin soporte, no hay
    sombra y nada más cambia. */
-.grupo-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: color-mix(in oklab, var(--navy) 88%, #000000);
-  container-type: scroll-state;
-}
-@supports (container-type: scroll-state) {
-  .grupo-sticky-inner { transition: box-shadow var(--dur-base) var(--ease); }
-  @container scroll-state(stuck: top) {
-    .grupo-sticky-inner { box-shadow: 0 14px 22px -16px rgba(0, 0, 0, 0.7); }
+@layer components {
+  .grupo-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in oklab, var(--navy) 88%, #000000);
+    container-type: scroll-state;
+  }
+  @supports (container-type: scroll-state) {
+    .grupo-sticky-inner { transition: box-shadow var(--dur-base) var(--ease); }
+    @container scroll-state(stuck: top) {
+      .grupo-sticky-inner { box-shadow: 0 14px 22px -16px rgba(0, 0, 0, 0.7); }
+    }
+  }
+
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: var(--radius-pill); }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+  /* Las tablas anchas se deslizan de a columna en vez de quedar a mitad de camino */
+  .custom-scrollbar table {
+    scroll-snap-type: none;
   }
 }
-
-.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: var(--radius-pill); }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
 /* ── Táctil ─────────────────────────────────────────────────────────
    La app se usa también desde el teléfono. Sin esto el scroll dentro de
@@ -426,11 +483,6 @@ button:active, [role="button"]:active { transform: scale(0.97); }
   }
 }
 
-/* Las tablas anchas se deslizan de a columna en vez de quedar a mitad de camino */
-.custom-scrollbar table {
-  scroll-snap-type: none;
-}
-
 /* ── Radios concéntricos ────────────────────────────────────────────
    La regla: radio interno = radio externo − padding. Usar el mismo radio
    en un contenedor y en su hijo es el error más común de interfaz: las
@@ -441,8 +493,10 @@ button:active, [role="button"]:active { transform: scale(0.97); }
    Uso: la tarjeta declara --r y --p, el hijo usa .concentrico.
    <div class="tarjeta" style="--r:16px; --p:12px"> <div class="concentrico">
 */
-.concentrico {
-  border-radius: max(0px, calc(var(--r, 16px) - var(--p, 12px)));
+@layer components {
+  .concentrico {
+    border-radius: max(0px, calc(var(--r, 16px) - var(--p, 12px)));
+  }
 }
 
 /* Escala de radios del sistema. Los valores salen de lo que ya se usaba:
@@ -458,7 +512,8 @@ button:active, [role="button"]:active { transform: scale(0.97); }
    Cuando el sistema pide más contraste, las superficies traslúcidas se
    vuelven opacas y los bordes más marcados. Es lo mismo que hace iOS 26
    con Liquid Glass: el vidrio se opaca en vez de desaparecer, porque un
-   borde apenas visible sobre un fondo claro deja la interfaz ilegible. */
+   borde apenas visible sobre un fondo claro deja la interfaz ilegible.
+   FUERA DE CAPA: acá el markup NO manda. */
 @media (prefers-contrast: more) {
   .glass, .glass-dense {
     backdrop-filter: none;
@@ -470,7 +525,7 @@ button:active, [role="button"]:active { transform: scale(0.97); }
 }
 
 /* Modo de colores forzados de Windows: los bordes se dibujan con los
-   colores del sistema en vez de desaparecer. */
+   colores del sistema en vez de desaparecer. También fuera de capa. */
 @media (forced-colors: active) {
   .glass, .glass-dense { border: 1px solid CanvasText; background: Canvas; }
   button, [role="button"] { forced-color-adjust: auto; }
@@ -483,120 +538,124 @@ button:active, [role="button"]:active { transform: scale(0.97); }
    degradación) y blur encima. Los datos siguen sobre sólido. Fallback:
    sin soporte o con prefers-reduced-transparency, queda el sólido que
    ya había — la media query desconocida evalúa false y Firefox ni entra.
-   VIVE AL FINAL DEL ARCHIVO a propósito: a igual especificidad gana la
-   última regla, y estas deben pisar los fondos sólidos base. */
-@supports (backdrop-filter: blur(1px)) {
-  @media (prefers-reduced-transparency: no-preference) {
-    .glass-dense {
-      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 97%, #000000) 72%, transparent);
-      backdrop-filter: blur(22px) saturate(1.5);
+   VIVE AL FINAL DEL ARCHIVO a propósito: DENTRO de la misma capa
+   `components`, a igual especificidad gana la última regla, y estas deben
+   pisar los fondos sólidos base de arriba. Si esto saliera de la capa
+   pasaría a ganarle también a las utilidades y volvería el bug. */
+@layer components {
+  @supports (backdrop-filter: blur(1px)) {
+    @media (prefers-reduced-transparency: no-preference) {
+      .glass-dense {
+        background: color-mix(in srgb, color-mix(in oklab, var(--navy) 97%, #000000) 72%, transparent);
+        backdrop-filter: blur(22px) saturate(1.5);
+      }
+      .glass {
+        background: color-mix(in srgb, var(--surface-1) 76%, transparent);
+        backdrop-filter: blur(22px) saturate(1.5);
+      }
+      .grupo-sticky {
+        background: color-mix(in srgb, color-mix(in oklab, var(--navy) 88%, #000000) 84%, transparent);
+        backdrop-filter: blur(16px) saturate(1.4);
+      }
+      /* Colores forzados de Windows: si ese modo está activo, su regla de
+         arriba ya puso Canvas opaco; el blur acá no daña la legibilidad. */
     }
-    .glass {
-      background: color-mix(in srgb, var(--surface-1) 76%, transparent);
-      backdrop-filter: blur(22px) saturate(1.5);
-    }
-    .grupo-sticky {
-      background: color-mix(in srgb, color-mix(in oklab, var(--navy) 88%, #000000) 84%, transparent);
-      backdrop-filter: blur(16px) saturate(1.4);
-    }
-    /* Colores forzados de Windows: si ese modo está activo, su regla de
-       arriba ya puso Canvas opaco; el blur acá no daña la legibilidad. */
   }
-}
 
-/* El orbe ilumina la escena, no flota pegado sobre ella: bloom azul detrás,
-   difuso y quieto. Sin esto el lienzo se lee plano (visto en la captura del
-   login, 13/9) y el orbe parece una calcomanía. */
-.orbe-escena {
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-.orbe-escena::before {
-  content: '';
-  position: absolute;
-  width: 460px;
-  height: 460px;
-  border-radius: 50%;
-  pointer-events: none;
-  background:
-    radial-gradient(circle, rgba(0, 98, 204, 0.28) 0%, rgba(0, 98, 204, 0.10) 38%, transparent 68%),
-    radial-gradient(circle, rgba(34, 211, 238, 0.10) 0%, transparent 52%);
-  filter: blur(22px);
-}
+  /* El orbe ilumina la escena, no flota pegado sobre ella: bloom azul detrás,
+     difuso y quieto. Sin esto el lienzo se lee plano (visto en la captura del
+     login, 13/9) y el orbe parece una calcomanía. */
+  .orbe-escena {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .orbe-escena::before {
+    content: '';
+    position: absolute;
+    width: 460px;
+    height: 460px;
+    border-radius: 50%;
+    pointer-events: none;
+    background:
+      radial-gradient(circle, rgba(0, 98, 204, 0.28) 0%, rgba(0, 98, 204, 0.10) 38%, transparent 68%),
+      radial-gradient(circle, rgba(34, 211, 238, 0.10) 0%, transparent 52%);
+    filter: blur(22px);
+  }
 
-/* ── CARÁCTER · lo que separa "correcto" de "tuyo" ──────────────────
-   Todo lo de abajo respeta las anclas (azul dueño del acento, un solo
-   protagonista por vista, datos sobre sólido) y sube la apuesta donde
-   el lenguaje lo permite: la cifra que manda, el borde de la tarjeta
-   nivel 1, y el premio cuando no queda nada que decidir. */
+  /* ── CARÁCTER · lo que separa "correcto" de "tuyo" ──────────────────
+     Todo lo de abajo respeta las anclas (azul dueño del acento, un solo
+     protagonista por vista, datos sobre sólido) y sube la apuesta donde
+     el lenguaje lo permite: la cifra que manda, el borde de la tarjeta
+     nivel 1, y el premio cuando no queda nada que decidir. */
 
-/* La cifra protagonista, en grande de verdad. El label queda chico a
-   propósito: el contraste de escala ES la jerarquía. */
-.cifra-heroe {
-  font-size: clamp(40px, 5vw, 62px);
-  line-height: 0.92;
-  font-weight: 500;
-  letter-spacing: -2.5px;
-  background: linear-gradient(150deg, #FFFFFF 22%, #9BC8FF 78%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
+  /* La cifra protagonista, en grande de verdad. El label queda chico a
+     propósito: el contraste de escala ES la jerarquía. */
+  .cifra-heroe {
+    font-size: clamp(40px, 5vw, 62px);
+    line-height: 0.92;
+    font-weight: 500;
+    letter-spacing: -2.5px;
+    background: linear-gradient(150deg, #FFFFFF 22%, #9BC8FF 78%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 
-/* Pedestal de anillos detrás de la cifra que manda (la referencia del
-   video "wrapped"). Quietos: el movimiento permanente distrae. */
-.pedestal { position: relative; }
-.pedestal::before,
-.pedestal::after {
-  content: '';
-  position: absolute;
-  left: -18px;
-  top: 50%;
-  translate: 0 -50%;
-  border-radius: 50%;
-  border: 1px solid rgba(77, 157, 255, 0.13);
-  pointer-events: none;
-}
-.pedestal::before { width: 150px; height: 150px; }
-.pedestal::after { width: 240px; height: 240px; border-color: rgba(77, 157, 255, 0.07); }
+  /* Pedestal de anillos detrás de la cifra que manda (la referencia del
+     video "wrapped"). Quietos: el movimiento permanente distrae. */
+  .pedestal { position: relative; }
+  .pedestal::before,
+  .pedestal::after {
+    content: '';
+    position: absolute;
+    left: -18px;
+    top: 50%;
+    translate: 0 -50%;
+    border-radius: 50%;
+    border: 1px solid rgba(77, 157, 255, 0.13);
+    pointer-events: none;
+  }
+  .pedestal::before { width: 150px; height: 150px; }
+  .pedestal::after { width: 240px; height: 240px; border-color: rgba(77, 157, 255, 0.07); }
 
-/* Borde-gradiente para la tarjeta de nivel 1: el truco de mask-composite
-   —dos capas, una recortada— da un hairline que se enciende de un lado.
-   Solo en la tarjeta hero: repetido sería papel tapiz. */
-.borde-vivo { position: relative; }
-.borde-vivo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(140deg, rgba(77,157,255,0.55), rgba(34,211,238,0.22) 38%, transparent 70%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
+  /* Borde-gradiente para la tarjeta de nivel 1: el truco de mask-composite
+     —dos capas, una recortada— da un hairline que se enciende de un lado.
+     Solo en la tarjeta hero: repetido sería papel tapiz. */
+  .borde-vivo { position: relative; }
+  .borde-vivo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, rgba(77,157,255,0.55), rgba(34,211,238,0.22) 38%, transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
 
-/* La fila que se enciende desde el borde al pasar el mouse: el acento
-   entra por la izquierda, donde está el punto de prioridad. */
-.fila-viva {
-  background-image: linear-gradient(90deg, rgba(77,157,255,0.10), transparent 42%);
-  background-size: 100% 100%;
-  opacity: 0;
-  transition: opacity var(--dur-base) var(--ease);
-}
-.grupo-fila:hover .fila-viva { opacity: 1; }
+  /* La fila que se enciende desde el borde al pasar el mouse: el acento
+     entra por la izquierda, donde está el punto de prioridad. */
+  .fila-viva {
+    background-image: linear-gradient(90deg, rgba(77,157,255,0.10), transparent 42%);
+    background-size: 100% 100%;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease);
+  }
+  .grupo-fila:hover .fila-viva { opacity: 1; }
 
-/* EL PREMIO: cuando no queda nada que decidir, la pantalla lo celebra
-   con color pleno (la tarjeta menta del video). Es el único lugar de la
-   app donde un bloque entero se pinta: el vacío de la cola es la única
-   buena noticia que un operador quiere ver. */
-.premio {
-  background: linear-gradient(150deg, #1E8F6E, #146B54 70%);
-  color: #EAFFF7;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 24px 60px -28px rgba(30, 143, 110, 0.75);
+  /* EL PREMIO: cuando no queda nada que decidir, la pantalla lo celebra
+     con color pleno (la tarjeta menta del video). Es el único lugar de la
+     app donde un bloque entero se pinta: el vacío de la cola es la única
+     buena noticia que un operador quiere ver. */
+  .premio {
+    background: linear-gradient(150deg, #1E8F6E, #146B54 70%);
+    color: #EAFFF7;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 24px 60px -28px rgba(30, 143, 110, 0.75);
+  }
 }

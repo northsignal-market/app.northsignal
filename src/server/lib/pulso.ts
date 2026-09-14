@@ -93,14 +93,27 @@ export interface PulsoResultado {
 
 export function pulsoDisponible(): boolean { return !!anthropic; }
 
-export async function correrPulso(cuenta: string, fecha: string, input: any, reglasCuenta: string, parecidos: any[] = []): Promise<PulsoResultado> {
+/**
+ * Estado de la búsqueda en la memoria semántica. Sin esto, una búsqueda fallida y una
+ * búsqueda sin resultados llegaban al modelo exactamente igual (lista vacía), y el modelo
+ * concluía "nada parecido pasó antes" cuando la verdad era "no se pudo mirar".
+ */
+export interface EstadoMemoria { buscada: boolean; ok: boolean; indexada: boolean; motivo?: string | null }
+
+export async function correrPulso(cuenta: string, fecha: string, input: any, reglasCuenta: string, parecidos: any[] = [], memoria?: EstadoMemoria): Promise<PulsoResultado> {
   if (!anthropic) return { cuenta, fecha, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: 'ANTHROPIC_API_KEY no configurada' };
 
   const plan = input?.plan;
   const sinPlan = !plan;
 
-  // Lo que se parece a lo de hoy, encontrado por embeddings (no por memoria del modelo)
-  const memoriaTxt = parecidos.length ? `\n\nEPISODIOS PARECIDOS (encontrados por búsqueda semántica en la memoria del sistema; usalos para conecta_con solo si de verdad se parecen):\n${parecidos.map((m: any) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join('\n')}` : '';
+  // Lo que se parece a lo de hoy, encontrado por embeddings (no por memoria del modelo).
+  // Los tres estados se dicen distinto a propósito: hay antecedentes, no hay antecedentes,
+  // o no se pudo averiguar. El tercero no autoriza a afirmar el segundo.
+  const memoriaTxt = parecidos.length
+    ? `\n\nEPISODIOS PARECIDOS (encontrados por búsqueda semántica en la memoria del sistema; usalos para conecta_con solo si de verdad se parecen):\n${parecidos.map((m: any) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join('\n')}`
+    : memoria && memoria.buscada && memoria.ok && memoria.indexada
+      ? `\n\nEPISODIOS PARECIDOS: la búsqueda semántica corrió sobre la memoria indexada del sistema y no encontró ningún episodio parecido anterior al ${fecha}. Eso es un hecho: podés decir que no hay antecedente registrado.`
+      : `\n\nMEMORIA NO CONSULTADA: ${memoria?.motivo || 'la búsqueda de episodios parecidos no se pudo hacer'}. NO sabés si esto pasó antes. No escribas que es la primera vez, ni que no hay antecedentes, ni que no se repite: dejá conecta_con en null salvo que lo sostengan los datos del propio input (pulsos_previos, estado_cuenta).`;
   const system = `Sos el analista diario de la cuenta de Google Ads ${cuenta}. Sos el ciclo rápido de un sistema de dos ciclos: el lunes, un analista semanal escribió un PLAN con indicadores a vigilar, umbrales, hipótesis y condiciones de escalamiento. Tu trabajo es reportar EVIDENCIA contra ese plan para el día ${fecha}, no reinterpretar la estrategia.
 
 REGLAS DE LA CUENTA (no negociables):

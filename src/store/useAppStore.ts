@@ -47,8 +47,7 @@ interface AppState {
   incrementRefreshKey: () => void;
   analyzeAction: (action: Actionable, force?: boolean) => Promise<any>;
   clearAnalyzingActions: () => void;
-  subscribeRealtime: () => void;
-  
+
   setSelectedClient: (client: string | null) => void;
   setSelectedAction: (action: Actionable | null) => void;
   setDateRange: (range: '4w' | '8w' | 'all') => void;
@@ -100,7 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeNotification: (id) => set((state) => ({ notifications: state.notifications.filter(x => x.id !== id) })),
   incrementRefreshKey: () => set((state) => ({ refreshKey: state.refreshKey + 1 })),
   analyzeAction: async (action, force = false) => {
-    const { analyzingActions, addNotification, subscribeRealtime } = get();
+    const { analyzingActions, addNotification } = get();
     if (analyzingActions[action.id]) return;
     
     set((state) => {
@@ -113,9 +112,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ analyzingActions: newAnalyzing });
     localStorage.setItem('analyzingActions', JSON.stringify(newAnalyzing));
     localStorage.setItem('analyzingActions_time', Date.now().toString());
-    
-    subscribeRealtime();
-    
+
     try {
       const res = await fetch(`/api/notion/actionables/${action.id}/analyze`, {
         method: 'POST',
@@ -176,36 +173,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     
   },
   
-    subscribeRealtime: () => {
-    if ((window as any)._realtimeSubscribed) return;
-    (window as any)._realtimeSubscribed = true;
+  // Acá vivía subscribeRealtime(): un canal de Supabase sobre pending_mutations que
+  // refrescaba el store cuando cambiaba una mutación. Nunca corrió en producción, porque
+  // pedía VITE_SUPABASE_ANON_KEY y esa variable no está cargada en Vercel.
+  //
+  // Se borra en vez de arreglarse, y el motivo importa más que el borrado:
+  //
+  // 1. Cargar la variable no lo arreglaría. `pending_mutations` tiene RLS activo y el
+  //    esquema public no tiene ni una policy: con RLS prendido y sin policy, anon no lee
+  //    ninguna fila. El canal se suscribiría bien y no llegaría nunca un evento. Sería
+  //    código que parece vivo, que es peor que código que se ve muerto.
+  //
+  // 2. Vite hace inline de todo lo que empieza con VITE_ en el bundle. Cargarla sería
+  //    publicar una credencial del proyecto en el JS que baja cada navegador, para una
+  //    arquitectura donde el browser deliberadamente no habla con Supabase: la única mano
+  //    que toca la base es el servidor Express con SUPABASE_SERVICE_ROLE_KEY
+  //    (src/server/lib/supabase.ts), que es también donde viven la sesión y el límite de
+  //    tasa. Un canal directo desde el browser sería la primera puerta que los saltea.
+  //
+  // Nada se pierde: analyzeAction espera el POST y llama a incrementRefreshKey(), así que
+  // el refresco ya estaba cubierto por el camino que sí corre. Si algún día hace falta
+  // push de verdad, la forma que encaja con esta arquitectura es SSE o websocket desde el
+  // servidor, no un cliente de Supabase en el browser.
 
-    const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-    const supabaseKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
-    
-    if (supabaseUrl && supabaseKey) {
-       import('@supabase/supabase-js').then(({ createClient }) => {
-          const supabase = createClient(supabaseUrl, supabaseKey);
-          supabase
-            .channel('pending_mutations_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_mutations' }, async (payload) => {
-               // When a record changes, re-fetch actionables to update Zustand and emit notifications
-               await get().fetchData();
-               
-               get().addNotification({
-                 title: 'Actualización en Tiempo Real',
-                 message: 'Se han detectado cambios en las mutaciones/acciones',
-                 type: 'success'
-               });
-               
-               // Clear analyzing actions
-               get().clearAnalyzingActions();
-            })
-            .subscribe();
-       });
-    }
-  },
-  
   setSelectedClient: (client) => set({ selectedClient: client }),
   setSelectedAction: (action) => set({ selectedAction: action }),
   setDateRange: (range) => set({ dateRange: range }),
@@ -294,11 +284,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         selectedClient: newSelectedClient,
         loading: false,
       });
-      
-      if (Object.keys(get().analyzingActions).length > 0) {
-        get().subscribeRealtime();
-      }
-      
+
     } catch (err: any) {
       set({ error: err.message || 'An error occurred while fetching data', loading: false });
     }

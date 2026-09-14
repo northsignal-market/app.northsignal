@@ -321,12 +321,16 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
             <h2 className="text-[15px] font-medium text-[#EDEFF3]">Propuestas estratégicas</h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.">Las apuestas grandes que el sistema propone para cerrar la brecha: campañas nuevas, cambios de tipo, embudos, tests. Cada una con hipótesis, número esperado, costo, riesgo y qué la mata. Vos decidís.</p>
           </div>
+          {/* Una propuesta descartada se atenúa, pero esta opacidad multiplica a la de
+              cada hijo y llegó a encimarse tres veces (.50 tarjeta x .70 fila x .50
+              etiqueta = 0,175 efectivo = 1,70:1 sobre surface-2). Con .80 acá y .70 de
+              piso abajo —y sin la capa del medio— lo más tenue queda en 4,81:1. */}
           <div className="space-y-2">
             {propuestas.map((p: any) => (
-              <div key={p.id} className={`p-3.5 rounded-xl space-y-2 ${p.estado === 'descartada' ? 'opacity-50' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.estado === 'propuesta' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
+              <div key={p.id} className={`p-3.5 rounded-xl space-y-2 ${p.estado === 'descartada' ? 'opacity-80' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.estado === 'propuesta' ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{String(p.tipo).replace(/_/g, ' ')}</span><span className="text-[10px] text-[#F5F7FA] opacity-40">{p.fecha}</span><span className={`text-[10px] uppercase tracking-wider ${p.estado === 'propuesta' ? 'text-[#4D9DFF]' : 'text-[#F5F7FA] opacity-60'}`}>{p.estado.replace('_', ' ')}</span></div>
+                    <div className="flex items-center gap-2"><span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-70">{String(p.tipo).replace(/_/g, ' ')}</span><span className="text-[10px] text-[#F5F7FA] opacity-70">{p.fecha}</span><span className={`text-[10px] uppercase tracking-wider ${p.estado === 'propuesta' ? 'text-[#4D9DFF]' : 'text-[#F5F7FA] opacity-70'}`}>{p.estado.replace('_', ' ')}</span></div>
                     <div className="text-sm text-[#EDEFF3] font-medium mt-0.5">{p.titulo}</div>
                   </div>
                   <div className="shrink-0">
@@ -336,14 +340,14 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-[#F5F7FA]">
-                  <div><span className="opacity-50">Hipótesis:</span> {p.hipotesis}</div>
-                  <div><span className="opacity-50">Espera:</span> <span className="text-[#EDEFF3]">{p.resultado_esperado}</span></div>
-                  {p.costo_estimado && <div><span className="opacity-50">Cuesta:</span> {p.costo_estimado}</div>}
-                  {p.riesgo && <div><span className="opacity-50">Riesgo:</span> {p.riesgo}</div>}
-                  {p.como_probar_barato && <div><span className="opacity-50">Test barato:</span> {p.como_probar_barato}</div>}
-                  <div><span className="opacity-50">La mata:</span> {p.que_la_mata}</div>
-                  {p.fundamento_datos && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Dato:</span> {p.fundamento_datos}</div>}
-                  {p.fundamento_externo && <div className="md:col-span-2 opacity-70"><span className="opacity-50">Afuera:</span> {p.fundamento_externo}</div>}
+                  <div><span className="opacity-70">Hipótesis:</span> {p.hipotesis}</div>
+                  <div><span className="opacity-70">Espera:</span> <span className="text-[#EDEFF3]">{p.resultado_esperado}</span></div>
+                  {p.costo_estimado && <div><span className="opacity-70">Cuesta:</span> {p.costo_estimado}</div>}
+                  {p.riesgo && <div><span className="opacity-70">Riesgo:</span> {p.riesgo}</div>}
+                  {p.como_probar_barato && <div><span className="opacity-70">Test barato:</span> {p.como_probar_barato}</div>}
+                  <div><span className="opacity-70">La mata:</span> {p.que_la_mata}</div>
+                  {p.fundamento_datos && <div className="md:col-span-2"><span className="opacity-70">Dato:</span> {p.fundamento_datos}</div>}
+                  {p.fundamento_externo && <div className="md:col-span-2"><span className="opacity-70">Afuera:</span> {p.fundamento_externo}</div>}
                   {(p.estado === 'en_test' || p.estado === 'adoptada' || p.ejecucion_real) && (
                     <div className="md:col-span-2 flex items-start gap-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}>
                       <div className="flex-1"><span className="opacity-50">Qué se hizo realmente{p.test_inicio ? ` (desde ${p.test_inicio})` : ''}:</span> {p.ejecucion_real ? <span className="text-[#EDEFF3]">{p.ejecucion_real}</span> : <span className="opacity-50 italic">sin registrar: el sistema no puede evaluar el test</span>}</div>
@@ -480,9 +484,9 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
       {(() => { const br = (aprendido?.brecha || []).find((x: any) => x.account === activeClient); return br ? (
         <div className="lg:col-span-12 p-4 rounded-2xl flex flex-wrap items-center gap-4" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ritmo actual</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_actual ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
-          <div className="text-[#F5F7FA] opacity-30">→</div>
+          <div className="text-[#F5F7FA] opacity-60">→</div>
           <div><div className="text-[10px] text-[#F5F7FA] opacity-50">Ambición a 90 días</div><div className="text-lg tabular text-[#EDEFF3]">{br.conv_mes_objetivo_90d ?? br.conv_mes_objetivo ?? '—'}<span className="text-[10px] opacity-50 ml-1">conv/mes</span></div></div>
-          <div className="flex-1 min-w-[200px] text-xs text-[#F5F7FA] opacity-80">{br.lectura}{br.dias_restantes != null ? <span className="opacity-50"> · {br.dias_restantes} días</span> : ''}</div>
+          <div className="flex-1 min-w-[200px] text-xs text-[#F5F7FA] opacity-80">{br.lectura}{br.dias_restantes != null ? <span className="opacity-75"> · {br.dias_restantes} días</span> : ''}</div>
         </div>
       ) : null; })()}
       </>)}
@@ -760,7 +764,7 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
               ))}
             </div>
           )}
-          <p className="text-[10px] text-[#F5F7FA] opacity-40">QS ponderado por gasto: {limitada.qs_ponderado}. Datos de la última semana cerrada.</p>
+          <p className="text-[10px] text-[#F5F7FA] opacity-60">QS ponderado por gasto: {limitada.qs_ponderado}. Datos de la última semana cerrada.</p>
         </div>
       )}
           </div>

@@ -26,21 +26,69 @@ export function ipDe(req: Request): string {
 
 export interface Veredicto { permitido: boolean; motivo?: string; esperar?: number }
 
+/** Motivo propio, distinto de los dos que devuelve `limite_de_tasa` ('demasiados intentos
+ *  fallidos' y 'limite de tasa'). Quien lo reciba sabe que no es que el visitante se pasó:
+ *  es que no pudimos contar. Decirle "demasiados intentos" a Andrés cuando la base está
+ *  caída lo manda a debuggear el lugar equivocado. */
+export const MOTIVO_SIN_VERIFICAR = 'verificacion no disponible';
+
+/** Corto a propósito: ante un hipo de la base queremos degradar el ritmo, no dejar a Andrés
+ *  afuera quince minutos. Dos intentos por minuto no le molestan a un humano y le arruinan
+ *  la tarde a una fuerza bruta. */
+const ESPERA_SIN_VERIFICAR = 30;
+
 export async function verificarLimite(
   supabase: any, clave: string, ruta: string, max = 20, ventanaMin = 15
 ): Promise<Veredicto> {
+  // Sin cliente configurado no hay a quién preguntarle. Es el caso de desarrollo local
+  // sin Supabase; en producción `supabase` nunca es null salvo que falten las variables,
+  // y ese agujero se tapa en el arranque, no acá.
   if (!supabase) return { permitido: true };
   try {
     const { data, error } = await supabase.rpc('limite_de_tasa', {
       p_clave: clave, p_ruta: ruta, p_max: max, p_ventana: `${ventanaMin} minutes`
     });
-    if (error) return { permitido: true };   // si la base falla, no se bloquea al usuario
+    if (error) return sinVerificar(ruta, error.message || String(error));
     return {
       permitido: !!data?.permitido,
       motivo: data?.motivo,
       esperar: data?.esperar_segundos
     };
-  } catch { return { permitido: true }; }
+  } catch (e: any) {
+    return sinVerificar(ruta, e?.message || String(e));
+  }
+}
+
+/**
+ * Falla CERRADO, y el motivo es el que decide todo lo demás.
+ *
+ * El argumento de siempre para fallar abierto —"si la base está caída la app no sirve
+ * igual, cerrar no agrega seguridad"— acá es falso, y se puede comprobar leyendo
+ * `src/server/auth/routes.ts`: `/login` compara contra `process.env.APP_ACCESS_TOKEN` y
+ * **no toca Supabase**. O sea que con la base caída el login sigue andando perfecto y lo
+ * único que se apaga es el contador. Fallar abierto ahí no es tolerancia a fallas: es
+ * regalar intentos infinitos, sin registro, contra la única contraseña que abre los datos
+ * de las cuatro cuentas.
+ *
+ * Y lo peor es que el atacante no tiene que esperar la caída: el modo de bypass clásico de
+ * un limitador es voltear su almacén de contadores para desactivarlo. Fallar abierto
+ * convierte "romper la base" en "romper la autenticación".
+ *
+ * Lo que cuesta cerrar: durante una caída de Supabase, Andrés entra a dos intentos por
+ * minuto. Barato, porque todas las rutas de datos leen de Supabase — con la base caída ya
+ * no iba a ver nada adentro.
+ *
+ * El log va por `error` a propósito. Antes esto se tragaba la excepción en silencio y un
+ * limitador apagado se ve idéntico a uno que funciona: nadie se entera hasta que alguien
+ * entra.
+ */
+function sinVerificar(ruta: string, detalle: string): Veredicto {
+  console.error(
+    `[limite] NO SE PUDO VERIFICAR el límite de ${ruta}: ${detalle}. ` +
+    `Se cierra la puerta (espera ${ESPERA_SIN_VERIFICAR}s). Si esto se repite, el limitador ` +
+    `está ciego y hay que mirar la base antes que cualquier otra cosa.`
+  );
+  return { permitido: false, motivo: MOTIVO_SIN_VERIFICAR, esperar: ESPERA_SIN_VERIFICAR };
 }
 
 export async function registrarIntento(
@@ -48,8 +96,18 @@ export async function registrarIntento(
 ): Promise<void> {
   if (!supabase) return;
   try {
-    await supabase.rpc('registrar_intento', {
+    const { error } = await supabase.rpc('registrar_intento', {
       p_clave: clave, p_ruta: ruta, p_exito: exito, p_detalle: detalle || null
     });
-  } catch { /* registrar no puede romper el pedido */ }
+    if (error) throw error;
+  } catch (e: any) {
+    // Sigue sin romper el pedido —un login bueno no puede fallar porque no se pudo
+    // anotar— pero ya no en silencio. Un intento fallido que no se escribe es un intento
+    // que `limite_de_tasa` no cuenta: con los fallos perdiéndose, `n_fallos` queda en cero
+    // y el bloqueo progresivo nunca arranca. El limitador se ve sano y no frena nada.
+    console.error(
+      `[limite] no se pudo registrar el intento ${exito ? 'exitoso' : 'FALLIDO'} en ${ruta}: ` +
+      `${e?.message || String(e)}. Mientras esto pase, el bloqueo progresivo está ciego.`
+    );
+  }
 }

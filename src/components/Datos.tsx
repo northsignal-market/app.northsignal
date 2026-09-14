@@ -11,6 +11,7 @@ import { useAppStore } from '../store/useAppStore';
 import { Drawer } from './Drawer';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Fallo } from './ui';
 
 
 const formatDatePretty = (dateStr: string) => {
@@ -203,7 +204,10 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  // Contador para reintentar sin tocar ningún filtro: cambiarlo vuelve a
+  // disparar el efecto de carga con exactamente la misma consulta.
+  const [recarga, setRecarga] = useState(0);
+
   const [annotations, setAnnotations] = useState<{manual: any[], system: any[]}>({manual: [], system: []});
   useEffect(() => {
      if (!selectedClient) return;
@@ -548,13 +552,22 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
       } catch (err: any) {
         if (err.name === 'AbortError') return;
         setError(err.message);
+        // Y se vacía la tabla. Antes setData solo corría en el camino feliz, así
+        // que un refetch fallado dejaba en pantalla las filas de la cuenta o la
+        // vista ANTERIOR debajo de los filtros nuevos: números reales, del lugar
+        // equivocado, sin nada que lo delatara.
+        setData([]); setTotalCount(0); setTotals({});
       } finally {
         setLoading(false);
       }
     };
     fetchData();
     return () => abortController.abort();
-  }, [selectedClient, activeView, page, orderBy, orderDir, debouncedSearch, dateRangeMode, customRange, comparePrev, groupBy, filters, setIsAuthenticated, weeks]);
+    // `limit` va acá aunque el selector de "Filas" también haga setPage(1): estando
+    // en la página 1 —el caso normal— ese setPage no cambia nada, React descarta el
+    // render y el efecto no vuelve a correr. La URL se arma con `limit` (construirUrl),
+    // así que sin esta dependencia elegir 250 filas dejaba la tabla con las 100 de antes.
+  }, [selectedClient, activeView, page, limit, orderBy, orderDir, debouncedSearch, dateRangeMode, customRange, comparePrev, groupBy, filters, setIsAuthenticated, weeks, recarga]);
 
   const handleSort = (col: string) => {
     if (orderBy === col) {
@@ -767,7 +780,7 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
               if (!items.length) return null;
               return (
                 <div key={grupo} className="flex items-center gap-1">
-                  <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-40 px-1.5 whitespace-nowrap">{grupo}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-60 px-1.5 whitespace-nowrap">{grupo}</span>
                   {items.map(([val, config]: any) => (
                     <button key={val} onClick={() => setActiveView(val)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeView === val ? 'bg-[#0062CC] text-[#EDEFF3] shadow-sm' : 'text-[#F5F7FA]/70 hover:text-[#EDEFF3] hover:bg-white/5'}`}>
@@ -1012,6 +1025,15 @@ export function Datos({ initialSearch, initialView, volverA }: { initialSearch?:
                    <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
                    <div className="h-8 bg-[var(--primary-faint)] rounded-md w-full"></div>
                  </div>
+              </div>
+            ) : error ? (
+              /* `error` existía desde siempre y no se pintaba en ningún lado: la
+                 consulta fallaba y la tabla decía "sin filas en esta ventana",
+                 que es un veredicto sobre datos que nadie llegó a mirar. */
+              <div className="absolute inset-x-0 top-16 flex flex-col items-center z-20 px-6">
+                <div className="max-w-md w-full">
+                  <Fallo que={`las filas de ${selectedClient}`} motivo={error} onReintentar={() => setRecarga(n => n + 1)} />
+                </div>
               </div>
             ) : data.length === 0 ? (
               /* Vacío por CAUSA (patrón Geist): esto es un "no-results" — el filtro

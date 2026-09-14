@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { avisar, useCuentas } from '../lib/useCuentas';
-import { useJSON, fmtMoneda, fmtFechaCorta } from './ui';
+import { useJSON, fmtMoneda, fmtFechaCorta, Fallo } from './ui';
 import { 
   Check, Cpu, MessageSquare, Send, Clock, 
   ExternalLink, AlertCircle, ShieldAlert,
@@ -62,7 +62,7 @@ function CommentsThread({ actionableId }: { actionableId: string }) {
         {loading ? (
           <div className="text-xs text-[#F5F7FA] opacity-50 py-2">Cargando…</div>
         ) : parsed.length === 0 ? (
-          <div className="text-xs text-[#F5F7FA] opacity-40 italic py-1">Nadie comentó todavía. Lo que escribas acá lo leen los agentes en su próxima corrida.</div>
+          <div className="text-xs text-[#F5F7FA] opacity-60 italic py-1">Nadie comentó todavía. Lo que escribas acá lo leen los agentes en su próxima corrida.</div>
         ) : parsed.map((c, i) => {
           const propio = c.actor === 'andres'; const act = actorDe(c.actor);
           const mismoAutor = i > 0 && parsed[i - 1].actor === c.actor && (new Date(c.created_at).getTime() - new Date(parsed[i - 1].created_at).getTime()) < 3600e3;
@@ -70,7 +70,7 @@ function CommentsThread({ actionableId }: { actionableId: string }) {
             <div key={c.id} className={`flex gap-2 ${propio ? 'flex-row-reverse' : ''}`}>
               <div className="w-7 shrink-0">{!mismoAutor && <Avatar actor={c.actor} />}</div>
               <div className={`max-w-[88%] min-w-0 ${propio ? 'items-end' : ''}`}>
-                {!mismoAutor && <div className={`text-[10px] mb-0.5 ${propio ? 'text-right' : ''}`}><span className="font-semibold text-[#EDEFF3]">{act.nombre}</span> <span className="text-[#F5F7FA] opacity-40">{haceCuanto(c.created_at)}{c.created_at ? ' · ' + new Date(c.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>}
+                {!mismoAutor && <div className={`text-[10px] mb-0.5 ${propio ? 'text-right' : ''}`}><span className="font-semibold text-[#EDEFF3]">{act.nombre}</span> <span className="text-[#F5F7FA] opacity-60">{haceCuanto(c.created_at)}{c.created_at ? ' · ' + new Date(c.created_at).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>}
                 <div className="px-3 py-2 rounded-xl text-xs text-[#F5F7FA] whitespace-pre-wrap leading-relaxed" style={{ backgroundColor: propio ? 'var(--primary-faint)' : 'var(--surface-2)', border: propio ? '1px solid rgba(0,98,204,0.35)' : '1px solid var(--border)', borderTopLeftRadius: propio || mismoAutor ? undefined : 4, borderTopRightRadius: propio && !mismoAutor ? 4 : undefined }}>
                   {c.cuerpo}
                 </div>
@@ -148,9 +148,18 @@ export function ActionableDrawerContent({
   const [logQueCambio, setLogQueCambio] = useState('');
   const [logDonde, setLogDonde] = useState(action.where || '');
   const [ejecutando, setEjecutando] = useState(false);
-  const [contexto, setContexto] = useState<any>(null);
-  useEffect(() => { fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => setContexto(d)).catch(() => {}); }, [action.id]);
-  const resolverRelacion = async (id: number) => { await fetch(`/api/relaciones/${id}/resolver`, { method: 'POST', credentials: 'include' }); const r = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (r.ok) setContexto(await r.json()); };
+  // El contexto fresco de la base: versiones, relaciones abiertas, bloqueos y la
+  // acción estructurada VIGENTE. Es lo único que autoriza a escribir en Google Ads,
+  // y por eso va sin caché (staleMs: 0): servirlo de una caché de 60 s sería
+  // habilitar el botón con un dato de hace un minuto.
+  const { data: contexto, error: errorContexto, cargando: cargandoContexto, refetch: recargarContexto } =
+    useJSON<any>(`/api/accionables/${action.id}/contexto`, null, { staleMs: 0 });
+  // Sin contexto confirmado no se ejecuta. Si la consulta falla, `accionActual`
+  // cae a la acción de la lista, que puede estar vieja: aprobar desde ahí puede
+  // aplicar en la cuenta un cambio que ya no corresponde, y una escritura en
+  // Google Ads no se deshace sola. Cargando tampoco alcanza: todavía no se sabe.
+  const contextoConfirmado = !cargandoContexto && !errorContexto;
+  const resolverRelacion = async (id: number) => { await fetch(`/api/relaciones/${id}/resolver`, { method: 'POST', credentials: 'include' }); recargarContexto(); };
   const NOMBRE_CAMPO: Record<string, string> = { titulo: 'Título', por_que: 'Por qué', accion: 'Acción estructurada', entidad: 'Entidad', prioridad: 'Prioridad', estado: 'Estado', creado: 'Creado' };
   const [ejecutado, setEjecutado] = useState<string | null>(null);
   // Que tipo de accion automatica es, si alguna. Solo negativas y pausas.
@@ -167,6 +176,9 @@ export function ActionableDrawerContent({
   const VERBOS_SIN_KEYWORD = ['pausar_anuncio', 'pausar_campana', 'reactivar_campana', 'cambiar_presupuesto', 'cambiar_objetivo_puja', 'cambiar_estrategia_puja', 'aplicar_etiqueta', 'pausar_grupo'];
   const aprobarYEjecutar = async (modo: 'simular' | 'ejecutar') => {
     if (!tipoAuto) return;
+    // La guarda también acá y no solo en el render: el botón se oculta, pero un
+    // clic disparado antes de que llegue la falla no tiene por qué colarse.
+    if (!contextoConfirmado) { avisar('No se pudo confirmar el contexto de este accionable. Sin eso no se ejecuta: la acción de la lista puede estar vieja.', 'error'); return; }
     const lote: string[] | null = accionActual?.objeto?.keywords?.length ? accionActual.objeto.keywords : null;
     const kw = lote ? lote[0] : extraerKeyword(action.title, action.entidad || action.where);
     if (!kw && !VERBOS_SIN_KEYWORD.includes(tipoAuto)) { avisar('No pude identificar la keyword o término. Ejecutalo a mano con "Cómo hacerlo".', 'error'); return; }
@@ -185,7 +197,7 @@ export function ActionableDrawerContent({
       const r = await fetch(`/api/accionables/${action.id}/aprobar-ejecutar`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usar_accion: true, keywords: lote || undefined, account: action.client, tipo: tipoAuto, campana: entidadPartes[0] || '', grupo: entidadPartes[1] || '', keyword: kw, match_type: tipoAuto === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/.test(action.title.toLowerCase()) ? 'EXACT' : 'PHRASE'), match_type_destino: tipoAuto === 'cambiar_concordancia' ? concordanciaDestino(action.title) : undefined, modo }) });
       const j = await r.json();
-      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) { const c = await fetch(`/api/accionables/${action.id}/contexto`, { credentials: 'include' }); if (c.ok) setContexto(await c.json()); } } else { setEjecutado(modo); if (j.avisos?.length) avisar(String(j.avisos.join(' · ')).slice(0, 300), 'info', 'Encolado con avisos'); }
+      if (!r.ok) { avisar(j.error || 'Ocurrió un error', 'error'); if (j.conflicto) recargarContexto(); } else { setEjecutado(modo); if (j.avisos?.length) avisar(String(j.avisos.join(' · ')).slice(0, 300), 'info', 'Encolado con avisos'); }
     } finally { setEjecutando(false); }
   };
   const [logValorAnterior, setLogValorAnterior] = useState('');
@@ -408,7 +420,7 @@ export function ActionableDrawerContent({
   // mira en la campaña entera, no solo en el grupo donde apareció.
   const evCampana = accionActual?.objeto?.campana || '';
   const evGrupo = accionActual?.parametros?.nivel === 'campana' ? '' : (accionActual?.objeto?.grupo || '');
-  const { data: evidencia } = useJSON<any>(
+  const { data: evidencia, error: errorEvidencia, cargando: cargandoEvidencia, refetch: recargarEvidencia } = useJSON<any>(
     evTexto ? `/api/evidencia-termino?client=${encodeURIComponent(action.client)}&texto=${encodeURIComponent(evTexto)}${evCampana ? `&campana=${encodeURIComponent(evCampana)}` : ''}${evGrupo ? `&grupo=${encodeURIComponent(evGrupo)}` : ''}` : null,
     null
   );
@@ -490,6 +502,13 @@ export function ActionableDrawerContent({
 
 
 
+      {/* Si el contexto no llegó, todo lo que sigue es la foto vieja de la lista:
+          sin versiones, sin relaciones abiertas y sin bloqueos. Decirlo una vez
+          arriba vale más que dejar cada panel callado por su cuenta. */}
+      {errorContexto && (
+        <Fallo que="las versiones, relaciones y bloqueos de este accionable" motivo={errorContexto} onReintentar={() => recargarContexto()} />
+      )}
+
       {/* Qué cambió desde que se propuso, y con qué se relaciona */}
       {contexto && (contexto.versiones?.length > 1 || contexto.relaciones?.length > 0) && (
         <div className="p-3.5 rounded-xl space-y-3" style={{ backgroundColor: 'var(--surface-1)', border: contexto.bloqueo ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
@@ -540,7 +559,7 @@ export function ActionableDrawerContent({
           <span className="font-semibold text-[#EDEFF3] text-xs block mb-1">{accionActual.verbo === 'preguntar_cliente' ? `Pregunta para ${accionActual.parametros?.a_quien || 'el cliente'}` : 'Decisión tuya'}</span>
           <p className="text-xs text-[#F5F7FA] leading-relaxed">{accionActual.parametros?.pregunta}</p>
           {accionActual.parametros?.dato_que_falta && <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Lo que falta para decidir: {accionActual.parametros.dato_que_falta}</p>}
-          <p className="text-[10px] text-[#F5F7FA] opacity-40 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
+          <p className="text-[10px] text-[#F5F7FA] opacity-60 mt-2">No hay nada que tocar en Google Ads. Cuando tengas la respuesta, anotala en Decisión final y marcalo Hecho.</p>
         </div>
       )}
       {(contexto?.actual?.accion_error || (!contexto && action.accion_error)) && action.status !== 'Hecho' && action.status !== 'Descartado' && (() => {
@@ -564,7 +583,7 @@ export function ActionableDrawerContent({
             </div>
           );
         }
-        return <p className="text-[10px] text-[#F5F7FA] opacity-40 px-1">Este accionable no trae acción estructurada válida ({err}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>;
+        return <p className="text-[10px] text-[#F5F7FA] opacity-60 px-1">Este accionable no trae acción estructurada válida ({err}); el sistema no puede ejecutarlo solo. El del lunes va a venir con el estándar.</p>;
       })()}
 
       {/* Aprobar y ejecutar. "En curso" tampoco muestra botón: ya está encolado y
@@ -596,7 +615,10 @@ export function ActionableDrawerContent({
                   ))}
                 </div>
               )}
-              <p className="text-xs text-[#F5F7FA] opacity-80">{(() => {
+              {/* La descripción del cambio sale de `accionActual`, que sin
+                  contexto confirmado es la de la lista: el antes→después que
+                  imprimiría puede no ser el vigente. Mejor no decir nada. */}
+              {contextoConfirmado && <p className="text-xs text-[#F5F7FA] opacity-80">{(() => {
                 const p = accionActual?.parametros || {};
                 const camp = accionActual?.objeto?.campana || '';
                 if (tipoAuto === 'cambiar_concordancia') return 'Esto es un cambio de concordancia: el sistema crea la keyword con la nueva y pausa la anterior, así se puede deshacer. Smart Bidding reaprende unos días.';
@@ -610,11 +632,20 @@ export function ActionableDrawerContent({
                 if (tipoAuto === 'aplicar_etiqueta') return `Etiqueta ${camp} como "${p.etiqueta}". No cambia la entrega: es organización.`;
                 if (accionActual?.objeto?.keywords?.length > 1) return `Son ${accionActual.objeto.keywords.length} ${tipoAuto.startsWith('negativa') ? 'negativas' : 'pausas'} en lote: se pueden deshacer una por una, y el script reporta cada una.`;
                 return `Esto es una ${tipoAuto.startsWith('negativa') ? 'negativa' : 'pausa'}: se puede deshacer, así que el sistema puede aplicarla por vos.`;
-              })()} Un script lo ejecuta dentro de la próxima hora.</p>
-              <div className="flex gap-2">
-                <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
-                <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
-              </div>
+              })()} Un script lo ejecuta dentro de la próxima hora.</p>}
+              {/* Los botones existen solo con el contexto confirmado. Mientras
+                  carga, y sobre todo si la consulta falló, lo que se ve acá es
+                  por qué NO se puede aprobar — no un botón que promete que sí. */}
+              {cargandoContexto ? (
+                <p className="text-[11px] text-[#F5F7FA] opacity-50">Confirmando contra la base qué dice hoy este accionable…</p>
+              ) : errorContexto ? (
+                <Fallo que="el contexto actualizado de este accionable" motivo={errorContexto} onReintentar={() => recargarContexto()} />
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => aprobarYEjecutar('ejecutar')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs bg-[#0062CC] text-[#EDEFF3] disabled:opacity-40">{ejecutando ? 'Enviando…' : 'Aprobar y que se haga'}</button>
+                  <button onClick={() => aprobarYEjecutar('simular')} disabled={ejecutando} className="px-3 py-1.5 rounded-lg text-xs text-[#F5F7FA]" style={{ border: '1px solid var(--border)' }}>Solo simular</button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -639,7 +670,7 @@ export function ActionableDrawerContent({
               ))}
             </ol>
             {rec?.nota && <p className="text-[11px] text-[#F5F7FA] opacity-60 pt-1 leading-relaxed">{rec.nota}</p>}
-            {!propio && rec && <p className="text-[10px] text-[#F5F7FA] opacity-40">Pasos genéricos para este tipo de acción. Los accionables nuevos traen los suyos.</p>}
+            {!propio && rec && <p className="text-[10px] text-[#F5F7FA] opacity-60">Pasos genéricos para este tipo de acción. Los accionables nuevos traen los suyos.</p>}
           </div>
         );
       })()}
@@ -931,39 +962,53 @@ export function ActionableDrawerContent({
               </span>
             )}
           </div>
-          {!evidencia ? (
-            <p className="text-[11px] text-[#F5F7FA] opacity-40">Consultando la capa diaria…</p>
-          ) : !evidencia.capa ? (
+          {/* Tres huecos distintos, no uno: todavía consultando, no se pudo
+              consultar, o se consultó y la capa diaria no tiene filas. Antes los
+              tres decían "Consultando…" y el segundo se quedaba ahí para siempre. */}
+          {cargandoEvidencia ? (
+            <p className="text-[11px] text-[#F5F7FA] opacity-60">Consultando la capa diaria…</p>
+          ) : errorEvidencia ? (
+            <Fallo que="la evidencia de la capa diaria" motivo={errorEvidencia} onReintentar={() => recargarEvidencia()} />
+          ) : !evidencia?.capa ? (
             <p className="text-[11px] text-[#F5F7FA] opacity-60 leading-relaxed">
               Sin filas en la capa diaria (~17 días) para “{evTexto}” en este alcance. No es cero: puede haber gastado antes de la ventana — el histórico completo está en Datos.
             </p>
           ) : (
             <>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular text-[#EDEFF3]">
-                <span>{fmtMoneda(evidencia.totales.cost, monedaEv)} <span className="opacity-50">gastó</span></span>
-                <span>{evidencia.totales.clicks} <span className="opacity-50">clics</span></span>
-                <span>{Number(evidencia.totales.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} <span className="opacity-50">conv</span></span>
+                {/* .50 sobre #EDEFF3 da 4,42:1 en surface-1: se queda corto por poco, que
+                    es la peor forma de quedarse corto. .60 lo lleva a 5,70:1 y la etiqueta
+                    sigue leyéndose como etiqueta al lado de la cifra. */}
+                <span>{fmtMoneda(evidencia.totales.cost, monedaEv)} <span className="opacity-60">gastó</span></span>
+                <span>{evidencia.totales.clicks} <span className="opacity-60">clics</span></span>
+                <span>{Number(evidencia.totales.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} <span className="opacity-60">conv</span></span>
                 {/* CPA solo con conversiones: con cero, el CPA es null, no un número */}
                 {Number(evidencia.totales.conversions) > 0 && (
-                  <span>{fmtMoneda(evidencia.totales.cost / Number(evidencia.totales.conversions), monedaEv)} <span className="opacity-50">CPA</span></span>
+                  <span>{fmtMoneda(evidencia.totales.cost / Number(evidencia.totales.conversions), monedaEv)} <span className="opacity-60">CPA</span></span>
                 )}
-                <span className="opacity-50">en {evidencia.dias} día{evidencia.dias !== 1 ? 's' : ''} con actividad</span>
+                <span className="opacity-60">en {evidencia.dias} día{evidencia.dias !== 1 ? 's' : ''} con actividad</span>
               </div>
               {evidencia.serie.length > 0 && (
                 <table className="w-full text-[11px] tabular">
+                  {/* El .50 de la fila multiplicaba al .30 del punto: 0,15 efectivo
+                      = 1,58:1. Además el castigo iba al revés — el día que todavía
+                      madura es el que más se mira, y era el que peor se leía. .75 deja
+                      la marca de provisional (que además está en el ' ·' de la fecha y
+                      en la nota de abajo) sin hundir ninguna celda: el piso de la fila
+                      queda en 4,97:1 sobre surface-1. */}
                   <tbody>
                     {evidencia.serie.slice(-8).map((d: any) => (
-                      <tr key={d.date} className={d.madurez === 'provisional' ? 'opacity-50' : ''} style={{ borderTop: '1px solid var(--border)' }}>
+                      <tr key={d.date} className={d.madurez === 'provisional' ? 'opacity-75' : ''} style={{ borderTop: '1px solid var(--border)' }}>
                         <td className="py-1 pr-2 text-[#F5F7FA] opacity-70">{fmtFechaCorta(d.date)}{d.madurez === 'provisional' ? ' ·' : ''}</td>
                         <td className="py-1 px-2 text-right text-[#EDEFF3]">{fmtMoneda(d.cost, monedaEv)}</td>
                         <td className="py-1 px-2 text-right text-[#F5F7FA] opacity-80">{d.clicks} clic{d.clicks !== 1 ? 's' : ''}</td>
-                        <td className="py-1 pl-2 text-right">{Number(d.conversions) > 0 ? <span className="text-[#EDEFF3] font-semibold">{Number(d.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} conv</span> : <span className="text-[#F5F7FA] opacity-30">·</span>}</td>
+                        <td className="py-1 pl-2 text-right">{Number(d.conversions) > 0 ? <span className="text-[#EDEFF3] font-semibold">{Number(d.conversions).toLocaleString('es-AR', { maximumFractionDigits: 1 })} conv</span> : <span className="text-[#F5F7FA] opacity-70">·</span>}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
-              <p className="text-[10px] text-[#F5F7FA] opacity-40">
+              <p className="text-[10px] text-[#F5F7FA] opacity-60">
                 {evidencia.serie.length > 8 ? `Últimos 8 de ${evidencia.serie.length} días con actividad · ` : ''}los días con · siguen madurando · ventana diaria ~17 días.
               </p>
             </>

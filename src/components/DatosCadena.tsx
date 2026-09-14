@@ -16,7 +16,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Layers, MapPin, Megaphone, Hash, Search, ArrowLeft, Sparkles } from 'lucide-react';
-import { fmtMoneda, fmtNum } from './ui';
+import { fmtMoneda, fmtNum, Fallo, pedirJSON, motivoFallo } from './ui';
 
 type Nivel = 'objetivos' | 'locales' | 'campanas' | 'grupos' | 'keywords' | 'terminos' | 'transversal';
 interface Props { account: string; moneda: string }
@@ -37,6 +37,7 @@ export function DatosCadena({ account, moneda }: Props) {
   const [filas, setFilas] = useState<any[]>([]);
   const [contadores, setContadores] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [orden, setOrden] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'gasto', dir: 'desc' });
 
   const fmt = (v: any, tipo: 'moneda' | 'num' | 'pct' = 'num') => {
@@ -47,18 +48,24 @@ export function DatosCadena({ account, moneda }: Props) {
     return fmtNum(n);
   };
 
+  // El `await r.json()` iba ANTES de mirar r.ok: con el HTML de un 500 reventaba
+  // el parseo, el catch dejaba [] y Fresh Monkee —46 locales— mostraba "Sin filas
+  // con gasto en este período", que acá es una afirmación sobre la cadena entera.
   const cargar = async (n: Nivel, c: typeof ctx) => {
     setCargando(true);
+    setError(null);
     try {
       const p = new URLSearchParams({ account, semanas: String(semanas) });
       if (c.objetivo) p.set('objetivo', c.objetivo);
       if (c.local) p.set('local', c.local);
       if (c.campana) p.set('campana', c.campana);
       if (c.grupo) p.set('grupo', c.grupo);
-      const r = await fetch(`/api/cadena/${n}?${p}`, { credentials: 'include' });
-      const d = await r.json();
-      setFilas(r.ok ? d.filas || [] : []);
-    } catch { setFilas([]); } finally { setCargando(false); }
+      const d = await pedirJSON<any>(`/api/cadena/${n}?${p}`);
+      setFilas(Array.isArray(d?.filas) ? d.filas : []);
+    } catch (e) {
+      setFilas([]);
+      setError(motivoFallo(e));
+    } finally { setCargando(false); }
   };
   useEffect(() => { cargar(nivel, ctx); }, [nivel, ctx, semanas, account]);
   useEffect(() => { fetch(`/api/cadena/contadores?account=${account}&semanas=${semanas}`, { credentials: 'include' }).then(r => r.ok ? r.json() : { filas: [] }).then(d => setContadores(d.filas || [])).catch(() => {}); }, [account, semanas]);
@@ -103,8 +110,8 @@ export function DatosCadena({ account, moneda }: Props) {
   const tdCtx = (local: any, campana?: any, grupo?: any) => (
     <td className="px-3 py-2 text-left text-[11px] whitespace-nowrap">
       <span className="text-[#EDEFF3]">{local || <span className="opacity-50 italic">corporativa</span>}</span>
-      {campana && <span className="text-[#F5F7FA] opacity-40"> · {String(campana).length > 26 ? String(campana).slice(0, 26) + '…' : campana}</span>}
-      {grupo && <span className="text-[#F5F7FA] opacity-40"> · {grupo}</span>}
+      {campana && <span className="text-[#F5F7FA] opacity-60"> · {String(campana).length > 26 ? String(campana).slice(0, 26) + '…' : campana}</span>}
+      {grupo && <span className="text-[#F5F7FA] opacity-60"> · {grupo}</span>}
     </td>
   );
 
@@ -116,7 +123,7 @@ export function DatosCadena({ account, moneda }: Props) {
           {migas.length > 1 && <button onClick={() => volverA(migas.length - 2)} className="text-[#F5F7FA] opacity-60 hover:opacity-100 mr-1"><ArrowLeft size={13} /></button>}
           {migas.map((m, i) => (
             <React.Fragment key={i}>
-              {i > 0 && <ChevronRight size={12} className="text-[#F5F7FA] opacity-30" />}
+              {i > 0 && <ChevronRight size={12} className="text-[#F5F7FA] opacity-60" />}
               <button onClick={() => volverA(i)} className={i === migas.length - 1 ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA] opacity-60 hover:opacity-100'}>{m.label}</button>
             </React.Fragment>
           ))}
@@ -150,6 +157,7 @@ export function DatosCadena({ account, moneda }: Props) {
 
       <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
         {cargando ? <div className="px-4 py-6 text-xs text-[#F5F7FA] opacity-50">Cargando…</div>
+          : error ? <div className="p-4"><Fallo que={`las filas de ${account}`} motivo={error} onReintentar={() => cargar(nivel, ctx)} /></div>
           : ordenadas.length === 0 ? <div className="px-4 py-6 text-xs text-[#F5F7FA] opacity-50">Sin filas con gasto en este período.</div>
           : (
           <div className="overflow-x-auto custom-scrollbar">
@@ -220,7 +228,7 @@ export function DatosCadena({ account, moneda }: Props) {
             </table>
           </div>
         )}
-        <div className="px-4 py-2 text-[10px] text-[#F5F7FA] opacity-40 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="px-4 py-2 text-[10px] text-[#F5F7FA] opacity-60 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
           <span>{ordenadas.length} fila{ordenadas.length !== 1 ? 's' : ''}{['keywords', 'terminos'].includes(nivel) && ordenadas.length === 300 ? ' (tope de 300: filtrá por local o campaña)' : ''}</span>
           {nivel === 'locales' && <span>La tasa ajustada encoge cada local hacia el promedio de su grupo de pares en proporción a su ruido. Un local con evidencia poca no es bueno ni malo: es desconocido.</span>}
           {['grupos', 'keywords', 'terminos'].includes(nivel) && <span>Local y campaña van siempre a la izquierda: el mismo nombre de grupo existe en varias campañas.</span>}

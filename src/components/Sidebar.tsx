@@ -20,7 +20,13 @@ export function Sidebar({ activeTab, onTabChange, pendientes = 0, sistemaOk = tr
     /* Dos estados honestos: ABIERTA (208px con los nombres a la vista) u OCULTA
        (0px). Antes "abierta" era un rail de 64px que solo mostraba los nombres
        al pasar el mouse — o sea que nunca se veía abierta, y un menú que hay que
-       adivinar no está abierto: está permanentemente contraído. */
+       adivinar no está abierto: está permanentemente contraído.
+
+       Y `sm:border-0` recién ahora hace lo que dice: `.glass-dense` declara
+       `border: 1px solid` y vivía fuera de toda @layer, así que le ganaba a la
+       utilidad. Cerrada, la nav medía 1px en vez de 0 — una hairline vertical
+       flotando contra el shell. El bloque de clases propias ya está en
+       `@layer components` (ver index.css) y la utilidad manda. */
     <aside
       aria-hidden={!abierta}
       className={`glass-dense group fixed z-50 transition-all duration-200 ease-out overflow-hidden select-none

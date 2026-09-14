@@ -357,13 +357,16 @@ export function createApp() {
         .order('fecha', { ascending: false })
         .limit(50);
 
+      // Una lista vacía por fallo de base se lee igual que "no hubo cambios", y son
+      // dos cosas distintas: la segunda es un hecho, la primera es no saber.
       if (error) {
-        console.error("Error consultando v_todos_los_cambios:", error);
-        return res.json({ changes: [] });
+        console.error(`[500] GET /api/todos_los_cambios — v_todos_los_cambios: ${error.message}`);
+        return res.status(500).json({ error: `No pude leer los cambios: ${error.message}` });
       }
       res.json({ changes: data || [] });
     } catch(e: any) {
-      res.json({ changes: [] });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -379,13 +382,15 @@ export function createApp() {
         .order('gasto_acumulado', { ascending: false })
         .limit(20);
 
+      // Idem: "no hay términos nuevos" es un hallazgo; "no pude leerlos" no lo es.
       if (termsErr) {
-        console.error("Terms error:", termsErr);
-        return res.json({ terms: [] });
+        console.error(`[500] GET /api/daily/terminos_nuevos — v_terminos_nuevos: ${termsErr.message}`);
+        return res.status(500).json({ error: `No pude leer los términos nuevos: ${termsErr.message}` });
       }
       res.json({ terms: newTerms || [] });
     } catch (e: any) {
-      res.json({ terms: [] });
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -735,12 +740,22 @@ export function createApp() {
     const limit = Math.min(Number(req.query.limit) || 25, 1000);
     const offset = Number(req.query.offset) || 0;
     
-    let filters = [];
-    try {
-      if (req.query.filters) {
-         filters = JSON.parse(req.query.filters as string);
+    // Un filtro que no parsea NO se puede ignorar: la consulta correría sin filtrar y
+    // devolvería todo con cara de respuesta filtrada. Eso es un dato equivocado, no un
+    // vacío, y es el modo de falla que este sistema no detecta solo. Falla y se dice.
+    let filters: any[] = [];
+    if (req.query.filters) {
+      let parseado: any;
+      try {
+        parseado = JSON.parse(req.query.filters as string);
+      } catch (e: any) {
+        return res.status(400).json({ error: `El parámetro "filters" no es JSON válido (${String(e.message).slice(0, 120)}). La consulta no corre sin filtrar: te devolvería todo como si estuviera filtrado.` });
       }
-    } catch(e) {}
+      if (!Array.isArray(parseado)) {
+        return res.status(400).json({ error: '"filters" tiene que ser un array de filtros. La consulta no corre sin filtrar.' });
+      }
+      filters = parseado;
+    }
 
     
     // Columnas reales de cada vista, cacheadas: si el orderBy pedido no existe (viene de otra vista), usar el default.
@@ -1033,8 +1048,11 @@ export function createApp() {
         try {
           const { error } = await supabase.from('accionables_espejo').upsert(data.map((a: any) => ({
             notion_id: a.id, account: a.client, titulo: a.title, estado: a.status, prioridad: a.priority, naturaleza: a.naturaleza, origen: a.origen || null,
-            entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detected || null, ejecutado_el: a.ejecutado_el || null,
-            vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.weeks_pending ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString(),
+            // Los campos se llaman como los nombra el objeto de arriba (detectado, semanas_pendiente).
+            // Con a.detected y a.weeks_pending —que nunca existieron— el upsert pisaba con null
+            // dos columnas que el resto del sistema lee como si fueran el dato de Notion.
+            entidad: a.entidad || null, causa_raiz: a.causa_raiz || null, por_que: (a.why || '').slice(0, 1000), detectado: a.detectado || null, ejecutado_el: a.ejecutado_el || null,
+            vence: a.vence, reemplazado_por: a.reemplazado_por, semanas_pendiente: a.semanas_pendiente ?? null, revision_ia: a.revision_ia || null, ultima_edicion: a.last_edited, sincronizado: new Date().toISOString(),
             accion: a.accion || null, accion_valida: !!a.accion, accion_error: a.accion_error || null
           })), { onConflict: 'notion_id' });
           if (error) console.error('[espejo] ' + error.message);
@@ -1396,22 +1414,29 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
       }
 
       // Module 1: Semantic memory insertion & Anti-Amnesia Cooldown
+      // Lo que se pierda acá no se nota hasta que el sistema vuelve a proponer lo mismo
+      // dentro de dos semanas, así que un fallo no se traga: se junta y se devuelve.
+      const fallosMemoria: string[] = [];
       if (targetStatus === NOTION_STATES.HECHO && req.body.actionable) {
         const actionable = req.body.actionable;
-        
+
         if (supabase) {
           // 1. Cooldown insert
           try {
             const entityName = actionable.where || actionable.title || 'Unknown Entity';
             const cooldownDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-            await supabase.from('entity_states').insert([{
+            // supabase-js NO tira excepción con un error de base: la devuelve en .error.
+            // Por eso el try/catch de antes no atrapaba nada y todo parecía andar.
+            const { error: errCooldown } = await supabase.from('entity_states').insert([{
               account: actionable.client,
               entity_name: entityName,
               cooldown_until: cooldownDate
             }]);
+            if (errCooldown) throw new Error(errCooldown.message);
             console.log("Cooldown applied for entity:", entityName);
-          } catch(err) {
-            console.error("Error applying cooldown", err);
+          } catch(err: any) {
+            console.error("[cooldown] no se pudo aplicar el cooldown: " + (err?.message || err));
+            fallosMemoria.push(`cooldown de entidad: ${err?.message || err}`);
           }
 
           // 2. Semantic memory
@@ -1423,7 +1448,9 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
                 contents: textToEmbed
               });
               const embedding = embedRes.embeddings[0].values;
-              await supabase.from('actionables_memory').insert([{
+              // La migración renombró la tabla a legacy_actionables_memory. El nombre viejo
+              // no existe desde entonces, así que este insert venía fallando siempre en silencio.
+              const { error: errMem } = await supabase.from('legacy_actionables_memory').insert([{
                 notion_id: req.params.id,
                 client: actionable.client,
                 title: actionable.title,
@@ -1431,14 +1458,21 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
                 resolucion: actionable.where,
                 embedding: embedding
               }]);
+              if (errMem) throw new Error(errMem.message);
               console.log("Memory vector saved for actionable:", req.params.id);
-            } catch(err) {
-              console.error("Error creating memory embedding", err);
+            } catch(err: any) {
+              console.error("[memoria] no se pudo guardar el vector: " + (err?.message || err));
+              fallosMemoria.push(`memoria semántica: ${err?.message || err}`);
             }
           }
         }
       }
 
+      // Notion ya cambió: devolver 500 invitaría a repetir un cambio que está hecho.
+      // Pero success solo es true si TODO entró; si no, el llamador se entera de qué faltó.
+      if (fallosMemoria.length) {
+        return res.json({ success: false, data: response, notion_actualizado: true, error: `El accionable se actualizó en Notion, pero no se guardó: ${fallosMemoria.join(' | ')}`, advertencias: fallosMemoria });
+      }
       res.json({ success: true, data: response });
     } catch (e: any) {
       console.error(e);
@@ -1462,13 +1496,16 @@ SI DISCREPO: EN QUÉ EXACTAMENTE
         .order('hora', { ascending: false })
         .limit(30);
         
+      // El drawer usa esto para descartar que el movimiento lo haya causado el operador.
+      // Una lista vacía por fallo diría "nadie tocó nada", que es justo lo contrario de no saber.
       if (error) {
-        console.error("Error consultando v_todos_los_cambios:", error);
-        return res.json({ changes: [] });
+        console.error(`[500] GET /api/notion/actionables/${req.params.id}/recent_changes — v_todos_los_cambios: ${error.message}`);
+        return res.status(500).json({ error: `No pude leer los cambios recientes: ${error.message}` });
       }
       res.json({ changes: data || [] });
-    } catch(e) {
-      res.json({ changes: [] });
+    } catch(e: any) {
+      console.error(`[500] ${(req as any)?.method || ""} ${(req as any)?.originalUrl || ""} — ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
 
@@ -3130,27 +3167,55 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
   // va directo a acciones_aprobadas (en el modo de la politica) sin esperar a Andres.
   async function aplicarPoliticaAuto(account: string, notionId: string, titulo: string, entidad: string, origen: string, confianza: number | null, comoHacerlo?: string | null): Promise<string | null> {
     if (!supabase) return null;
-    const { detectarTipoAuto, extraerKeyword, concordanciaDestino } = await import('./src/lib/tipoAuto');
+    const { detectarTipoAuto } = await import('./src/lib/tipoAuto');
+    const { tipoAutoDesde } = await import('./src/lib/accion');
+    // detectarTipoAuto mira el texto y solo sirve para elegir QUE politica evaluar.
+    // Lo que se ejecuta no sale de aca: sale del Accion JSON validado, mas abajo.
     const tipo = detectarTipoAuto(titulo, comoHacerlo);
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc('politica_aplica', { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
     if (!modo) return null;
+    // Sin Accion JSON valida la politica NO actua. Esto encola en acciones_aprobadas,
+    // la misma cola que drena el ejecutor de Google Ads, asi que rige la misma regla
+    // que el endpoint manual hace cumplir: un cambio se aplica desde una estructura,
+    // nunca desde un texto. Hasta el 13/9/2026 el verbo salia de una regex sobre el
+    // titulo, la keyword de otra y la concordancia de /exact|exacta/: tres adivinanzas
+    // sobre la cuenta real del cliente.
     const { data: espA } = await supabase.from('accionables_espejo').select('accion, accion_valida').eq('notion_id', notionId).maybeSingle();
-    const lote: string[] | null = espA?.accion_valida && espA.accion?.objeto?.keywords?.length > 1 ? espA.accion.objeto.keywords : null;
-    const kw = lote ? lote[0] : extraerKeyword(titulo, entidad);
-    if (!kw && tipo !== 'pausar_anuncio') return null;
-    const destino = tipo === 'cambiar_concordancia' ? concordanciaDestino(titulo) : null;
+    if (!espA?.accion_valida || !espA.accion) return null;
+    const accion: any = espA.accion;
+    // El verbo del JSON tiene que dar el mismo tipo que activo la politica. Si el texto
+    // dice una cosa y el objeto otra, no se sabe cual es el cambio: queda para Andres.
+    // Tambien frena el caso "negativa de lista": el titulo lo lee como negativa_campana
+    // y tipoAutoDesde devuelve null, que es el radio correcto.
+    if (tipoAutoDesde(accion) !== tipo) return null;
+    const obj = accion.objeto || {};
+    const par = accion.parametros || {};
+    // pausar_anuncio no pasa por aca: el insert nunca llevo ad_id y sin el el ejecutor
+    // no sabe que anuncio pausar. Va por el endpoint manual, que si lo arma.
+    if (tipo === 'pausar_anuncio') return null;
+    const kws: string[] = Array.isArray(obj.keywords) ? obj.keywords.filter(Boolean).map((k: any) => String(k)) : [];
+    const lote: string[] | null = kws.length > 1 ? kws : null;
+    const kw = String(obj.keyword || kws[0] || '').trim();
+    if (!kw) return null;
+    const destino: string | null = tipo === 'cambiar_concordancia' ? (par.match_type_destino || null) : null;
     if (tipo === 'cambiar_concordancia' && !destino) return null;
     let loteOk: string[] | null = null;
     if (lote && tipo === 'pausar_keyword') { loteOk = []; for (const k of lote) { const rr = await resolverKeyword(account, k, entidad || ''); if (rr) loteOk.push(k); } if (!loteOk.length) return null; }
-    const r = await resolverKeyword(account, kw, `${entidad || ''} ${titulo}`);
+    const r = await resolverKeyword(account, kw, `${entidad || ''} ${obj.grupo || ''} ${obj.campana || ''}`);
     if (!r) return null; // sin resolver, no se ejecuta solo: queda para Andres
+    // La concordancia tambien sale del objeto, no del titulo. En las negativas manda la
+    // destino (que concordancia tendra la negativa nueva); en lo que ya existe en la
+    // cuenta manda la que devolvio la base al resolver. Un lote cruza concordancias: ANY.
+    const matchType = loteOk ? 'ANY'
+      : tipo.startsWith('negativa') ? (obj.match_type || par.match_type_destino || 'PHRASE')
+      : (r.match_type || obj.match_type || 'PHRASE');
     const { data: bloqueo, error: errPv } = await supabase.rpc('prevuelo', { p_notion_id: notionId });
     if (errPv) { console.error('[politica] prevuelo fallo: ' + errPv.message); return null; }
     if (bloqueo) { try { if (notion) await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA] Cumple la regla pero no se ejecuta solo: ${bloqueo}` } }] }); } catch {} return null; }
     // Ticket 49: si hay avisos que no bloquean, quedan en el comentario de Notion — la politica ejecuta igual
     const { data: avisosPol } = await supabase.rpc('prevuelo_avisos', { p_notion_id: notionId });
-    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: tipo === 'cambiar_concordancia' ? 'ANY' : (/exact|exacta/i.test(titulo) ? 'EXACT' : 'PHRASE'), match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : 'simular', aprobada_por: 'politica', por_politica: true });
+    await supabase.from('acciones_aprobadas').insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith('negativa') ? lote : null), match_type: matchType, match_type_destino: destino, nivel: par.nivel || null, modo: puedeEscribirAfuera().permitido ? modo : 'simular', aprobada_por: 'politica', por_politica: true });
     if (notion) { try {
       await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: 'En curso' } } } });
       await notion.comments.create({ parent: { page_id: notionId }, rich_text: [{ text: { content: `[POLÍTICA ${new Date().toISOString().slice(0, 10)}] Cumple la regla de ejecución automática para ${tipo.replace('_', ' ')} (${modo}). El script lo aplica en la próxima hora. Si no querías esto, desactivá la política en Sistema › Automatización.${Array.isArray(avisosPol) && avisosPol.length ? ` Avisos (no bloquean): ${avisosPol.join(' | ')}`.slice(0, 700) : ''}` } }] });
@@ -3773,7 +3838,10 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
         origen: p.Origen?.select?.name || null, entidad: txt(p.Entidad) || null, causa_raiz: txt(p['Causa raiz']) || null, como_hacerlo: txt(p['Como hacerlo']) || null, donde: txt(p.Donde) || null,
         por_que: txt(p['Por que'] || p['Por qué']).slice(0, 2000), detectado: p.Detectado?.date?.start || null,
         ejecutado_el: p['Ejecutado el']?.date?.start || null, vence: p.Vence?.date?.start || null,
-        semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: txt(p['Revision IA']) || null,
+        // "Revision IA" es un select en Notion, no rich_text: txt() solo mira rich_text/title
+        // y devolvía siempre ''. Como este cron es el último en escribir el espejo, la columna
+        // quedaba en null en las 79 filas. Se lee igual que en sincronizarEspejo.
+        semanas_pendiente: p['Semanas pendiente']?.number ?? null, revision_ia: p['Revision IA']?.select?.name || null,
         ultima_edicion: page.last_edited_time, sincronizado: new Date().toISOString(), url: page.url,
         accion: parsed.accion || null, accion_valida: !!parsed.accion, accion_error: parsed.error || null
       });
@@ -4302,12 +4370,31 @@ Devolvé solo el texto del reporte, sin encabezado ni comentarios.`;
       const { data: cta } = await supabase!.from('cuentas').select('reglas_dominio').eq('account', cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || '';
       // Memoria semantica: que se parece a lo de hoy (anomalias, terminos, grupos). Antes de esta fecha, para no encontrarse a si mismo.
+      // Los tres finales posibles se distinguen: encontró, no encontró, o no se pudo buscar.
+      // Antes los tres llegaban al modelo como [] y el prompt le decía, sin saberlo, que
+      // nada parecido había pasado antes. Un fallo de infraestructura no es un hallazgo.
       let parecidos: any[] = [];
+      let memoria: { buscada: boolean; ok: boolean; indexada: boolean; motivo?: string | null } = { buscada: false, ok: false, indexada: false, motivo: null };
       try {
         const resumenHoy = [input?.anomalias_2d?.map((a: any) => a.explicacion).join('. '), input?.grupos_ayer?.slice(0, 4).map((g: any) => `${g.grupo} ${g.conv} conv ${g.clics} clics`).join('; '), input?.terminos_nuevos_con_gasto?.slice(0, 3).map((t: any) => t.t).join(', ')].filter(Boolean).join(' | ');
-        if (resumenHoy.length > 40) parecidos = await parecidoA(supabase!, resumenHoy, cuenta, 5, fecha);
-      } catch {}
-      const r = await correrPulso(cuenta, fecha, input, reglas, parecidos);
+        if (resumenHoy.length > 40) {
+          const b = await parecidoA(supabase!, resumenHoy, cuenta, 5, fecha);
+          parecidos = b.parecidos;
+          memoria = {
+            buscada: true, ok: b.ok, indexada: b.indexada,
+            motivo: !b.ok ? `la búsqueda semántica falló (${b.error || 'sin detalle'})`
+              : !b.indexada ? `la búsqueda corrió pero ${cuenta} no tiene ningún episodio indexado en la memoria (hay filas en memoria sin embedding calculado), así que no había con qué comparar`
+              : null,
+          };
+          if (!b.ok || !b.indexada) console.error(`[pulso ${cuenta}] memoria sin resultado utilizable: ${b.error || 'memoria sin indexar'}`);
+        } else {
+          memoria = { buscada: false, ok: false, indexada: false, motivo: 'el día no dejó resumen suficiente para buscar en la memoria (sin anomalías ni grupos ni términos nuevos)' };
+        }
+      } catch (e: any) {
+        memoria = { buscada: true, ok: false, indexada: false, motivo: `la búsqueda semántica cortó por error (${e?.message || e})` };
+        console.error(`[pulso ${cuenta}] memoria no consultada: ${e?.message || e}`);
+      }
+      const r = await correrPulso(cuenta, fecha, input, reglas, parecidos, memoria);
       if (r.error || !r.parsed) throw new Error(r.error || 'sin salida');
       const p = r.parsed;
       const planId = input?.plan?.id || null;

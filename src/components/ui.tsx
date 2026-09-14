@@ -18,10 +18,14 @@ import { useQuery } from '@tanstack/react-query';
 // acá `Panel` ya es la celda del Tablero.
 import { Group, Panel as PanelRP, Separator } from 'react-resizable-panels';
 import { Calendar, ChevronDown } from 'lucide-react';
-import {
-  ResponsiveContainer, ComposedChart, Area, Line, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ReferenceArea, Legend,
-} from 'recharts';
+import { pedirJSON, motivoFallo } from '../lib/red';
+// Re-exportadas desde acá porque las vistas ya importan la red de './ui': el
+// lugar donde vive el código no tiene por qué ser el lugar donde se pide.
+export { pedirJSON, motivoFallo, FalloRed } from '../lib/red';
+// Acá vivía `GraficoSerie` y con él la única importación de recharts del arranque.
+// No tenía un solo call site: Datos y Semana traen su propio gráfico. Existir sin
+// usarse le costaba a la app 417 kB en la primera carga, porque este archivo es
+// parte del entry y arrastraba recharts + d3 con él.
 
 // ================================================================
 // FORMATO · una sola fuente de verdad
@@ -275,13 +279,15 @@ export function Pista({ children, titulo = 'Cómo leer esto' }: { children: Reac
       <button type="button" aria-label={titulo}
         className="w-[15px] h-[15px] rounded-full inline-flex items-center justify-center text-[9px] font-semibold opacity-45 hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
         style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>i</button>
-      {/* `position: absolute` va en el style y no solo en la clase: .glass-dense
-          declara `position: relative` en index.css y le gana a la utilidad de
-          Tailwind. Con el globo en flujo, sus 280px empujaban el título a otro
-          renglón y lo truncaban — el bug se veía como un problema de layout. */}
+      {/* El `absolute` vuelve a ser una clase. Estuvo un tiempo forzado en el
+          style porque `.glass-dense` declaraba `position: relative` para todo
+          el que usara ese vidrio y le ganaba a la utilidad: con el globo en
+          flujo, sus 280px empujaban el título a otro renglón y lo truncaban.
+          Ese `position` hoy está scopeado a `header.glass-dense` y además el
+          bloque vive en `@layer components`, así que el markup manda. */}
       <span role="tooltip"
-        className="pointer-events-none left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
-        style={{ position: 'absolute', color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
+        className="absolute pointer-events-none left-0 top-[19px] z-50 w-[280px] p-2.5 rounded-lg text-[11px] leading-relaxed opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity glass-dense"
+        style={{ color: '#F5F7FA', boxShadow: '0 18px 44px -16px rgba(0,0,0,0.85)' }}>
         {children}
       </span>
     </span>
@@ -403,32 +409,82 @@ export function Vacio({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-[#F5F7FA] opacity-50 italic py-6 text-center">{children}</p>;
 }
 
+/** El hueco que NO es un vacío: la consulta falló y no se sabe qué hay del otro
+ *  lado. Se ve distinto de `Vacio` a propósito — un vacío es un veredicto y esto
+ *  es la ausencia de uno. Nunca insinúa un valor: no dice "0", dice "no sé". */
+export function Fallo({ motivo, que, onReintentar }: {
+  motivo: string;
+  /** Qué no se pudo consultar, en minúscula: "las búsquedas nuevas", "el contexto".
+   *  La frase es impersonal ("no se pudo consultar…") justamente para que sirva
+   *  igual con singular y con plural, sin que cada llamada invente su redacción. */
+  que: string;
+  onReintentar?: () => void;
+}) {
+  return (
+    <div className="px-3 py-3 rounded-lg text-xs leading-relaxed" style={{ backgroundColor: 'var(--surface-2)', borderLeft: '2px solid var(--warn)' }}>
+      <p className="text-[#EDEFF3]">No se pudo consultar {que}. <span className="opacity-70">{motivo}</span></p>
+      <p className="text-[11px] text-[#F5F7FA] opacity-60 mt-1">Esto no quiere decir que no haya nada: quiere decir que no se pudo preguntar.</p>
+      {onReintentar && (
+        <button onClick={onReintentar} className="mt-2 px-2.5 py-1 rounded-md text-[11px] text-[#F5F7FA] hover:bg-white/10 transition-colors" style={{ border: '1px solid var(--border-strong)' }}>
+          Reintentar
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ================================================================
 // RED · fetch con auth y guardas, una sola vez
 // ================================================================
 /** fetch → JSON con el header de auth y las guardas de siempre. Devuelve
- *  `fallback` ante cualquier falla: las vistas deciden qué es "vacío". */
+ *  `fallback` ante cualquier falla: las vistas deciden qué es "vacío".
+ *  Si lo que necesitás es SABER que falló, usá `pedirJSON` o `useJSON`. */
 export async function fetchJSON<T>(url: string, fallback: T): Promise<T> {
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    const r = await fetch(url, { credentials: 'include', headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!r.ok || !r.headers.get('content-type')?.includes('application/json')) return fallback;
-    return await r.json();
-  } catch { return fallback; }
+  try { return await pedirJSON<T>(url); } catch { return fallback; }
 }
 
 /** fetchJSON como hook con caché compartida: dedupe entre componentes que piden
  *  la misma URL, revalidación al volver a la pestaña, y refetchInterval opcional.
- *  Misma semántica de fallback — el que consume nunca ve un error, ve "vacío".
- *  La queryKey ES la URL: una URL, un dato, una entrada de caché. */
-export function useJSON<T>(url: string | null, fallback: T, opts?: { refetchMs?: number }): { data: T; refetch: () => void } {
+ *  La queryKey ES la URL: una URL, un dato, una entrada de caché.
+ *
+ *  `data` sigue siendo el fallback cuando no hay respuesta —eso no cambió, y por
+ *  eso los consumidores viejos siguen andando—, pero ahora el hueco viene con su
+ *  causa al lado: `cargando` (todavía no sé), `error` (no pude preguntar) o
+ *  ninguno de los dos (pregunté, y esto es lo que hay). Confundir los tres lleva
+ *  a veredictos opuestos, así que un vacío sin consultar `error` es un vacío que
+ *  todavía no se sabe leer.
+ *
+ *  Sin reintentos a propósito: el default global son 2, y con eso el estado de
+ *  error tardaba segundos en aparecer mientras la pantalla afirmaba un vacío. */
+export function useJSON<T>(url: string | null, fallback: T, opts?: {
+  refetchMs?: number;
+  /** Cuánto vale la respuesta cacheada. Por defecto manda el global (60 s).
+   *  `staleMs: 0` = siempre fresco al montar, para las lecturas que autorizan
+   *  una escritura: una caché de un minuto ahí es un minuto de dato viejo
+   *  decidiendo sobre la cuenta real. */
+  staleMs?: number;
+}): {
+  data: T;
+  refetch: () => void;
+  /** Motivo de la falla, listo para imprimir. null si la última consulta salió bien. */
+  error: string | null;
+  /** Primera consulta sin respuesta todavía. Con `url` null nunca está cargando. */
+  cargando: boolean;
+} {
   const q = useQuery({
     queryKey: ['json', url],
-    queryFn: () => fetchJSON<T>(url as string, fallback),
+    queryFn: () => pedirJSON<T>(url as string),
     enabled: url != null,
     refetchInterval: opts?.refetchMs,
+    staleTime: opts?.staleMs,
+    retry: false,
   });
-  return { data: (q.data ?? fallback) as T, refetch: q.refetch };
+  return {
+    data: (q.data ?? fallback) as T,
+    refetch: q.refetch,
+    error: q.isError ? motivoFallo(q.error) : null,
+    cargando: url != null && q.isPending,
+  };
 }
 
 // ================================================================
@@ -534,7 +590,7 @@ export function RangoFechas({ valor, onChange, presets = ['7d', '14d', 'semana',
         <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <input type="date" value={dDesde} min={minDesde} max={dHasta} onChange={e => setDDesde(e.target.value)}
             className="bg-transparent text-[11px] text-[#F5F7FA] outline-none [color-scheme:dark]" />
-          <span className="text-[11px] text-[#F5F7FA] opacity-40">→</span>
+          <span className="text-[11px] text-[#F5F7FA] opacity-60">→</span>
           <input type="date" value={dHasta} min={dDesde} max={hoyLocal(-1)} onChange={e => setDHasta(e.target.value)}
             className="bg-transparent text-[11px] text-[#F5F7FA] outline-none [color-scheme:dark]" />
           <button
@@ -545,119 +601,11 @@ export function RangoFechas({ valor, onChange, presets = ['7d', '14d', 'semana',
           </button>
         </div>
       )}
-      <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular whitespace-nowrap">
+      <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular whitespace-nowrap">
         {fueraDeVentana && abierto
           ? `La tabla diaria guarda desde el ${fmtFechaCorta(minDesde!)}: antes de eso no hay dato, habría un hueco.`
           : `${fmtFechaCorta(valor.desde)} – ${fmtFechaCorta(valor.hasta)}${nota ? ` · ${nota}` : ''}`}
       </span>
-    </div>
-  );
-}
-
-// ================================================================
-// GRÁFICO · una serie temporal, bien hecha una sola vez
-// ================================================================
-export type SerieDef = {
-  clave: string; nombre: string;
-  tipo?: 'area' | 'linea' | 'barra';
-  /** 'moneda' formatea con la moneda de la cuenta; 'numero' con separador de miles. */
-  formato?: 'moneda' | 'numero';
-  color?: string;
-  ejeDerecho?: boolean;
-};
-
-const COLORES = ['#0062CC', '#7FB3E8', '#E8A13C', '#9AE6B4'];
-
-/**
- * Serie temporal estándar: grid sutil, ejes formateados, tooltip de vidrio, y
- * la banda de maduración sombreada — los días desde `provisionalDesde` todavía
- * se mueven (Google atribuye al día del clic, no al de la conversión).
- */
-export function GraficoSerie({ datos, series, moneda = 'CLP', provisionalDesde, alto = 240, xClave = 'fecha' }: {
-  datos: any[]; series: SerieDef[]; moneda?: string; provisionalDesde?: string; alto?: number; xClave?: string;
-}) {
-  const conDerecho = series.some(s => s.ejeDerecho);
-  const fmtDe = (s: SerieDef) => (v: number) => s.formato === 'moneda' ? fmtMoneda(v, moneda) : fmtNum(v, Math.abs(v) < 10 ? 1 : 0);
-  const primeraProvisional = useMemo(() => {
-    if (!provisionalDesde || !datos?.length) return null;
-    return datos.find(d => String(d[xClave]) >= provisionalDesde)?.[xClave] ?? null;
-  }, [datos, provisionalDesde, xClave]);
-
-  // Trazo doble: sólido hasta el último día firme, punteado desde ahí (empalman
-  // en ese punto). La banda dice "acá maduran"; el punteado lo dice EN la línea,
-  // que es donde el ojo está mirando. Solo líneas y áreas: las barras ya quedan
-  // dentro de la banda.
-  const { datosPlot, ultimoSolido } = useMemo(() => {
-    if (!primeraProvisional || !datos?.length) return { datosPlot: datos, ultimoSolido: null as string | null };
-    const previos = datos.filter(d => String(d[xClave]) < String(primeraProvisional));
-    const us = previos.length ? String(previos[previos.length - 1][xClave]) : null;
-    if (!us) return { datosPlot: datos, ultimoSolido: null };
-    const enriquecidos = datos.map(d => {
-      const f = String(d[xClave]);
-      const extra: any = {};
-      for (const s of series) {
-        if (s.tipo === 'barra') continue;
-        extra[s.clave + '__sol'] = f <= us ? d[s.clave] : null;
-        extra[s.clave + '__prov'] = f >= us ? d[s.clave] : null;
-      }
-      return { ...d, ...extra };
-    });
-    return { datosPlot: enriquecidos, ultimoSolido: us };
-  }, [datos, series, primeraProvisional, xClave]);
-
-  if (!datos?.length) return <Vacio>Sin datos en esta ventana.</Vacio>;
-
-  return (
-    <div style={{ width: '100%', height: alto }}>
-      <ResponsiveContainer>
-        <ComposedChart data={datosPlot} margin={{ top: 8, right: conDerecho ? 4 : 12, bottom: 0, left: 4 }}>
-          <CartesianGrid stroke="var(--border)" vertical={false} />
-          <XAxis dataKey={xClave} tickFormatter={fmtFechaCorta} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={24} />
-          <YAxis yAxisId="izq" tickFormatter={(v: number) => series.find(s => !s.ejeDerecho)?.formato === 'moneda' ? fmtMonedaCorta(v, moneda) : fmtNum(v)} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} width={52} />
-          {conDerecho && <YAxis yAxisId="der" orientation="right" tickFormatter={(v: number) => series.find(s => s.ejeDerecho)?.formato === 'moneda' ? fmtMonedaCorta(v, moneda) : fmtNum(v)} tick={{ fill: 'rgba(245,247,250,0.45)', fontSize: 10 }} axisLine={false} tickLine={false} width={44} />}
-          <Tooltip
-            cursor={{ stroke: 'var(--border-strong)' }}
-            contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border-strong)', borderRadius: 10, fontSize: 11, color: '#F5F7FA' }}
-            labelFormatter={(l: any) => {
-              const esProv = primeraProvisional && String(l) >= String(primeraProvisional);
-              return fmtFechaCorta(String(l)) + (esProv ? ' · madurando' : '');
-            }}
-            formatter={(v: any, nombre: any) => {
-              const limpio = String(nombre).replace(' · madurando', '');
-              const s = series.find(x => x.nombre === limpio);
-              return [s ? fmtDe(s)(Number(v)) : v, nombre];
-            }}
-          />
-          {series.length > 1 && <Legend wrapperStyle={{ fontSize: 10, opacity: 0.7 }} iconSize={8} />}
-          {primeraProvisional && (
-            <ReferenceArea yAxisId="izq" x1={primeraProvisional} x2={datos[datos.length - 1][xClave]}
-              {...({ fill: 'var(--primary-faint)', strokeOpacity: 0, label: { value: 'madurando', position: 'insideTopRight', fill: 'rgba(245,247,250,0.35)', fontSize: 9 } } as any)} />
-          )}
-          {series.map((s, i) => {
-            const color = s.color || COLORES[i % COLORES.length];
-            const base = { yAxisId: s.ejeDerecho ? 'der' : 'izq', name: s.nombre, stroke: color, strokeWidth: 1.5, dot: false as const, isAnimationActive: false };
-            if (s.tipo === 'barra') return <Bar key={s.clave} {...base} dataKey={s.clave} fill={color} fillOpacity={0.5} radius={[3, 3, 0, 0]} maxBarSize={18} />;
-            // Sin días provisionales: una sola pieza, como siempre.
-            if (!ultimoSolido) {
-              if (s.tipo === 'linea') return <Line key={s.clave} {...base} dataKey={s.clave} type="monotone" />;
-              return <Area key={s.clave} {...base} dataKey={s.clave} type="monotone" fill={color} fillOpacity={0.12} />;
-            }
-            const prov = { ...base, name: s.nombre + ' · madurando', strokeDasharray: '4 3', legendType: 'none' as const };
-            if (s.tipo === 'linea') return (
-              <React.Fragment key={s.clave}>
-                <Line {...base} dataKey={s.clave + '__sol'} type="monotone" />
-                <Line {...prov} dataKey={s.clave + '__prov'} type="monotone" />
-              </React.Fragment>
-            );
-            return (
-              <React.Fragment key={s.clave}>
-                <Area {...base} dataKey={s.clave + '__sol'} type="monotone" fill={color} fillOpacity={0.12} />
-                <Area {...prov} dataKey={s.clave + '__prov'} type="monotone" fill={color} fillOpacity={0.05} />
-              </React.Fragment>
-            );
-          })}
-        </ComposedChart>
-      </ResponsiveContainer>
     </div>
   );
 }

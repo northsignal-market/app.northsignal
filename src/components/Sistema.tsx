@@ -1,7 +1,7 @@
 import { useCuentas } from '../lib/useCuentas';
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
-import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular } from './ui';
+import { PageShell, fetchJSON, fmtFechaCorta, fmtMoneda, Titular, Fallo, pedirJSON, motivoFallo } from './ui';
 import { useAppStore } from '../store/useAppStore';
 import { NOTION_STATES } from '../types';
 
@@ -62,6 +62,9 @@ export function Sistema() {
   const [healthData, setHealthData] = useState<any>(null);
   const [aprendizaje, setAprendizaje] = useState<any>({ impacto: [], tasa_acierto: [], reflexiones: [], propuestas: [] });
   const [tamano, setTamano] = useState<any[]>([]);
+  // `tamano.length === 0` significaba a la vez "todavía no llegó" y "la consulta
+  // falló", y el panel imprimía "Cargando…" para siempre en el segundo caso.
+  const [tamanoEstado, setTamanoEstado] = useState<{ fase: 'cargando' | 'listo'; error: string | null }>({ fase: 'cargando', error: null });
   // Salud completa: las 32 verificaciones, tareas caidas y cuarentena.
   const [saludSistema, setSaludSistema] = useState<any>(null);
   const [respaldo, setRespaldo] = useState<any>(null);
@@ -126,7 +129,10 @@ export function Sistema() {
   // Sin pestañas, todo carga una vez al entrar; Actualizar repite el lote entero.
   const cargarTodo = () => {
     fetchJSON<any>('/api/aprendizaje', null).then(d => d && setAprendizaje(d));
-    fetchJSON<any[]>('/api/salud-sistema', []).then(d => d.length && setTamano(d));
+    setTamanoEstado({ fase: 'cargando', error: null });
+    pedirJSON<any[]>('/api/salud-sistema')
+      .then(d => { setTamano(Array.isArray(d) ? d : []); setTamanoEstado({ fase: 'listo', error: null }); })
+      .catch(e => { setTamano([]); setTamanoEstado({ fase: 'listo', error: motivoFallo(e) }); });
     fetchJSON<any>('/api/salud', null).then(d => d && setSaludSistema(d));
     fetchJSON<any[]>('/api/latidos', []).then(d => setLatidos(Array.isArray(d) ? d : []));
     fetchJSON<any>('/api/respaldo', null).then(d => {
@@ -363,14 +369,27 @@ export function Sistema() {
                 <h2 className="text-[15px] font-medium text-[#EDEFF3]">Agentes</h2>
                 <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.">Último éxito de cada tarea contra su propia cadencia. El latido mide que corrió, no que escribió: el efecto lo vigilan las relaciones de verdad.</p>
               </div>
+              {/* La opacidad de la fila MULTIPLICA la de cada hijo, y eso no se ve
+                  leyendo una clase sola: con .45 acá, el contador de corridas (.40)
+                  quedaba en 0,18 efectivo = 1,72:1 sobre surface-2, ilegible. Atenuar
+                  "fuera de vigilancia" sigue siendo correcto, pero el piso lo fija el
+                  hijo más tenue: .80 x .70 = 0,56 → 4,81:1. El nombre de la tarea, a
+                  opacidad plena dentro de la fila, queda en 8,03:1.
+
+                  El comentario vive ACÁ y no adentro del map: en la posición de
+                  retorno de la flecha solo cabe UNA expresión, y un comentario
+                  JSX ahí se parsea como objeto literal y rompe el archivo. */}
               <div className="space-y-0.5">
                 {latidos.map((l: any) => (
-                  <div key={l.tarea} className={`flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs ${l.vigilado === false ? 'opacity-45' : ''}`} style={{ backgroundColor: l.en_silencio ? 'var(--bad-faint)' : 'var(--surface-2)' }}>
+                  <div key={l.tarea} className={`flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs ${l.vigilado === false ? 'opacity-80' : ''}`} style={{ backgroundColor: l.en_silencio ? 'var(--bad-faint)' : 'var(--surface-2)' }}>
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.en_silencio ? 'var(--bad)' : l.vigilado === false ? 'var(--border-strong)' : '#4ADE80' }} />
                     <span className={`w-52 shrink-0 truncate ${l.en_silencio ? 'text-[#EDEFF3] font-medium' : 'text-[#F5F7FA]'}`}>{String(l.tarea).replace(/_/g, ' ')}</span>
                     <span className="tabular text-[#F5F7FA] opacity-70 shrink-0 w-44">{l.horas_sin_ok != null ? `hace ${l.horas_sin_ok} h` : 'nunca corrió'} · tol. {l.tolerancia_horas} h</span>
-                    <span className="flex-1 text-[11px] text-[#F5F7FA] opacity-60 truncate" title={l.ultimo_error || ''}>{l.vigilado === false ? 'fuera de vigilancia · decisión registrada' : l.en_silencio ? (l.ultimo_error || 'sin error registrado: dejó de correr en silencio') : ''}</span>
-                    <span className="text-[10px] tabular text-[#F5F7FA] opacity-40 shrink-0">{l.corridas_ok} ok{l.corridas_falla > 0 ? ` · ${l.corridas_falla} fallas` : ''}</span>
+                    {/* .70 es el piso de estos dos: dentro de una fila atenuada dan 4,81:1
+                        y en una fila normal 6,54:1. La jerarquía la sigue marcando el
+                        tamaño (11px y 10px contra los 12px del nombre), no la penumbra. */}
+                    <span className="flex-1 text-[11px] text-[#F5F7FA] opacity-70 truncate" title={l.ultimo_error || ''}>{l.vigilado === false ? 'fuera de vigilancia · decisión registrada' : l.en_silencio ? (l.ultimo_error || 'sin error registrado: dejó de correr en silencio') : ''}</span>
+                    <span className="text-[10px] tabular text-[#F5F7FA] opacity-70 shrink-0">{l.corridas_ok} ok{l.corridas_falla > 0 ? ` · ${l.corridas_falla} fallas` : ''}</span>
                   </div>
                 ))}
               </div>
@@ -430,8 +449,10 @@ export function Sistema() {
                 {respaldoError}
               </p>
             )}
+            {/* .60 es el piso de #F5F7FA en esta app: 5,28:1 sobre surface-2, que es
+                la superficie más clara donde cae este gris. Con .40 daba 3,24:1. */}
             {!respaldo && !respaldoError && (
-              <p className="text-[11px] text-[#F5F7FA] opacity-40">Consultando…</p>
+              <p className="text-[11px] text-[#F5F7FA] opacity-60">Consultando…</p>
             )}
             <div className="flex flex-wrap gap-2 pt-1">
               {(respaldo?.archivos || []).map((a: any) => (
@@ -599,7 +620,7 @@ export function Sistema() {
                 <div className="space-y-1">
                   {reconciliaciones.slice(0, 8).map((r: any) => (
                     <div key={r.id} className="flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                      <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
+                      <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                       <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${r.veredicto === 'limpio' ? 'text-[#F5F7FA] opacity-60' : r.veredicto === 'corregido' ? 'text-[#EDEFF3]' : 'text-[#4D9DFF]'}`}>{r.veredicto}</span>
                       <span className="text-[#F5F7FA] flex-1">{r.account} · {r.capa} · {r.filas_comparadas} comparadas{r.filas_corregidas ? `, ${r.filas_corregidas} corregidas` : ''}{r.filas_insertadas ? `, ${r.filas_insertadas} insertadas` : ''}</span>
                       {r.detalle && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[280px] truncate" title={r.detalle}>{r.detalle}</span>}
@@ -615,8 +636,12 @@ export function Sistema() {
               Tamaño y crecimiento
             </h2>
             <p className="text-xs text-[#F5F7FA] opacity-60 line-clamp-1" title="Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.">Filas por tabla, ritmo diario y proyección a un año. LIMPIAR significa que el mantenimiento de los lunes no está corriendo. VIGILAR significa que es hora de particionar.</p>
-            {tamano.length === 0 ? (
+            {tamanoEstado.error ? (
+              <Fallo que="el tamaño de las tablas" motivo={tamanoEstado.error} onReintentar={cargarTodo} />
+            ) : tamanoEstado.fase === 'cargando' ? (
               <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Cargando…</p>
+            ) : tamano.length === 0 ? (
+              <p className="text-xs text-[#F5F7FA] opacity-50 italic py-3">Sin filas: la consulta respondió, pero no devolvió ninguna tabla.</p>
             ) : (
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-xs">
@@ -859,7 +884,7 @@ export function Sistema() {
               <div className="space-y-1">
                 {tReconciliador.vis.map((r: any) => (
                   <div key={r.id} className="flex items-start gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular shrink-0 w-24">{fmtFechaCorta(r.corrida)} {String(r.corrida).slice(11, 16)}</span>
                     <span className="text-[10px] uppercase tracking-wider shrink-0 w-24 text-[#F5F7FA] opacity-70">{r.accion.replace('_', ' ')}</span>
                     <span className="text-[#F5F7FA] opacity-80 flex-1">{r.account ? <span className="text-[#EDEFF3]">{r.account} · </span> : ''}{r.detalle}</span>
                     <span className={`text-[10px] shrink-0 ${r.aplicada ? 'text-[#F5F7FA] opacity-50' : 'text-[#4D9DFF]'}`}>{r.aplicada ? 'aplicada' : 'pendiente'}</span>
@@ -954,7 +979,7 @@ export function Sistema() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-50">{a.nivel === 'hoy' ? 'Hoy' : a.nivel === 'semana' ? 'Esta semana' : 'De fondo'}</span>
-                          <span className="text-[10px] text-[#F5F7FA] opacity-40">{a.account || 'Sistema'} · {a.origen}</span>
+                          <span className="text-[10px] text-[#F5F7FA] opacity-60">{a.account || 'Sistema'} · {a.origen}</span>
                         </div>
                         <div className="text-xs text-[#EDEFF3] font-medium mt-0.5">{a.titulo}</div>
                         {a.detalle && <div className="text-[11px] text-[#F5F7FA] opacity-70">{a.detalle}</div>}
@@ -992,7 +1017,7 @@ export function Sistema() {
               <div className="space-y-1">
                 {tEjecuciones.vis.map((e: any) => (
                   <div key={e.id} className="flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <span className="text-[10px] text-[#F5F7FA] opacity-40 tabular shrink-0 w-24">{fmtFechaCorta(e.aprobada_el)} {String(e.aprobada_el).slice(11, 16)}</span>
+                    <span className="text-[10px] text-[#F5F7FA] opacity-60 tabular shrink-0 w-24">{fmtFechaCorta(e.aprobada_el)} {String(e.aprobada_el).slice(11, 16)}</span>
                     <span className={`text-[10px] uppercase tracking-wider shrink-0 w-24 ${e.estado === 'ejecutada' ? 'text-[#EDEFF3]' : e.estado === 'fallida' ? 'text-[#F97066]' : 'text-[#F5F7FA] opacity-60'}`}>{e.estado}{e.modo === 'simular' ? ' (sim)' : ''}{e.por_politica ? ' · política' : ''}</span>
                     <span className="text-[#F5F7FA] flex-1">{e.account} · {e.tipo.replace(/_/g, ' ')} · <span className="text-[#EDEFF3]">{e.keyword || e.ad_id || (e.valor_actual != null ? `${e.valor_actual} → ${e.valor_nuevo ?? 'sin objetivo'}` : e.estrategia_destino || e.etiqueta || '—')}</span> en {e.campana}{e.grupo ? ` › ${e.grupo}` : ''}</span>
                     {e.resultado && <span className="text-[10px] text-[#F5F7FA] opacity-50 max-w-[260px] truncate" title={e.resultado}>{e.resultado}</span>}
@@ -1017,13 +1042,15 @@ export function Sistema() {
                 </button>
               </label>
             </div>
+            {/* Mismo multiplicador que en Agentes: .70 acá x .40 de la nota daban
+                2,30:1. Con .80 el hijo más tenue (.70) queda en 4,81:1 sobre surface-2. */}
             <div className="space-y-2">
               {politicas.politicas.map((p: any) => (
-                <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-70' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
+                <div key={p.tipo} className={`p-3 rounded-xl space-y-2 ${!p.activa ? 'opacity-80' : ''}`} style={{ backgroundColor: 'var(--surface-2)', border: p.activa && politicas.general ? '1px solid var(--primary)' : '1px solid transparent' }}>
                   <div className="flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={p.activa} onChange={e => guardarPolitica(p.tipo, { activa: e.target.checked })} className="accent-[#0062CC]" /><span className="text-xs font-medium text-[#EDEFF3]">{({ negativa_grupo: 'Negativas a nivel de grupo', negativa_campana: 'Negativas a nivel de campaña', pausar_keyword: 'Pausar keywords', pausar_anuncio: 'Pausar anuncios', cambiar_concordancia: 'Cambiar concordancia de keywords' } as any)[p.tipo]}</span></label>
                     <div className="flex p-0.5 rounded-md ml-auto" style={{ backgroundColor: 'transparent', border: '1px solid var(--border)' }}>
-                      {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
+                      {(['simular', 'ejecutar'] as const).map(m => <button key={m} onClick={() => guardarPolitica(p.tipo, { modo: m })} className={`px-2 py-0.5 rounded text-[10px] ${p.modo === m ? 'bg-[#0062CC] text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-70'}`}>{m === 'simular' ? 'Solo simular' : 'Ejecutar de verdad'}</button>)}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-[#F5F7FA]">
@@ -1036,11 +1063,11 @@ export function Sistema() {
                       <label key={c} className="flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={(p.cuentas || []).includes(c)} onChange={e => guardarPolitica(p.tipo, { cuentas: e.target.checked ? [...(p.cuentas || []), c] : (p.cuentas || []).filter((x: string) => x !== c) })} className="accent-[#0062CC]" />{c}</label>
                     ))}</div>
                   </div>
-                  {p.nota && <p className="text-[10px] text-[#F5F7FA] opacity-40">{p.nota}</p>}
+                  {p.nota && <p className="text-[10px] text-[#F5F7FA] opacity-70">{p.nota}</p>}
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-[#F5F7FA] opacity-40">Cada ejecución automática queda en Ejecuciones con la marca "por política", en tu bitácora, y como comentario en el accionable. Presupuesto, puja y conversiones nunca entran acá.</p>
+            <p className="text-[10px] text-[#F5F7FA] opacity-60">Cada ejecución automática queda en Ejecuciones con la marca "por política", en tu bitácora, y como comentario en el accionable. Presupuesto, puja y conversiones nunca entran acá.</p>
           </div>
 
           {/* Cambios de configuración detectados */}

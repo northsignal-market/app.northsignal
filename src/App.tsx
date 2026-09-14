@@ -85,13 +85,17 @@ function App() {
   // Estado de servidor por TanStack Query: el briefing revalida al volver a la
   // pestaña y cada 5 min de fondo; la salud del header se DERIVA, no se copia.
   const qc = useQueryClient();
-  const { data: briefingApp } = useJSON<any>('/api/briefing', null, { refetchMs: 300_000 });
+  const { data: briefingApp, error: errorBriefingApp } = useJSON<any>('/api/briefing', null, { refetchMs: 300_000 });
   const salud = React.useMemo(() => {
+    // Si el briefing no contesta, el header NO puede decir que todo está bien:
+    // sería derivar un veredicto de un hueco. `ok: false` enciende el punto del
+    // menú, que es lo correcto — algo no se sabe, andá a mirar.
+    if (errorBriefingApp) return { ok: false, pend: 0, texto: 'Estado sin confirmar', detalle: errorBriefingApp };
     const b = briefingApp;
     if (!b) return null;
     const pend = (b.accionables_listos?.length || 0) + (b.accionables_por_confirmar || 0) + (b.reportes_por_aprobar?.length || 0) + (b.alertas_hoy?.length || 0);
-    return { ok: b.datos_al_dia !== false, pend, texto: b.datos_al_dia === false ? 'Datos con problema' : pend > 0 ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : 'Datos al día · nada pendiente' };
-  }, [briefingApp]);
+    return { ok: b.datos_al_dia !== false, pend, detalle: null as string | null, texto: b.datos_al_dia === false ? 'Datos con problema' : pend > 0 ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : 'Datos al día · nada pendiente' };
+  }, [briefingApp, errorBriefingApp]);
   const [urlBriefId, setUrlBriefId] = useState<string | undefined>(undefined);
   // Banda de aviso cuando NO estás en producción. Sin esto es imposible saber a
   // simple vista si lo que estás mirando escribe en la cuenta real o no.
@@ -353,7 +357,7 @@ function App() {
             {/* Estado del sistema: un punto. El texto solo cuando dice algo (problema
                 o pendientes); "todo bien" no necesita ocupar lugar permanente. */}
             {salud && (
-              <span className="flex items-center gap-1.5 text-[11px] tabular" title={salud.texto + ' · Detalle en Sistema › Salud'}>
+              <span className="flex items-center gap-1.5 text-[11px] tabular" title={salud.detalle ? `${salud.texto}: ${salud.detalle} No es que esté todo bien — es que no se pudo preguntar.` : salud.texto + ' · Detalle en Sistema › Salud'}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: salud.ok ? '#4ADE80' : 'var(--warn)', boxShadow: salud.ok ? 'none' : '0 0 6px var(--warn)' }} />
                 {/* Canónico + 1 eco: el número de pendientes ya vive en el badge de
                     la Bandeja; el header solo habla cuando hay un problema. */}
@@ -396,7 +400,7 @@ function App() {
 
         {/* Main View Area */}
         <main className="flex-1 overflow-y-auto relative custom-scrollbar">
-          <React.Suspense fallback={<div className="p-8 text-xs text-[#F5F7FA] opacity-40">Cargando…</div>}>
+          <React.Suspense fallback={<div className="p-8 text-xs text-[#F5F7FA] opacity-60">Cargando…</div>}>
           {/* Cada pantalla con su propio límite: si una falla, las demás siguen. */}
           {activeTab === 'bandeja' && (
             <LimiteDeError nombre="Bandeja">

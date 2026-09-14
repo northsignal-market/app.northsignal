@@ -180,7 +180,7 @@ export function CommandPalette({
                     {r.title}
                   </span>
                 </div>
-                <ChevronRight size={14} className={`shrink-0 ${i === selIdx ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-40 group-hover:text-[#EDEFF3]'}`} />
+                <ChevronRight size={14} className={`shrink-0 ${i === selIdx ? 'text-[#EDEFF3]' : 'text-[#F5F7FA] opacity-60 group-hover:text-[#EDEFF3]'}`} />
               </button>
             ))
           )}

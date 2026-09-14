@@ -122,7 +122,7 @@ export function ReportesEditor({ activeClient }: Props) {
                 <ExternalLink size={12} className="text-[#4D9DFF] shrink-0" />
                 <a href={link} target="_blank" rel="noreferrer" className="text-[#EDEFF3] truncate hover:underline">{link}</a>
                 <button aria-label="Copiar el link del reporte" title="Copiar el link del reporte" onClick={copiarLink} className="ml-auto text-[#F5F7FA] opacity-60 hover:opacity-100 flex items-center gap-1 shrink-0"><Copy size={11} /> copiar</button>
-                <span className="text-[#F5F7FA] opacity-40 shrink-0">{sel.vistas ? `${sel.vistas} vista${sel.vistas !== 1 ? 's' : ''}` : 'sin abrir todavía'}</span>
+                <span className="text-[#F5F7FA] opacity-60 shrink-0">{sel.vistas ? `${sel.vistas} vista${sel.vistas !== 1 ? 's' : ''}` : 'sin abrir todavía'}</span>
               </div>
             )}
 
@@ -144,7 +144,7 @@ export function ReportesEditor({ activeClient }: Props) {
             {/* Números bloqueados */}
             <div className="flex flex-wrap gap-2">
               {kpi('gasto', fmtMoney)}{kpi('conversiones', v => Number(v).toLocaleString('es-CL'))}{kpi('cpa', fmtMoney)}{kpi('clics', v => Number(v).toLocaleString('es-CL'))}{kpi('ctr', v => Number(v).toFixed(2) + '%')}
-              <div className="self-center text-[10px] text-[#F5F7FA] opacity-40 max-w-[220px]">Estos números salen de Supabase para el período; no se editan. Si no cuadran, el problema está en los datos, no en el reporte.</div>
+              <div className="self-center text-[10px] text-[#F5F7FA] opacity-60 max-w-[220px]">Estos números salen de Supabase para el período; no se editan. Si no cuadran, el problema está en los datos, no en el reporte.</div>
             </div>
 
             {/* Vista previa PDF o editor por bloques */}
@@ -164,15 +164,15 @@ export function ReportesEditor({ activeClient }: Props) {
                     )}
                     {(b.vinetas || []).map((v, k) => (
                       <div key={k} className="flex items-start gap-2">
-                        <span className="text-[#F5F7FA] opacity-40 pt-1.5">–</span>
+                        <span className="text-[#F5F7FA] opacity-60 pt-1.5">–</span>
                         <textarea aria-label="V" value={v} disabled={!editable} onChange={e => setBloque(i, { vinetas: b.vinetas!.map((x, j) => j === k ? e.target.value : x) })} rows={Math.max(1, Math.ceil(v.length / 110))} className="flex-1 bg-transparent px-2 py-1 rounded-lg text-xs text-[#F5F7FA] leading-relaxed resize-y focus:outline-none focus:border-[var(--primary-text)] disabled:opacity-70" style={{ border: '1px solid transparent' }} onFocus={e => (e.target.style.borderColor = 'var(--border)')} onBlur={e => (e.target.style.borderColor = 'transparent')} />
-                        {editable && <button onClick={() => setBloque(i, { vinetas: b.vinetas!.filter((_, j) => j !== k) })} className="text-[#F5F7FA] opacity-30 hover:opacity-100 pt-1" title="Quitar viñeta">×</button>}
+                        {editable && <button onClick={() => setBloque(i, { vinetas: b.vinetas!.filter((_, j) => j !== k) })} className="text-[#F5F7FA] opacity-60 hover:opacity-100 pt-1" title="Quitar viñeta">×</button>}
                       </div>
                     ))}
                     {editable && <button onClick={() => setBloque(i, { vinetas: [...(b.vinetas || []), ''] })} className="text-[10px] text-[#F5F7FA] opacity-50 hover:opacity-100">+ viñeta</button>}
                   </div>
                 ))}
-                {editable && bloques.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40">Guardar crea una versión. Regenerar una sección reescribe solo esa, con los datos y lo que escribiste en las demás; podés darle una instrucción.</p>}
+                {editable && bloques.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-60">Guardar crea una versión. Regenerar una sección reescribe solo esa, con los datos y lo que escribiste en las demás; podés darle una instrucción.</p>}
               </div>
             )}
 

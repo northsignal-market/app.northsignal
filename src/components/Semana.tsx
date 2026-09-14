@@ -13,6 +13,7 @@ import {
   Titular, Nota, Pista, Riel, RielTramo,
   RangoFechas, rangoPreset, type Rango, hoyLocal,
   fmtMoneda, fmtMonedaCorta, fmtNum, fmtFechaCorta, fetchJSON, useJSON,
+  Fallo, pedirJSON, motivoFallo,
 } from './ui';
 import { leerPlan, COLOR_ESTADO, abrirTextoAgente, type PlanLectura } from '../lib/lectura';
 import { Bullet, GaugeTicks } from './graficos-pulse';
@@ -46,6 +47,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
   const [changesList, setChangesList] = useState<any[]>([]);
   const [newTerms, setNewTerms] = useState<any[]>([]);
   const [loadingTerms, setLoadingTerms] = useState(false);
+  const [errorTerms, setErrorTerms] = useState<string | null>(null);
   const [anomalias, setAnomalias] = useState<any>({ serie: [], anomalias: [], titulo: '' });
   const [horaDia, setHoraDia] = useState<any>({ celdas: [], mejor: null, peor_sin_conv: null });
   const [convGrupo, setConvGrupo] = useState<any>({ grupos: [], filas: [], hallazgo: null });
@@ -81,12 +83,21 @@ export function Semana({ onOpenActionable }: SemanaProps) {
     const data = await fetchJSON<any>(`/api/todos_los_cambios?client=${activeClient}`, null);
     if (data?.changes) setChangesList(data.changes);
   };
+  // Con fetchJSON, una consulta caída y una lista de verdad vacía llegaban acá
+  // iguales, y el panel de abajo firmaba "las negativas están cubriendo" sin
+  // haber podido mirar. Ese veredicto es el que hace que nadie revise.
   const fetchNewTerms = async () => {
     setLoadingTerms(true);
     setNewTerms([]);
-    const data = await fetchJSON<any>(`/api/daily/terminos_nuevos?client=${activeClient}`, null);
-    if (data?.terms) setNewTerms(data.terms);
-    setLoadingTerms(false);
+    setErrorTerms(null);
+    try {
+      const data = await pedirJSON<any>(`/api/daily/terminos_nuevos?client=${activeClient}`);
+      setNewTerms(Array.isArray(data?.terms) ? data.terms : []);
+    } catch (e) {
+      setErrorTerms(motivoFallo(e));
+    } finally {
+      setLoadingTerms(false);
+    }
   };
   useEffect(() => { fetchDailyOverview(); fetchChanges(); fetchNewTerms(); }, [activeClient]);
 
@@ -624,11 +635,14 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                 </tr></thead>
                 <tbody>
                   {convGrupo.filas.map((f: any) => (
-                    <tr key={f.date} style={{ borderBottom: '1px solid var(--border)' }} className={f.madurez === 'provisional' ? 'opacity-50' : ''}>
+                    <tr key={f.date} style={{ borderBottom: '1px solid var(--border)' }} className={f.madurez === 'provisional' ? 'opacity-80' : ''}>
                       <td className="py-1 px-2 tabular text-[#F5F7FA]">{new Date(f.date + 'T12:00').toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit' })}{f.madurez === 'provisional' ? ' ·' : ''}</td>
                       {convGrupo.grupos.map((g: string) => {
                         const v = f[g] || 0;
-                        return <td key={g} className={`py-1 px-2 tabular text-right ${v === 0 ? 'text-[#F5F7FA] opacity-30' : 'text-[#EDEFF3] font-medium'}`}>{v === 0 ? '·' : v}</td>;
+                        // La opacidad de la fila provisional multiplica a la de la celda:
+                        // .50 x .30 daban 0,15 efectivo = 1,58:1. Con .80 arriba y .70 acá
+                        // el punto de "cero conversiones" queda en 4,81:1 sobre surface-2.
+                        return <td key={g} className={`py-1 px-2 tabular text-right ${v === 0 ? 'text-[#F5F7FA] opacity-70' : 'text-[#EDEFF3] font-medium'}`}>{v === 0 ? '·' : v}</td>;
                       })}
                     </tr>
                   ))}
@@ -676,7 +690,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                       })}
                     </div>
                   ))}
-                  <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-2">Intensidad = <Termino t="Gasto">gasto</Termino> · punto = conversión.</p>
+                  <p className="text-[10px] text-[#F5F7FA] opacity-60 pt-2">Intensidad = <Termino t="Gasto">gasto</Termino> · punto = conversión.</p>
                 </div>
               </div>
             );
@@ -690,6 +704,9 @@ export function Semana({ onOpenActionable }: SemanaProps) {
             const conConv = conGasto.filter((t: any) => Number(t.conversiones_acumuladas || 0) > 0).sort((x: any, y: any) => Number(y.conversiones_acumuladas) - Number(x.conversiones_acumuladas));
             const gastoSinConv = sinConv.reduce((acc: number, t: any) => acc + Number(t.gasto_acumulado || 0), 0);
             if (loadingTerms) return <Vacio>Cargando…</Vacio>;
+            // El error va ANTES del vacío: sin esta línea, un fetch fallado
+            // imprimía el veredicto positivo de abajo sobre cero filas.
+            if (errorTerms) return <Fallo que="las búsquedas nuevas" motivo={errorTerms} onReintentar={fetchNewTerms} />;
             if (conGasto.length === 0) return <Vacio>Ninguna búsqueda nueva con gasto en los últimos 14 días. Es buena señal: las negativas están cubriendo.</Vacio>;
             return (
               <>
@@ -712,7 +729,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                         </div>
                       </div>
                     ))}
-                    {sinConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Antes de agregar una negativa, buscá el término en Datos › Términos con 14 días: si alguna variante convirtió, la bloquearía también.</p>}
+                    {sinConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-60 pt-1">Antes de agregar una negativa, buscá el término en Datos › Términos con 14 días: si alguna variante convirtió, la bloquearía también.</p>}
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-baseline justify-between">
@@ -731,7 +748,7 @@ export function Semana({ onOpenActionable }: SemanaProps) {
                         </div>
                       </div>
                     ))}
-                    {conConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-40 pt-1">Si una convierte varias veces, vale como keyword exacta propia: así dejás de depender de la amplia.</p>}
+                    {conConv.length > 0 && <p className="text-[10px] text-[#F5F7FA] opacity-60 pt-1">Si una convierte varias veces, vale como keyword exacta propia: así dejás de depender de la amplia.</p>}
                   </div>
                 </div>
               </>

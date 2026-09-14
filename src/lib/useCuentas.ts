@@ -7,6 +7,7 @@
  * cliente es una fila en `cuentas` y nada más.
  */
 import { useEffect, useState } from 'react';
+import { pedirJSON, motivoFallo } from './red';
 
 export interface CuentaActiva {
   account: string;
@@ -19,15 +20,22 @@ export interface CuentaActiva {
 }
 
 let _cache: CuentaActiva[] | null = null;
+let _fallo: string | null = null;
 let _enVuelo: Promise<CuentaActiva[]> | null = null;
 
+/** Solo se cachea el ÉXITO.
+ *
+ *  Antes un 401 guardaba `[]` en `_cache` y, como `[]` es truthy, el corto
+ *  `if (_cache) return _cache` devolvía esa lista vacía para TODA la sesión:
+ *  ocho vistas sin cuentas, el selector en blanco, y ningún reintento posible
+ *  salvo recargar la página. Ahora la falla no se guarda — se guarda su motivo
+ *  para poder decirlo — y el próximo montaje vuelve a preguntar. */
 async function traer(): Promise<CuentaActiva[]> {
   if (_cache) return _cache;
   if (!_enVuelo) {
-    _enVuelo = fetch('/api/cuentas', { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : []))
-      .then((d: any) => { _cache = Array.isArray(d) ? d : []; return _cache!; })
-      .catch(() => [])
+    _enVuelo = pedirJSON<any>('/api/cuentas')
+      .then((d: any) => { _cache = Array.isArray(d) ? d : []; _fallo = null; return _cache!; })
+      .catch(e => { _fallo = motivoFallo(e); return []; })
       .finally(() => { _enVuelo = null; });
   }
   return _enVuelo;
@@ -40,11 +48,23 @@ async function traer(): Promise<CuentaActiva[]> {
 
 export function useCuentas() {
   const [cuentas, setCuentas] = useState<CuentaActiva[]>(_cache || []);
-  useEffect(() => { let vivo = true; traer().then(c => { if (vivo) setCuentas(c); }); return () => { vivo = false; }; }, []);
+  // Una lista vacía de cuentas puede ser "todavía no llegaron" o "no se pudieron
+  // traer". Sin distinguirlas, una pantalla sin cuentas se ve igual en los dos
+  // casos y el operador no sabe si esperar o volver a entrar.
+  const [error, setError] = useState<string | null>(_fallo);
+  const [cargando, setCargando] = useState(_cache == null);
+  useEffect(() => {
+    let vivo = true;
+    setCargando(_cache == null);
+    traer().then(c => { if (!vivo) return; setCuentas(c); setError(_fallo); setCargando(false); });
+    return () => { vivo = false; };
+  }, []);
   const nombres = cuentas.map(c => c.account);
   return {
     cuentas,
     nombres,
+    error,
+    cargando,
     moneda: (acc: string) => cuentas.find(c => c.account === acc)?.moneda || (acc === 'KAREDO' ? 'EUR' : acc === 'FRESH_MONKEE' ? 'USD' : 'CLP'),
     perfil: (acc: string) => cuentas.find(c => c.account === acc)?.perfil_analisis || 'negocio_unico',
     presupuesto: (acc: string) => cuentas.find(c => c.account === acc)?.presupuesto_diario ?? null,

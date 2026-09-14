@@ -963,14 +963,18 @@ var PulsoSchema = z3.object({
 function pulsoDisponible() {
   return !!anthropic;
 }
-async function correrPulso(cuenta, fecha2, input, reglasCuenta, parecidos = []) {
+async function correrPulso(cuenta, fecha2, input, reglasCuenta, parecidos = [], memoria) {
   if (!anthropic) return { cuenta, fecha: fecha2, tokens_in: 0, tokens_out: 0, costo_usd: 0, error: "ANTHROPIC_API_KEY no configurada" };
   const plan = input?.plan;
   const sinPlan = !plan;
   const memoriaTxt = parecidos.length ? `
 
 EPISODIOS PARECIDOS (encontrados por b\xFAsqueda sem\xE1ntica en la memoria del sistema; usalos para conecta_con solo si de verdad se parecen):
-${parecidos.map((m) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join("\n")}` : "";
+${parecidos.map((m) => `- [${m.fecha}] (${m.tipo}, similitud ${m.similitud}) ${m.texto}`).join("\n")}` : memoria && memoria.buscada && memoria.ok && memoria.indexada ? `
+
+EPISODIOS PARECIDOS: la b\xFAsqueda sem\xE1ntica corri\xF3 sobre la memoria indexada del sistema y no encontr\xF3 ning\xFAn episodio parecido anterior al ${fecha2}. Eso es un hecho: pod\xE9s decir que no hay antecedente registrado.` : `
+
+MEMORIA NO CONSULTADA: ${memoria?.motivo || "la b\xFAsqueda de episodios parecidos no se pudo hacer"}. NO sab\xE9s si esto pas\xF3 antes. No escribas que es la primera vez, ni que no hay antecedentes, ni que no se repite: dej\xE1 conecta_con en null salvo que lo sostengan los datos del propio input (pulsos_previos, estado_cuenta).`;
   const system = `Sos el analista diario de la cuenta de Google Ads ${cuenta}. Sos el ciclo r\xE1pido de un sistema de dos ciclos: el lunes, un analista semanal escribi\xF3 un PLAN con indicadores a vigilar, umbrales, hip\xF3tesis y condiciones de escalamiento. Tu trabajo es reportar EVIDENCIA contra ese plan para el d\xEDa ${fecha2}, no reinterpretar la estrategia.
 
 REGLAS DE LA CUENTA (no negociables):
@@ -1567,13 +1571,19 @@ async function embeberPendientes(supabase2) {
 }
 async function parecidoA(supabase2, texto, account, k = 5, excluirDesde = null) {
   const v = await embed([texto]);
-  if (!v) return [];
+  if (!v) return { ok: false, parecidos: [], indexada: false, error: "no se pudo calcular el embedding del resumen (Gemini)" };
   const { data, error } = await supabase2.rpc("parecido_a", { p_embedding: JSON.stringify(v[0]), p_account: account, p_k: k, p_excluir_desde: excluirDesde });
   if (error) {
     console.error("[parecido_a] " + error.message);
-    return [];
+    return { ok: false, parecidos: [], indexada: false, error: error.message };
   }
-  return data || [];
+  const parecidos = data || [];
+  if (parecidos.length) return { ok: true, parecidos, indexada: true };
+  let q = supabase2.from("memoria").select("id").not("embedding", "is", null).limit(1);
+  if (account) q = q.eq("account", account);
+  const { data: indice, error: errIdx } = await q;
+  if (errIdx) return { ok: true, parecidos: [], indexada: false, error: `no se pudo verificar si la memoria est\xE1 indexada: ${errIdx.message}` };
+  return { ok: true, parecidos: [], indexada: !!indice?.length };
 }
 
 // src/server/auth/session.ts
@@ -1626,6 +1636,8 @@ function ipDe(req) {
   if (typeof fwd === "string" && fwd) return fwd.split(",")[0].trim();
   return req.ip || req.socket?.remoteAddress || "desconocida";
 }
+var MOTIVO_SIN_VERIFICAR = "verificacion no disponible";
+var ESPERA_SIN_VERIFICAR = 30;
 async function verificarLimite(supabase2, clave, ruta, max = 20, ventanaMin = 15) {
   if (!supabase2) return { permitido: true };
   try {
@@ -1635,26 +1647,36 @@ async function verificarLimite(supabase2, clave, ruta, max = 20, ventanaMin = 15
       p_max: max,
       p_ventana: `${ventanaMin} minutes`
     });
-    if (error) return { permitido: true };
+    if (error) return sinVerificar(ruta, error.message || String(error));
     return {
       permitido: !!data?.permitido,
       motivo: data?.motivo,
       esperar: data?.esperar_segundos
     };
-  } catch {
-    return { permitido: true };
+  } catch (e) {
+    return sinVerificar(ruta, e?.message || String(e));
   }
+}
+function sinVerificar(ruta, detalle) {
+  console.error(
+    `[limite] NO SE PUDO VERIFICAR el l\xEDmite de ${ruta}: ${detalle}. Se cierra la puerta (espera ${ESPERA_SIN_VERIFICAR}s). Si esto se repite, el limitador est\xE1 ciego y hay que mirar la base antes que cualquier otra cosa.`
+  );
+  return { permitido: false, motivo: MOTIVO_SIN_VERIFICAR, esperar: ESPERA_SIN_VERIFICAR };
 }
 async function registrarIntento(supabase2, clave, ruta, exito, detalle) {
   if (!supabase2) return;
   try {
-    await supabase2.rpc("registrar_intento", {
+    const { error } = await supabase2.rpc("registrar_intento", {
       p_clave: clave,
       p_ruta: ruta,
       p_exito: exito,
       p_detalle: detalle || null
     });
-  } catch {
+    if (error) throw error;
+  } catch (e) {
+    console.error(
+      `[limite] no se pudo registrar el intento ${exito ? "exitoso" : "FALLIDO"} en ${ruta}: ${e?.message || String(e)}. Mientras esto pase, el bloqueo progresivo est\xE1 ciego.`
+    );
   }
 }
 
@@ -1666,10 +1688,15 @@ function crearAuthRouter(supabase2) {
     const ip = ipDe(req);
     const v = await verificarLimite(supabase2, ip, "/login", 10, 15);
     if (!v.permitido) {
-      return res.status(429).json({
-        error: v.motivo === "demasiados intentos fallidos" ? `Demasiados intentos fallidos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).` : `Demasiados intentos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`,
-        esperar_segundos: v.esperar
-      });
+      let mensaje;
+      if (v.motivo === MOTIVO_SIN_VERIFICAR) {
+        mensaje = `No se pudo verificar el l\xEDmite de intentos, as\xED que el acceso queda cerrado por precauci\xF3n. Prob\xE1 de nuevo en ${v.esperar || 30} segundos.`;
+      } else if (v.motivo === "demasiados intentos fallidos") {
+        mensaje = `Demasiados intentos fallidos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`;
+      } else {
+        mensaje = `Demasiados intentos. Prob\xE1 de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`;
+      }
+      return res.status(429).json({ error: mensaje, esperar_segundos: v.esperar });
     }
     if (!process.env.APP_ACCESS_TOKEN) {
       return res.status(500).json({ error: "APP_ACCESS_TOKEN no est\xE1 configurado en el servidor" });
@@ -2050,12 +2077,13 @@ function createApp() {
       if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
       const { data, error } = await supabase.from("v_todos_los_cambios").select("*").ilike("account", client).order("fecha", { ascending: false }).limit(50);
       if (error) {
-        console.error("Error consultando v_todos_los_cambios:", error);
-        return res.json({ changes: [] });
+        console.error(`[500] GET /api/todos_los_cambios \u2014 v_todos_los_cambios: ${error.message}`);
+        return res.status(500).json({ error: `No pude leer los cambios: ${error.message}` });
       }
       res.json({ changes: data || [] });
     } catch (e) {
-      res.json({ changes: [] });
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
   app2.get("/api/daily/terminos_nuevos", async (req, res) => {
@@ -2064,12 +2092,13 @@ function createApp() {
       if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
       const { data: newTerms, error: termsErr } = await supabase.from("v_terminos_nuevos").select("*").ilike("account", client).order("gasto_acumulado", { ascending: false }).limit(20);
       if (termsErr) {
-        console.error("Terms error:", termsErr);
-        return res.json({ terms: [] });
+        console.error(`[500] GET /api/daily/terminos_nuevos \u2014 v_terminos_nuevos: ${termsErr.message}`);
+        return res.status(500).json({ error: `No pude leer los t\xE9rminos nuevos: ${termsErr.message}` });
       }
       res.json({ terms: newTerms || [] });
     } catch (e) {
-      res.json({ terms: [] });
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
   app2.get("/api/notion/clients", async (req, res) => {
@@ -2329,11 +2358,17 @@ function createApp() {
     const limit = Math.min(Number(req.query.limit) || 25, 1e3);
     const offset = Number(req.query.offset) || 0;
     let filters = [];
-    try {
-      if (req.query.filters) {
-        filters = JSON.parse(req.query.filters);
+    if (req.query.filters) {
+      let parseado;
+      try {
+        parseado = JSON.parse(req.query.filters);
+      } catch (e) {
+        return res.status(400).json({ error: `El par\xE1metro "filters" no es JSON v\xE1lido (${String(e.message).slice(0, 120)}). La consulta no corre sin filtrar: te devolver\xEDa todo como si estuviera filtrado.` });
       }
-    } catch (e) {
+      if (!Array.isArray(parseado)) {
+        return res.status(400).json({ error: '"filters" tiene que ser un array de filtros. La consulta no corre sin filtrar.' });
+      }
+      filters = parseado;
     }
     const cols = await columnasDeVista(view);
     const orderValido = order_by && cols.has(order_by) ? order_by : void 0;
@@ -2587,14 +2622,17 @@ function createApp() {
             prioridad: a.priority,
             naturaleza: a.naturaleza,
             origen: a.origen || null,
+            // Los campos se llaman como los nombra el objeto de arriba (detectado, semanas_pendiente).
+            // Con a.detected y a.weeks_pending —que nunca existieron— el upsert pisaba con null
+            // dos columnas que el resto del sistema lee como si fueran el dato de Notion.
             entidad: a.entidad || null,
             causa_raiz: a.causa_raiz || null,
             por_que: (a.why || "").slice(0, 1e3),
-            detectado: a.detected || null,
+            detectado: a.detectado || null,
             ejecutado_el: a.ejecutado_el || null,
             vence: a.vence,
             reemplazado_por: a.reemplazado_por,
-            semanas_pendiente: a.weeks_pending ?? null,
+            semanas_pendiente: a.semanas_pendiente ?? null,
             revision_ia: a.revision_ia || null,
             ultima_edicion: a.last_edited,
             sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
@@ -2922,20 +2960,23 @@ SI DISCREPO: EN QU\xC9 EXACTAMENTE
           console.error("Error creating confirmation comment:", comErr);
         }
       }
+      const fallosMemoria = [];
       if (targetStatus === NOTION_STATES.HECHO && req.body.actionable) {
         const actionable = req.body.actionable;
         if (supabase) {
           try {
             const entityName = actionable.where || actionable.title || "Unknown Entity";
             const cooldownDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1e3).toISOString();
-            await supabase.from("entity_states").insert([{
+            const { error: errCooldown } = await supabase.from("entity_states").insert([{
               account: actionable.client,
               entity_name: entityName,
               cooldown_until: cooldownDate
             }]);
+            if (errCooldown) throw new Error(errCooldown.message);
             console.log("Cooldown applied for entity:", entityName);
           } catch (err) {
-            console.error("Error applying cooldown", err);
+            console.error("[cooldown] no se pudo aplicar el cooldown: " + (err?.message || err));
+            fallosMemoria.push(`cooldown de entidad: ${err?.message || err}`);
           }
           if (ai) {
             try {
@@ -2948,7 +2989,7 @@ Nota: ${resolutionNote || ""}`;
                 contents: textToEmbed
               });
               const embedding = embedRes.embeddings[0].values;
-              await supabase.from("actionables_memory").insert([{
+              const { error: errMem } = await supabase.from("legacy_actionables_memory").insert([{
                 notion_id: req.params.id,
                 client: actionable.client,
                 title: actionable.title,
@@ -2956,12 +2997,17 @@ Nota: ${resolutionNote || ""}`;
                 resolucion: actionable.where,
                 embedding
               }]);
+              if (errMem) throw new Error(errMem.message);
               console.log("Memory vector saved for actionable:", req.params.id);
             } catch (err) {
-              console.error("Error creating memory embedding", err);
+              console.error("[memoria] no se pudo guardar el vector: " + (err?.message || err));
+              fallosMemoria.push(`memoria sem\xE1ntica: ${err?.message || err}`);
             }
           }
         }
+      }
+      if (fallosMemoria.length) {
+        return res.json({ success: false, data: response, notion_actualizado: true, error: `El accionable se actualiz\xF3 en Notion, pero no se guard\xF3: ${fallosMemoria.join(" | ")}`, advertencias: fallosMemoria });
       }
       res.json({ success: true, data: response });
     } catch (e) {
@@ -2976,12 +3022,13 @@ Nota: ${resolutionNote || ""}`;
       if (!supabase) return res.status(500).json({ error: "Supabase credentials missing" });
       const { data, error } = await supabase.from("v_todos_los_cambios").select("*").ilike("account", client).order("fecha", { ascending: false }).order("hora", { ascending: false }).limit(30);
       if (error) {
-        console.error("Error consultando v_todos_los_cambios:", error);
-        return res.json({ changes: [] });
+        console.error(`[500] GET /api/notion/actionables/${req.params.id}/recent_changes \u2014 v_todos_los_cambios: ${error.message}`);
+        return res.status(500).json({ error: `No pude leer los cambios recientes: ${error.message}` });
       }
       res.json({ changes: data || [] });
     } catch (e) {
-      res.json({ changes: [] });
+      console.error(`[500] ${req?.method || ""} ${req?.originalUrl || ""} \u2014 ${e.message}`);
+      res.status(500).json({ error: e.message });
     }
   });
   app2.post("/api/operator_log", async (req, res) => {
@@ -4543,16 +4590,24 @@ Reporte completo: ${url}`;
   }
   async function aplicarPoliticaAuto(account, notionId, titulo, entidad, origen, confianza, comoHacerlo) {
     if (!supabase) return null;
-    const { detectarTipoAuto: detectarTipoAuto2, extraerKeyword: extraerKeyword2, concordanciaDestino: concordanciaDestino2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
+    const { detectarTipoAuto: detectarTipoAuto2 } = await Promise.resolve().then(() => (init_tipoAuto(), tipoAuto_exports));
+    const { tipoAutoDesde: tipoAutoDesde2 } = await Promise.resolve().then(() => (init_accion(), accion_exports));
     const tipo = detectarTipoAuto2(titulo, comoHacerlo);
     if (!tipo) return null;
     const { data: modo } = await supabase.rpc("politica_aplica", { p_account: account, p_tipo: tipo, p_origen: origen, p_confianza: confianza, p_entidad: entidad });
     if (!modo) return null;
     const { data: espA } = await supabase.from("accionables_espejo").select("accion, accion_valida").eq("notion_id", notionId).maybeSingle();
-    const lote = espA?.accion_valida && espA.accion?.objeto?.keywords?.length > 1 ? espA.accion.objeto.keywords : null;
-    const kw = lote ? lote[0] : extraerKeyword2(titulo, entidad);
-    if (!kw && tipo !== "pausar_anuncio") return null;
-    const destino = tipo === "cambiar_concordancia" ? concordanciaDestino2(titulo) : null;
+    if (!espA?.accion_valida || !espA.accion) return null;
+    const accion = espA.accion;
+    if (tipoAutoDesde2(accion) !== tipo) return null;
+    const obj = accion.objeto || {};
+    const par = accion.parametros || {};
+    if (tipo === "pausar_anuncio") return null;
+    const kws = Array.isArray(obj.keywords) ? obj.keywords.filter(Boolean).map((k) => String(k)) : [];
+    const lote = kws.length > 1 ? kws : null;
+    const kw = String(obj.keyword || kws[0] || "").trim();
+    if (!kw) return null;
+    const destino = tipo === "cambiar_concordancia" ? par.match_type_destino || null : null;
     if (tipo === "cambiar_concordancia" && !destino) return null;
     let loteOk = null;
     if (lote && tipo === "pausar_keyword") {
@@ -4563,8 +4618,9 @@ Reporte completo: ${url}`;
       }
       if (!loteOk.length) return null;
     }
-    const r = await resolverKeyword(account, kw, `${entidad || ""} ${titulo}`);
+    const r = await resolverKeyword(account, kw, `${entidad || ""} ${obj.grupo || ""} ${obj.campana || ""}`);
     if (!r) return null;
+    const matchType = loteOk ? "ANY" : tipo.startsWith("negativa") ? obj.match_type || par.match_type_destino || "PHRASE" : r.match_type || obj.match_type || "PHRASE";
     const { data: bloqueo, error: errPv } = await supabase.rpc("prevuelo", { p_notion_id: notionId });
     if (errPv) {
       console.error("[politica] prevuelo fallo: " + errPv.message);
@@ -4578,7 +4634,7 @@ Reporte completo: ${url}`;
       return null;
     }
     const { data: avisosPol } = await supabase.rpc("prevuelo_avisos", { p_notion_id: notionId });
-    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: tipo === "cambiar_concordancia" ? "ANY" : /exact|exacta/i.test(titulo) ? "EXACT" : "PHRASE", match_type_destino: destino, modo: puedeEscribirAfuera().permitido ? modo : "simular", aprobada_por: "politica", por_politica: true });
+    await supabase.from("acciones_aprobadas").insert({ account, notion_id: notionId, tipo, campana: r.campana, grupo: loteOk ? null : r.grupo, keyword: loteOk ? null : kw, keywords: loteOk || (lote && tipo.startsWith("negativa") ? lote : null), match_type: matchType, match_type_destino: destino, nivel: par.nivel || null, modo: puedeEscribirAfuera().permitido ? modo : "simular", aprobada_por: "politica", por_politica: true });
     if (notion) {
       try {
         await notion.pages.update({ page_id: notionId, properties: { Estado: { select: { name: "En curso" } } } });
@@ -5172,8 +5228,11 @@ Reporte completo: ${url}`;
         detectado: p.Detectado?.date?.start || null,
         ejecutado_el: p["Ejecutado el"]?.date?.start || null,
         vence: p.Vence?.date?.start || null,
+        // "Revision IA" es un select en Notion, no rich_text: txt() solo mira rich_text/title
+        // y devolvía siempre ''. Como este cron es el último en escribir el espejo, la columna
+        // quedaba en null en las 79 filas. Se lee igual que en sincronizarEspejo.
         semanas_pendiente: p["Semanas pendiente"]?.number ?? null,
-        revision_ia: txt(p["Revision IA"]) || null,
+        revision_ia: p["Revision IA"]?.select?.name || null,
         ultima_edicion: page.last_edited_time,
         sincronizado: (/* @__PURE__ */ new Date()).toISOString(),
         url: page.url,
@@ -5658,12 +5717,27 @@ Reporte completo: ${url}`;
       const { data: cta } = await supabase.from("cuentas").select("reglas_dominio").eq("account", cuenta).maybeSingle();
       const reglas = cta?.reglas_dominio || getClientContext(cuenta) || "";
       let parecidos = [];
+      let memoria = { buscada: false, ok: false, indexada: false, motivo: null };
       try {
         const resumenHoy = [input?.anomalias_2d?.map((a) => a.explicacion).join(". "), input?.grupos_ayer?.slice(0, 4).map((g) => `${g.grupo} ${g.conv} conv ${g.clics} clics`).join("; "), input?.terminos_nuevos_con_gasto?.slice(0, 3).map((t) => t.t).join(", ")].filter(Boolean).join(" | ");
-        if (resumenHoy.length > 40) parecidos = await parecidoA(supabase, resumenHoy, cuenta, 5, fecha2);
-      } catch {
+        if (resumenHoy.length > 40) {
+          const b = await parecidoA(supabase, resumenHoy, cuenta, 5, fecha2);
+          parecidos = b.parecidos;
+          memoria = {
+            buscada: true,
+            ok: b.ok,
+            indexada: b.indexada,
+            motivo: !b.ok ? `la b\xFAsqueda sem\xE1ntica fall\xF3 (${b.error || "sin detalle"})` : !b.indexada ? `la b\xFAsqueda corri\xF3 pero ${cuenta} no tiene ning\xFAn episodio indexado en la memoria (hay filas en memoria sin embedding calculado), as\xED que no hab\xEDa con qu\xE9 comparar` : null
+          };
+          if (!b.ok || !b.indexada) console.error(`[pulso ${cuenta}] memoria sin resultado utilizable: ${b.error || "memoria sin indexar"}`);
+        } else {
+          memoria = { buscada: false, ok: false, indexada: false, motivo: "el d\xEDa no dej\xF3 resumen suficiente para buscar en la memoria (sin anomal\xEDas ni grupos ni t\xE9rminos nuevos)" };
+        }
+      } catch (e) {
+        memoria = { buscada: true, ok: false, indexada: false, motivo: `la b\xFAsqueda sem\xE1ntica cort\xF3 por error (${e?.message || e})` };
+        console.error(`[pulso ${cuenta}] memoria no consultada: ${e?.message || e}`);
       }
-      const r = await correrPulso(cuenta, fecha2, input, reglas, parecidos);
+      const r = await correrPulso(cuenta, fecha2, input, reglas, parecidos, memoria);
       if (r.error || !r.parsed) throw new Error(r.error || "sin salida");
       const p = r.parsed;
       const planId = input?.plan?.id || null;

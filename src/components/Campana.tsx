@@ -75,7 +75,7 @@ export function Campana({ onAbrir }: Props) {
               <div className="text-xs text-[#EDEFF3]"><span className="font-semibold">{actorDe(toast.actor).nombre}</span> {VERBOS_HUMANOS[toast.verbo || ''] || ''} <span className="opacity-80">{(toast.objeto || toast.titulo).slice(0, 60)}</span></div>
               {toast.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2 mt-0.5">{toast.texto}</div>}
             </div>
-            <button onClick={(e) => { e.stopPropagation(); setToast(null); }} className="text-[#F5F7FA] opacity-40 hover:opacity-100"><X size={12} /></button>
+            <button onClick={(e) => { e.stopPropagation(); setToast(null); }} className="text-[#F5F7FA] opacity-60 hover:opacity-100"><X size={12} /></button>
           </div>
         </div>, document.body)}
 
@@ -91,7 +91,7 @@ export function Campana({ onAbrir }: Props) {
           <div className="overflow-y-auto custom-scrollbar flex-1">
             {grupos.length === 0 ? (
               <div className="px-4 py-8 text-center">
-                <Bell size={18} className="mx-auto text-[#F5F7FA] opacity-30 mb-2" />
+                <Bell size={18} className="mx-auto text-[#F5F7FA] opacity-60 mb-2" />
                 <p className="text-xs text-[#EDEFF3]">{pestana === 'sinver' ? 'Nada nuevo.' : 'Sin actividad en 7 días.'}</p>
                 <p className="text-[11px] text-[#F5F7FA] opacity-50 mt-1">Tus compañeros te avisan acá cuando comentan, editan, proponen o ejecutan algo.</p>
               </div>
@@ -103,8 +103,14 @@ export function Campana({ onAbrir }: Props) {
                 const actores: string[] = Array.from(new Set<string>(g.items.map(i => i.actor || 'agente')));
                 return (
                   <div key={g.k}>
-                    {cab && <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-40">{s}</div>}
-                    <div className={`px-4 py-2.5 hover:bg-white/5 ${g.items.some(i => !i.leida_el) ? '' : 'opacity-60'}`} style={{ borderTop: '1px solid var(--border)' }}>
+                    {cab && <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[#F5F7FA] opacity-60">{s}</div>}
+                    {/* Atenuar lo ya leído está bien; lo que estaba mal es que esta
+                        opacidad MULTIPLICA la de cada hijo. Con .60 acá, el botón de
+                        "marcar visto" (.30) caía a 0,18 efectivo = 1,75:1, y la meta
+                        (cuenta · hace cuánto) a 2,13:1. Con .80 acá y .70 de piso abajo,
+                        lo más tenue queda en 5,42:1 sobre surface-1 y 4,81:1 sobre el
+                        surface-2 de los subítems. */}
+                    <div className={`px-4 py-2.5 hover:bg-white/5 ${g.items.some(i => !i.leida_el) ? '' : 'opacity-80'}`} style={{ borderTop: '1px solid var(--border)' }}>
                       <div className="flex items-start gap-2.5 cursor-pointer" onClick={() => varios ? setExpandido(x => ({ ...x, [g.k]: !exp })) : abrir(g.ultimo)}>
                         <div className="flex -space-x-1.5 shrink-0 pt-0.5">{actores.slice(0, 3).map(a => <Avatar key={a} actor={a} chico />)}</div>
                         <div className="min-w-0 flex-1">
@@ -112,14 +118,14 @@ export function Campana({ onAbrir }: Props) {
                             {varios ? <><span className="font-semibold">{g.items.length} novedades</span> en </> : <><span className="font-semibold">{actorDe(g.ultimo.actor).nombre}</span> {VERBOS_HUMANOS[g.ultimo.verbo || ''] || ''} </>}
                             <span className="opacity-90">{(g.ultimo.objeto || g.ultimo.titulo).slice(0, 80)}</span>
                           </div>
-                          {!varios && g.ultimo.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2 mt-0.5">{g.ultimo.texto}</div>}
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-[#F5F7FA] opacity-40">
+                          {!varios && g.ultimo.texto && <div className="text-[11px] text-[#F5F7FA] opacity-70 line-clamp-2 mt-0.5">{g.ultimo.texto}</div>}
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-[#F5F7FA] opacity-70">
                             {g.ultimo.account && <span className="uppercase tracking-wider">{g.ultimo.account}</span>}
                             <span>{haceCuanto(g.ultimo.creada)}</span>
                             {varios && <span className="ml-auto flex items-center gap-0.5">{exp ? <ChevronDown size={11} /> : <ChevronRight size={11} />} {exp ? 'cerrar' : 'ver las ' + g.items.length}</span>}
                           </div>
                         </div>
-                        {!varios && <button onClick={(e) => { e.stopPropagation(); leer(g.ultimo); }} className="text-[#F5F7FA] opacity-30 hover:opacity-100 shrink-0 pt-0.5" title="Marcar visto"><Check size={13} /></button>}
+                        {!varios && <button onClick={(e) => { e.stopPropagation(); leer(g.ultimo); }} className="text-[#F5F7FA] opacity-70 hover:opacity-100 shrink-0 pt-0.5" title="Marcar visto"><Check size={13} /></button>}
                       </div>
                       {varios && exp && (
                         <div className="mt-2 ml-8 space-y-1.5">
@@ -128,8 +134,8 @@ export function Campana({ onAbrir }: Props) {
                               <Avatar actor={i.actor} chico />
                               <div className="min-w-0 flex-1">
                                 <div className="text-[11px] text-[#EDEFF3]"><span className="font-semibold">{actorDe(i.actor).nombre}</span> {VERBOS_HUMANOS[i.verbo || ''] || ''}</div>
-                                {i.texto && <div className="text-[11px] text-[#F5F7FA] opacity-60 line-clamp-2">{i.texto}</div>}
-                                <div className="text-[10px] text-[#F5F7FA] opacity-40 mt-0.5">{haceCuanto(i.creada)}</div>
+                                {i.texto && <div className="text-[11px] text-[#F5F7FA] opacity-70 line-clamp-2">{i.texto}</div>}
+                                <div className="text-[10px] text-[#F5F7FA] opacity-70 mt-0.5">{haceCuanto(i.creada)}</div>
                               </div>
                             </div>
                           ))}
@@ -142,7 +148,7 @@ export function Campana({ onAbrir }: Props) {
               });
             })()}
           </div>
-          <div className="px-4 py-2 text-[10px] text-[#F5F7FA] opacity-40" style={{ borderTop: '1px solid var(--border)' }}>
+          <div className="px-4 py-2 text-[10px] text-[#F5F7FA] opacity-60" style={{ borderTop: '1px solid var(--border)' }}>
             Quiénes te avisan: {Object.entries(ACTORES).filter(([k]) => ['semanal', 'pulso', 'mensual', 'reconciliador', 'politica', 'claude'].includes(k)).map(([, a]) => a.inicial + ' ' + a.nombre.toLowerCase()).join(' · ')}
           </div>
         </div>, document.body)}

@@ -23,16 +23,34 @@ export default defineConfig(() => {
       // el de React, llamarlo cuando todavía no existía, y la app reventaba ANTES
       // de montar: pantalla de carga infinita, sin login y sin error visible.
       //
-      // Ahora solo se separa lo pesado que NO participa del arranque: el PDF y los
-      // gráficos se descargan al abrir una pantalla que los usa. Se conserva la
-      // mayor parte del ahorro de la primera carga sin el riesgo de orden.
+      // De ahí la regla que sigue viva: acá SOLO se nombra lo que ninguna pieza
+      // del arranque importa. Un bloque manual se comporta como una raíz más para
+      // Rollup, y las dependencias compartidas se van a vivir adentro. Eso fue lo
+      // que pasó con el viejo bloque 'graficos' (recharts + d3): como recharts
+      // necesita React, React terminó ADENTRO de 'graficos', y entonces el entry
+      // tenía que importar 417 kB de gráficos para tener React. El bloque pensado
+      // para sacar peso del arranque era lo que lo traía.
+      //
+      // Hoy recharts ya no se nombra: sus dos consumidores (Datos y Semana, dentro
+      // de Cuenta) son diferidos, así que Rollup lo deja solo en un bloque
+      // compartido entre ambos y no lo toca nadie hasta abrir esas pantallas.
+      // React vuelve al entry, que es su lugar. El arranque pasó de 1.601 kB
+      // (479 kB gzip) a 575 kB (177 kB gzip).
       chunkSizeWarningLimit: 900,
       rollupOptions: {
         output: {
           manualChunks(id: string) {
+            // El helper de preload de Vite (`\0vite/preload-helper.js`) es un módulo
+            // virtual: no vive en node_modules, así que caía fuera de todas las reglas
+            // y quedaba sin bloque asignado. Rollup lo fusionaba entonces dentro del
+            // bloque más grande que también lo usa —le tocó 'pdf'— y como el entry
+            // importa el helper para resolver cada import() diferido, el entry
+            // terminaba importando ESTÁTICAMENTE los 626 kB de PDF. El PDF se
+            // descargaba en el arranque para no usarse nunca en el arranque.
+            // Darle bloque propio (1 kB) lo saca de esa fusión.
+            if (id.includes('vite/preload-helper')) return 'preload';
             if (!id.includes('node_modules')) return;
             if (id.includes('html2canvas') || id.includes('jspdf') || id.includes('@react-pdf')) return 'pdf';
-            if (id.includes('recharts') || id.includes('d3-')) return 'graficos';
           },
         },
       },

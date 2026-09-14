@@ -40,7 +40,7 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const R = 180_000;
   const qc = useQueryClient();
   const cargar = () => { qc.invalidateQueries({ queryKey: ['json'] }); };
-  const { data: briefing } = useJSON<any>('/api/briefing', null, { refetchMs: R });
+  const { data: briefing, error: errorBriefing, cargando: cargandoBriefing, refetch: recargarBriefing } = useJSON<any>('/api/briefing', null, { refetchMs: R });
   const { data: alertasRaw } = useJSON<any[]>('/api/alertas', [], { refetchMs: R });
   const { data: pulsoRaw } = useJSON<any>('/api/pulso?days=2', null, { refetchMs: R });
   const { data: ciclo } = useJSON<any>('/api/ciclo', null, { refetchMs: R });
@@ -48,6 +48,19 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
   const { data: bloqueadosRaw } = useJSON<Record<string, string>>('/api/relaciones-abiertas', {}, { refetchMs: R });
   const { data: propuestasRaw } = useJSON<any[]>('/api/propuestas', [], { refetchMs: R });
   const { data: notas } = useJSON<any>('/api/notas-agentes', null);
+  // El punto de "Datos" tiene tres estados, no dos. Antes era
+  // `datos_al_dia === false ? problema : al día`, así que cuando /api/briefing
+  // se caía —o devolvía el HTML de un 500— `briefing` quedaba en null y el
+  // tablero pintaba VERDE con "al día": el endpoint que informa si los datos
+  // están sanos, justo cuando no puede responder, reportaba salud.
+  const estadoDatos = errorBriefing
+    ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'sin confirmar', pie: 'no se pudo consultar · reintentar' }
+    : cargandoBriefing || !briefing
+      ? { punto: '#ADADAD', color: '#ADADAD', texto: 'consultando…', pie: 'esperando la respuesta' }
+      : briefing.datos_al_dia === false
+        ? { punto: 'var(--warn)', color: 'var(--warn)', texto: 'problema', pie: 'mirá Sistema › Salud →' }
+        : { punto: '#4ADE80', color: '#FAFAFA', texto: 'al día', pie: 'detalle en Sistema →' };
+
   const alertas = Array.isArray(alertasRaw) ? alertasRaw : [];
   const pulsos = pulsoRaw?.pulsos || [];
   const novedades = Array.isArray(novedadesRaw) ? novedadesRaw : [];
@@ -192,13 +205,14 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
               <div className="text-xs mt-1" style={LABEL}>{listosOrd.length > 0 ? 'las más rentables por minuto' : 'ninguna lista para ejecutar'}</div>
             </div>
             {/* Eco del canónico (Sistema › Salud): un vistazo acá, el detalle allá. */}
-            <button className="pl-6 text-left group" onClick={() => onGoTo('sistema')} title="Ver el detalle en Sistema › Salud">
+            <button className="pl-6 text-left group" onClick={() => errorBriefing ? recargarBriefing() : onGoTo('sistema')}
+              title={errorBriefing ? `No se pudo consultar la salud de los datos. ${errorBriefing} Clic para reintentar.` : 'Ver el detalle en Sistema › Salud'}>
               <div className="text-xs" style={LABEL}>Datos</div>
-              <div className="text-2xl font-medium mt-1 flex items-center gap-2 group-hover:opacity-90" style={{ letterSpacing: '-0.6px', color: briefing?.datos_al_dia === false ? 'var(--warn)' : '#FAFAFA' }}>
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: briefing?.datos_al_dia === false ? 'var(--warn)' : '#4ADE80' }} />
-                {briefing?.datos_al_dia === false ? 'problema' : 'al día'}
+              <div className="text-2xl font-medium mt-1 flex items-center gap-2 group-hover:opacity-90" style={{ letterSpacing: '-0.6px', color: estadoDatos.color }}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: estadoDatos.punto }} />
+                {estadoDatos.texto}
               </div>
-              <div className="text-xs mt-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL}>{briefing?.datos_al_dia === false ? 'mirá Sistema › Salud →' : 'detalle en Sistema →'}</div>
+              <div className="text-xs mt-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL}>{estadoDatos.pie}</div>
             </button>
           </div>
 
@@ -267,7 +281,10 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
             )}
           </div>
 
-          <p className="text-[10px] text-center pt-5 opacity-40" style={LABEL}>j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
+          {/* #ADADAD necesita .80 para pasar 4,5:1: 5,60:1 sobre el shell, 5,05:1 sobre el
+              hover de fila y 4,86:1 sobre la fila activa, que es el fondo más claro donde
+              cae este gris. Con .40 daba 2,32:1. */}
+          <p className="text-[10px] text-center pt-5 opacity-80" style={LABEL}>j / k recorren la cola · Enter abre · 1 resuelve la alerta señalada · ⌥1–4 cambia de cuenta · ⌘K va a cualquier lado</p>
         </div>
       } derecha={
         // EL CONTEXTO: lo que ayuda a decidir sin ser una decisión.
@@ -337,8 +354,8 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 {novs.slice(0, abierto.novs ? 20 : 5).map(n => (
                   <button key={n.id} onClick={() => abrirNovedad(n)} className="w-full flex items-center gap-2 py-1.5 text-left group">
                     <span className="text-[13px] font-medium truncate flex-1 group-hover:text-[#FAFAFA] transition-colors" style={LABEL} title={n.texto || n.titulo}>{n.titulo}</span>
-                    <span className="text-[10px] tabular shrink-0 opacity-60" style={LABEL}>{(() => { const v = n.ultima || n.creada; return v ? fmtFechaCorta(v) : ''; })()}</span>
-                    <ChevronRight size={12} className="shrink-0 opacity-40 group-hover:opacity-100 transition-opacity" style={{ color: '#ADADAD' }} />
+                    <span className="text-[10px] tabular shrink-0 opacity-80" style={LABEL}>{(() => { const v = n.ultima || n.creada; return v ? fmtFechaCorta(v) : ''; })()}</span>
+                    <ChevronRight size={12} className="shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" style={{ color: '#ADADAD' }} />
                   </button>
                 ))}
               </div>
@@ -369,14 +386,14 @@ export function Bandeja({ onOpenActionable, onGoTo }: Props) {
                 <div className="space-y-2 mt-3">
                   {(ciclo.impactos || []).slice(0, 5).map((i: any, k: number) => (
                     <div key={k} className="flex items-center gap-2 text-xs">
-                      <span className="tabular shrink-0 opacity-60" style={LABEL}>{fmtFechaCorta(i.ejecutado_el)}</span>
+                      <span className="tabular shrink-0 opacity-80" style={LABEL}>{fmtFechaCorta(i.ejecutado_el)}</span>
                       <span className="flex-1 truncate" style={LABEL}>{i.account} · {i.titulo}</span>
                       <span className="tabular text-[#FAFAFA] shrink-0">{i.variacion_pct != null ? `${i.variacion_pct > 0 ? '+' : ''}${Number(i.variacion_pct).toFixed(0)}%` : (i.veredicto || '').split(':')[0]}</span>
                     </div>
                   ))}
                   {(ciclo.predicciones || []).filter((p: any) => p.acerto !== null).slice(0, 4).map((p: any) => (
                     <div key={p.id} className="flex items-center gap-2 text-xs">
-                      <span className="tabular shrink-0 opacity-60" style={LABEL}>sem {fmtFechaCorta(p.semana)}</span>
+                      <span className="tabular shrink-0 opacity-80" style={LABEL}>sem {fmtFechaCorta(p.semana)}</span>
                       <span className="flex-1 truncate" style={LABEL}>{p.account} · {p.metrica} entre {p.valor_min} y {p.valor_max}</span>
                       <span className="shrink-0" style={{ color: p.acerto ? '#4ADE80' : 'var(--bad)' }}>{p.acerto ? 'acertó' : 'falló'}</span>
                     </div>
@@ -399,7 +416,7 @@ function Grupo({ titulo, nota, n, urgente, abierto, onToggle, todo, tope, onVerT
   return (
     <div className="border-b" style={{ borderColor: 'var(--border)' }}>
       <button onClick={onToggle} className="w-full flex items-center gap-2 py-2.5 text-left group">
-        <ChevronRight size={12} className={`shrink-0 transition-transform opacity-50 ${abierto ? 'rotate-90' : ''}`} style={{ color: '#ADADAD' }} />
+        <ChevronRight size={12} className={`shrink-0 transition-transform opacity-80 ${abierto ? 'rotate-90' : ''}`} style={{ color: '#ADADAD' }} />
         {urgente && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--warn)' }} />}
         <span className="text-xs group-hover:text-[#FAFAFA] transition-colors" style={{ color: abierto ? '#FAFAFA' : '#ADADAD', letterSpacing: '0.3px' }}>{titulo}</span>
         <span className="text-[10px] tabular px-1.5 py-px rounded-full shrink-0" style={{ border: '1px solid var(--border-strong)', color: '#ADADAD' }}>{n}</span>
@@ -427,7 +444,10 @@ function Fila({ cuenta, titulo, sub, onClick, accion, activa }: { cuenta: string
         <div className="text-[13px] text-[#EDEFF3] truncate">{titulo}</div>
         {sub && <div className="text-[11px] truncate opacity-80" style={{ color: '#ADADAD' }}>{sub}</div>}
       </div>
-      {accion || <ChevronRight size={13} className="shrink-0 opacity-30" style={{ color: '#ADADAD' }} />}
+      {/* Esta flecha es el ÚNICO indicio de que la fila se abre, así que es un control,
+          no un adorno: a .30 daba 1,83:1 y no se veía. .80 la deja en 4,86:1 sobre la
+          fila activa, que es el peor fondo de los tres que puede tener. */}
+      {accion || <ChevronRight size={13} className="shrink-0 opacity-80" style={{ color: '#ADADAD' }} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createSessionToken, verifySessionToken } from './session';
-import { ipDe, verificarLimite, registrarIntento } from './limite';
+import { ipDe, verificarLimite, registrarIntento, MOTIVO_SIN_VERIFICAR } from './limite';
 import { comparacionSegura } from '../lib/signatures';
 
 // El límite vive en Postgres, no en memoria: un Map no persiste entre instancias
@@ -17,12 +17,18 @@ export function crearAuthRouter(supabase: any) {
     // Tras 5 fallos la espera crece exponencialmente, hasta una hora.
     const v = await verificarLimite(supabase, ip, '/login', 10, 15);
     if (!v.permitido) {
-      return res.status(429).json({
-        error: v.motivo === 'demasiados intentos fallidos'
-          ? `Demasiados intentos fallidos. Probá de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`
-          : `Demasiados intentos. Probá de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`,
-        esperar_segundos: v.esperar
-      });
+      // El caso "no pudimos contar" se dice como lo que es. Mandarle "demasiados intentos"
+      // a Andrés cuando lo que pasa es que Supabase no responde lo hace buscar el problema
+      // donde no está, justo cuando el problema es urgente.
+      let mensaje: string;
+      if (v.motivo === MOTIVO_SIN_VERIFICAR) {
+        mensaje = `No se pudo verificar el límite de intentos, así que el acceso queda cerrado por precaución. Probá de nuevo en ${v.esperar || 30} segundos.`;
+      } else if (v.motivo === 'demasiados intentos fallidos') {
+        mensaje = `Demasiados intentos fallidos. Probá de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`;
+      } else {
+        mensaje = `Demasiados intentos. Probá de nuevo en ${Math.ceil((v.esperar || 60) / 60)} minuto(s).`;
+      }
+      return res.status(429).json({ error: mensaje, esperar_segundos: v.esperar });
     }
 
     if (!process.env.APP_ACCESS_TOKEN) {
