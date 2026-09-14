@@ -55,4 +55,41 @@ describe('idiomas del reporte al cliente', () => {
       expect(bloque.includes(`  ${cod}: {`), `IDIOMAS_REPORTE no tiene "${cod}"`).toBe(true);
     }
   });
+
+  it('las tres superficies del reporte usan las claves que el SQL sí produce', () => {
+    // §7.1 se arregló dos veces porque estaba en dos lugares y la segunda no se
+    // vio: el mensaje de Slack Y la página pública /r/:token leían `gasto` y
+    // `conversiones`, que `get_reporte_datos` nunca construyó. Al cliente le
+    // llegaba "Spend —  Conversions —  CPA 45,39 €": solo salían las dos claves
+    // que por casualidad se llaman igual en los dos lados.
+    //
+    // Las canónicas se leen del SQL, no de una lista copiada: si la función
+    // cambia, este control lo ve.
+    const sql = fs.readFileSync(
+      path.resolve(__dirname, '../../../supabase/migrations/20260914180000_el_reporte_declara_la_ventana_que_sumo.sql'), 'utf8');
+    const i = sql.indexOf("'metricas', jsonb_build_object(");
+    expect(i, 'no encontré el bloque de métricas de get_reporte_datos').toBeGreaterThan(-1);
+    const bloque = sql.slice(i, sql.indexOf("'serie',", i));
+    const canonicas = new Set([...bloque.matchAll(/'([a-z_]+)', jsonb_build_object\('actual'/g)].map(m => m[1]));
+    expect(canonicas.size, 'no se extrajo ninguna clave del SQL').toBeGreaterThan(3);
+
+    // Los nombres viejos que ya causaron el bug. Ninguna superficie puede leerlos.
+    const PROHIBIDAS = ['gasto', 'conversiones', 'clics', 'cuota_impresiones'];
+    const server = fs.readFileSync(SERVER, 'utf8');
+    const culpables: string[] = [];
+    for (const mala of PROHIBIDAS) {
+      // Solo donde se lee del objeto de métricas del reporte.
+      if (new RegExp(`metricas\\?\\.\\[?'?${mala}\\b`).test(server)) culpables.push(`server.ts lee metricas.${mala}`);
+      if (new RegExp(`m\\.${mala}\\?\\.actual`).test(server)) culpables.push(`server.ts lee m.${mala}.actual`);
+    }
+    expect(culpables, 'una superficie del reporte lee una clave que get_reporte_datos no produce').toEqual([]);
+
+    // Y las que el PDF pide tienen que estar entre las canónicas.
+    const pdf = fs.readFileSync(PDF, 'utf8');
+    const mOrden = pdf.match(/const orden = \[([^\]]+)\]/);
+    expect(mOrden, 'no encontré la lista `orden` del PDF').toBeTruthy();
+    for (const k of [...mOrden![1].matchAll(/'([a-z_]+)'/g)].map(x => x[1])) {
+      expect(canonicas.has(k), `el PDF pide "${k}" y get_reporte_datos no lo produce`).toBe(true);
+    }
+  });
 });
