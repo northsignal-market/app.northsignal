@@ -247,7 +247,14 @@ export function Clientes({ onOpenActionable, onNavigateToBrief, zona = 'todo' }:
     // Antes el respaldo declaraba `currency`, que no existe en ninguno de los dos
     // lados, así que la ficha nunca mostró la moneda de Notion. Zona horaria no la
     // emite ese endpoint: la única fuente es useCuentas.
-    return clientsInfo.find(c => c.name.toLowerCase() === activeClient.toLowerCase()) || {
+    // Por `account`, que ahora el servidor resuelve contra la tabla de cuentas. El
+    // match por `name` casaba el TÍTULO de Notion ('Fresh Monkee') contra el CÓDIGO
+    // de cuenta ('FRESH_MONKEE') y para esa cuenta nunca casaba: caía siempre al
+    // respaldo. Se deja el nombre como segundo intento para las fichas cuya cuenta
+    // el servidor no pudo resolver.
+    return clientsInfo.find(c => c.account && c.account === activeClient)
+        || clientsInfo.find(c => c.name?.toLowerCase() === activeClient.toLowerCase())
+        || {
       id: 'default',
       name: activeClient,
       moneda: monedaDe(activeClient),

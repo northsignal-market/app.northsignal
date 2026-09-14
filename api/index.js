@@ -857,6 +857,25 @@ var NOTION_REVISION_IA = {
   RESUELTO: "Resuelto"
 };
 
+// src/server/domain/ficha-cuenta.ts
+var sinGuiones = (s2) => String(s2 ?? "").replace(/-/g, "");
+function resolverCuentaDeFicha(fichaId, nombre, cuentas) {
+  const id = sinGuiones(fichaId);
+  if (id) {
+    const porId = cuentas.find((c) => c.notion_ficha_id && sinGuiones(c.notion_ficha_id) === id);
+    if (porId) return porId;
+  }
+  const nm = String(nombre ?? "").toLowerCase().trim();
+  if (!nm) return null;
+  return cuentas.find((c) => String(c.nombre_cliente ?? "").toLowerCase().trim() === nm) ?? null;
+}
+function monedaDeFicha(cuenta, monedaEnNotion) {
+  const notion2 = monedaEnNotion || null;
+  const tabla = cuenta?.moneda || null;
+  const discrepancia = cuenta && notion2 && tabla && notion2 !== tabla ? `la ficha de ${cuenta.account} dice moneda ${notion2} y cuentas dice ${tabla}. Manda cuentas.` : null;
+  return { moneda: tabla ?? notion2, discrepancia };
+}
+
 // src/server/lib/notion.ts
 import { Client } from "@notionhq/client";
 import PQueue from "p-queue";
@@ -2282,20 +2301,26 @@ function createApp() {
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
       });
-      const monedaPorCuenta = new Map((await cuentasActivas()).map((c) => [c.account, c.moneda]));
+      const cts = await cuentasActivas();
       const clients = response.results.map((p) => {
         const name = p.properties.Cliente?.title?.map((t) => t.plain_text).join("") || "Sin nombre";
         const aprendizajes = p.properties["Aprendizajes consolidados"]?.rich_text?.map((t) => t.plain_text).join("") || "";
         const hipotesis = p.properties["Hipotesis abiertas"]?.rich_text?.map((t) => t.plain_text).join("") || "";
         const semanas = p.properties["Semanas analizadas"]?.number ?? 0;
         const status = p.properties.Estado?.select?.name || "Activo";
-        const moneda = p.properties.Moneda?.select?.name || [...monedaPorCuenta.entries()].find(([a]) => name.toUpperCase().includes(a))?.[1] || "CLP";
+        const cuenta = resolverCuentaDeFicha(p.id, name, cts);
+        const { moneda, discrepancia } = monedaDeFicha(cuenta, p.properties.Moneda?.select?.name);
+        if (discrepancia) console.warn(`[notion] ${discrepancia}`);
         const country = p.properties.Pais?.select?.name || "";
         const budget = p.properties["Presupuesto diario"]?.number || 0;
         const customerId = p.properties["Customer ID"]?.rich_text?.map((t) => t.plain_text).join("") || "";
         return {
           id: p.id,
           name,
+          // El código de cuenta, resuelto. `Clientes.tsx` casaba la ficha por `name`
+          // contra el código ('fresh monkee' vs 'fresh_monkee'), y para Fresh Monkee
+          // nunca casaba. Null cuando no se pudo resolver: eso también es un dato.
+          account: cuenta?.account ?? null,
           status,
           aprendizajes_consolidados: aprendizajes,
           hipotesis_abiertas: hipotesis,

@@ -112,7 +112,14 @@ export interface NotionClientInfo {
   aprendizajes_consolidados: string;
   hipotesis_abiertas: string;
   semanas_analizadas: number;
-  moneda: string;
+  /** El código de cuenta, resuelto por el servidor contra la tabla `cuentas`.
+   *  Null cuando la ficha no corresponde a ninguna cuenta activa: eso también es
+   *  un dato, y es mejor que casar el título de Notion contra el código a mano. */
+  account: string | null;
+  /** Null cuando no se pudo resolver. Antes el servidor ponía 'CLP' de prepo y el
+   *  tipo decía `string`, así que ni el compilador ni la pantalla se enteraban de
+   *  que esa moneda era inventada. Quien la muestre decide el respaldo. */
+  moneda: string | null;
   country?: string;
   daily_budget?: number;
   customer_id?: string;

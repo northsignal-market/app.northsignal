@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { webhooksRouter } from './src/server/routes/webhooks';
 import { NOTION_BASES, NOTION_STATES, NOTION_PRIORITIES, NOTION_REVISION_IA } from './src/server/domain/notionSchema';
+import { resolverCuentaDeFicha, monedaDeFicha } from './src/server/domain/ficha-cuenta';
 import { VIEW_CONFIGS, validCols, validSearchCols } from './src/server/domain/viewConfig';
 
 
@@ -513,20 +514,38 @@ async function coberturaDe(account: string, desde: string, hasta: string) {
         database_id: NOTION_BASES.CLIENTES,
         page_size: 20
       });
-      const monedaPorCuenta = new Map((await cuentasActivas()).map(c => [c.account, c.moneda]));
+      // La cuenta de cada ficha se RESUELVE, no se adivina. Antes esta línea era
+      //   name.toUpperCase().includes(a)  ||  'CLP'
+      // y tenía los dos problemas que este sistema caza. Adivinaba por substring del
+      // título que alguien escribe a mano en Notion: "Fresh Monkee" no contiene
+      // "FRESH_MONKEE" —el guión bajo— así que la ÚNICA cuenta en dólares no pegaba
+      // y caía al final de la cadena, que inventaba pesos chilenos. Una moneda
+      // inventada no se ve rota en pantalla: se ve como una cifra.
+      //
+      // La ficha de Notion tiene id propio y `cuentas.notion_ficha_id` lo guarda:
+      // esa es la forma exacta. El nombre completo contra `nombre_cliente` es el
+      // respaldo. Si ninguna resuelve, la moneda va NULL y quien muestra decide —
+      // `Clientes.tsx` cae a `monedaDe(activeClient)`, que sale de la tabla.
+      const cts = await cuentasActivas();
       const clients = response.results.map((p: any) => {
         const name = p.properties.Cliente?.title?.map((t: any) => t.plain_text).join('') || 'Sin nombre';
         const aprendizajes = p.properties['Aprendizajes consolidados']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         const hipotesis = p.properties['Hipotesis abiertas']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         const semanas = p.properties['Semanas analizadas']?.number ?? 0;
         const status = p.properties.Estado?.select?.name || 'Activo';
-        const moneda = p.properties.Moneda?.select?.name || [...monedaPorCuenta.entries()].find(([a]) => name.toUpperCase().includes(a))?.[1] || 'CLP';
+        const cuenta = resolverCuentaDeFicha(p.id, name, cts as any);
+        const { moneda, discrepancia } = monedaDeFicha(cuenta, p.properties.Moneda?.select?.name);
+        if (discrepancia) console.warn(`[notion] ${discrepancia}`);
         const country = p.properties.Pais?.select?.name || '';
         const budget = p.properties['Presupuesto diario']?.number || 0;
         const customerId = p.properties['Customer ID']?.rich_text?.map((t: any) => t.plain_text).join('') || '';
         return {
           id: p.id,
           name,
+          // El código de cuenta, resuelto. `Clientes.tsx` casaba la ficha por `name`
+          // contra el código ('fresh monkee' vs 'fresh_monkee'), y para Fresh Monkee
+          // nunca casaba. Null cuando no se pudo resolver: eso también es un dato.
+          account: cuenta?.account ?? null,
           status,
           aprendizajes_consolidados: aprendizajes,
           hipotesis_abiertas: hipotesis,
